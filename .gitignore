@@ -11,6 +11,8 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+build/
+dist/
 
 # Editors and local environment
 .vscode/
@@ -23,11 +25,24 @@ htmlcov/
 image/
 files/
 output*.html
+output*.json
 *.image-jobs.json
 *.job.json
+*.rendered.json
+resolved-assets.json
+quality-report.json
+image-plan.md
+image-plan.json
+article.md
 
 # Local Codex build/test artifacts
 .codex-skill-build*/
+.codex-skill-build.*
+test-runs/
+prompts/
+support/
 
 # Packaged archives
 *.zip
+*.codex-skill*.zip
+wechat-article-pipeline.codex-skill*.zip
