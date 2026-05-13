@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import unicodedata
+from pathlib import Path
+
+import build_wechat_article_workbench as builder
+
+
+WORKSPACE = Path.cwd()
+DEFAULT_IMAGE_ROOT = WORKSPACE / "image"
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Package a WeChat article markdown file plus local images into one editable HTML workbench."
+    )
+    parser.add_argument("article", type=Path, help="Path to the source markdown article.")
+    parser.add_argument("out", type=Path, help="Path to the output HTML workbench file.")
+    parser.add_argument(
+        "--images-dir",
+        type=Path,
+        help="Directory containing cover/body/closing image files. Defaults to workspace/image/<slug>.",
+    )
+    parser.add_argument(
+        "--plan-json",
+        type=Path,
+        help="Optional image-plan JSON from make_wechat_article_image_jobs.py so packaging can preserve role metadata.",
+    )
+    parser.add_argument(
+        "--job-out",
+        type=Path,
+        help="Optional path to save the generated job JSON. Defaults to <output>.job.json.",
+    )
+    parser.add_argument(
+        "--support-dir",
+        type=Path,
+        help="Optional directory for article/job/quality support files.",
+    )
+    parser.add_argument(
+        "--template",
+        type=Path,
+        default=builder.DEFAULT_TEMPLATE,
+        help="Path to the editable HTML workbench template.",
+    )
+    parser.add_argument("--page-title", help="Optional page title override.")
+    parser.add_argument("--brand-title", help="Optional brand title override.")
+    parser.add_argument(
+        "--brand-subtitle",
+        default="单文件 HTML · 含正文和配图 · 可继续编辑",
+        help="Optional brand subtitle.",
+    )
+    parser.add_argument(
+        "--theme-color",
+        default="#17b394",
+        help="Theme color injected into the HTML workbench.",
+    )
+    parser.add_argument("--storage-key", help="Optional storage key override.")
+    return parser.parse_args()
+
+
+def extract_title(markdown: str, fallback: str) -> str:
+    match = TITLE_RE.search(markdown)
+    if match:
+        return match.group(1).strip()
+    return fallback
+
+
+def slugify(value: str, fallback: str = "wechat-article") -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii").lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_text).strip("-")
+    return slug or fallback
+
+
+def make_path_name(value: str, fallback: str = "wechat-article") -> str:
+    cleaned = re.sub(r"[^\w\u4e00-\u9fff-]+", "-", value.strip(), flags=re.UNICODE)
+    cleaned = re.sub(r"-+", "-", cleaned).strip("-_")
+    return cleaned or fallback
+
+
+def make_storage_slug(value: str, fallback: str = "wechat-article") -> str:
+    slug = slugify(value, "")
+    if slug:
+        return slug
+    digest = hashlib.sha1(value.encode("utf-8")).hexdigest()[:8]
+    return f"{fallback}-{digest}"
+
+
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha1()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def make_content_storage_key(page_title: str, markdown: str, visuals: dict[str, dict]) -> str:
+    digest = hashlib.sha1()
+    digest.update(page_title.encode("utf-8"))
+    digest.update(markdown.encode("utf-8"))
+    for name in sorted(visuals):
+        digest.update(name.encode("utf-8"))
+        path_value = visuals[name].get("path")
+        if path_value:
+            digest.update(file_digest(Path(path_value)).encode("ascii"))
+    return f"wechat-md-workbench-{make_storage_slug(page_title)}-{digest.hexdigest()[:10]}"
+
+
+
+def infer_image_dir_name(article_path: Path, plan: dict | None) -> str:
+    plan_slug = str((plan or {}).get("article_slug", "")).strip()
+    if plan_slug:
+        return make_path_name(plan_slug)
+    stem = article_path.stem.strip()
+    if stem and stem.lower() != "article":
+        return make_path_name(stem)
+    parent = article_path.parent.name.strip()
+    if parent:
+        return make_path_name(parent)
+    return make_path_name(stem or article_path.name)
+
+
+def find_placeholders(markdown: str) -> list[str]:
+    names = sorted({match.group(1) for match in builder.PLACEHOLDER_RE.finditer(markdown)})
+    if not names:
+        raise SystemExit("Article markdown does not contain any {{visual:name}} placeholders")
+    return names
+
+
+def find_image(images_dir: Path, name: str) -> Path:
+    matches = sorted(
+        path
+        for path in images_dir.iterdir()
+        if path.is_file() and path.stem == name and path.suffix.lower() in IMAGE_SUFFIXES
+    )
+    if not matches:
+        supported = ", ".join(sorted(IMAGE_SUFFIXES))
+        raise SystemExit(
+            f"Missing image for placeholder '{name}' in {images_dir}. "
+            f"Expected a file named {name}<ext> where <ext> is one of: {supported}"
+        )
+    if len(matches) > 1:
+        joined = ", ".join(str(path) for path in matches)
+        raise SystemExit(f"Multiple image files match placeholder '{name}': {joined}")
+    return matches[0].resolve()
+
+
+def read_plan(path: Path | None) -> dict | None:
+    if not path:
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def plan_slot_map(plan: dict | None) -> dict[str, dict]:
+    if not plan:
+        return {}
+    slots = plan.get("image_slots") or plan.get("jobs") or []
+    result: dict[str, dict] = {}
+    for slot in slots:
+        if not isinstance(slot, dict):
+            continue
+        name = str(slot.get("name", "")).strip()
+        if name:
+            result[name] = slot
+    return result
+
+
+def build_job(
+    markdown: str,
+    images_dir: Path,
+    plan: dict | None,
+    page_title: str,
+    storage_key: str,
+    brand_title: str,
+    brand_subtitle: str,
+    theme_color: str,
+) -> dict:
+    slot_map = plan_slot_map(plan)
+    visuals = {
+        name: {
+            "path": str(find_image(images_dir, name)),
+            **{
+                key: slot_map[name][key]
+                for key in ("role", "image_type", "source_context", "target_effect", "content_focus")
+                if name in slot_map and key in slot_map[name]
+            },
+        }
+        for name in find_placeholders(markdown)
+    }
+    job = {
+        "page_title": page_title,
+        "storage_key": storage_key,
+        "brand_title": brand_title,
+        "brand_subtitle": brand_subtitle,
+        "theme_color": theme_color,
+        "article_markdown": markdown,
+        "visuals": visuals,
+    }
+    if plan:
+        job["image_plan"] = plan.get("image_plan") or {
+            "article_title": plan.get("article_title"),
+            "article_summary": plan.get("article_summary"),
+            "article_type": plan.get("article_type"),
+            "global_visual_style": plan.get("global_visual_style"),
+            "image_slots": plan.get("image_slots") or plan.get("jobs") or [],
+        }
+        if plan.get("image_plan_markdown"):
+            job["image_plan_markdown"] = plan["image_plan_markdown"]
+    return job
+
+
+def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, support_dir: Path | None) -> None:
+    template = template_path.read_text(encoding="utf-8")
+    job_dir = job_path.parent.resolve()
+
+    markdown = job["article_markdown"]
+    rendered_visuals: dict[str, str] = {}
+    quality_report: dict[str, object] = {"visuals": {}}
+
+    for name, visual_spec in job.get("visuals", {}).items():
+        asset_uri, audit = builder.resolve_image_asset(visual_spec, job_dir)
+        rendered_visuals[name] = asset_uri
+        quality_report["visuals"][name] = audit
+
+    markdown, missing = builder.replace_visual_placeholders(markdown, rendered_visuals)
+    if missing:
+        names = ", ".join(sorted(set(missing)))
+        raise SystemExit(f"Missing visual assets for placeholders: {names}")
+
+    html = builder.apply_template(job, template, markdown)
+    validate_embedded_html(html, len(rendered_visuals))
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html, encoding="utf-8")
+
+    if support_dir:
+        rendered_job = dict(job)
+        rendered_job["article_markdown"] = markdown
+        builder.write_support_files(
+            support_dir,
+            job_path,
+            markdown,
+            rendered_visuals,
+            rendered_job,
+            quality_report,
+        )
+
+
+def validate_embedded_html(html: str, expected_visual_count: int) -> None:
+    if "{{visual:" in html:
+        raise SystemExit("Generated HTML still contains unresolved {{visual:*}} placeholders")
+    embedded_count = html.count("data:image/")
+    if embedded_count < expected_visual_count:
+        raise SystemExit(
+            f"Generated HTML only contains {embedded_count} embedded images; "
+            f"expected at least {expected_visual_count}"
+        )
+    local_image_re = re.compile(
+        r"!\[[^\]]*\]\((?:/Users/|file:|\.{0,2}/)[^)]+\.(?:png|jpe?g|webp|gif)\)",
+        re.I,
+    )
+    if local_image_re.search(html):
+        raise SystemExit("Generated HTML still contains markdown image links to local files")
+
+
+def main() -> None:
+    args = parse_args()
+    markdown = args.article.read_text(encoding="utf-8")
+    plan = read_plan(args.plan_json.resolve() if args.plan_json else None)
+
+    page_title = args.page_title or extract_title(markdown, args.article.stem)
+    image_dir_name = infer_image_dir_name(args.article.resolve(), plan)
+    slug_source = image_dir_name or args.article.stem or page_title
+    images_dir = (args.images_dir or (DEFAULT_IMAGE_ROOT / image_dir_name)).resolve()
+    if not images_dir.exists() or not images_dir.is_dir():
+        raise SystemExit(f"Images directory does not exist: {images_dir}")
+
+    brand_title = args.brand_title or f"{page_title}工作台"
+    job_out = (args.job_out or args.out.with_suffix(".job.json")).resolve()
+
+    job = build_job(
+        markdown=markdown,
+        images_dir=images_dir,
+        plan=plan,
+        page_title=page_title,
+        storage_key=args.storage_key or "pending-content-hash",
+        brand_title=brand_title,
+        brand_subtitle=args.brand_subtitle,
+        theme_color=args.theme_color,
+    )
+    job["storage_key"] = args.storage_key or make_content_storage_key(page_title or slug_source, markdown, job["visuals"])
+
+    job_out.parent.mkdir(parents=True, exist_ok=True)
+    job_out.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    render_html(
+        job=job,
+        job_path=job_out,
+        out_path=args.out.resolve(),
+        template_path=args.template.resolve(),
+        support_dir=args.support_dir.resolve() if args.support_dir else None,
+    )
+
+    print(f"Wrote {job_out}")
+    print(f"Wrote {args.out.resolve()}")
+    if args.support_dir:
+        print(f"Wrote support files to {args.support_dir.resolve()}")
+
+
+if __name__ == "__main__":
+    main()

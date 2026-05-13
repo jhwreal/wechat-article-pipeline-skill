@@ -1,0 +1,8 @@
+interface:
+  display_name: "WeChat Article Pipeline"
+  short_description: "Write article, generate images directly, package HTML"
+  brand_color: "#17B394"
+  default_prompt: "Use $wechat-article-pipeline to write the WeChat article first, derive a role-based image plan from the finished article, generate cover/body/closing images directly with Codex's built-in image tool, save them under the workspace image folder, and package one editable markdown HTML workbench."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors and local environment
+.vscode/
+.idea/
+.env
+.env.*
+!.env.example
+
+# Generated article outputs
+image/
+files/
+output*.html
+*.image-jobs.json
+*.job.json
+
+# Local Codex build/test artifacts
+.codex-skill-build*/
+
+# Packaged archives
+*.zip

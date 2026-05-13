@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>公众号 Markdown 工作台</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #1f2329;
+      --muted: #667085;
+      --line: #e5e7eb;
+      --primary: #17b394;
+      --accent: #d14d72;
+      --radius: 16px;
+      --shadow: 0 8px 30px rgba(16,24,40,.08);
+      --preview-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --content-width: 430px;
+      --wechat-side-padding: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      min-height: 64px;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      gap: 16px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .brand-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary), #48d1b8);
+      box-shadow: 0 8px 20px rgba(23,179,148,.22);
+      flex: 0 0 auto;
+    }
+    .brand-text { min-width: 0; }
+    .brand-title { font-size: 16px; font-weight: 700; white-space: nowrap; }
+    .brand-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+    .btn, .field, .select, .color {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 12px;
+      height: 38px;
+      padding: 0 12px;
+      font-size: 14px;
+      color: var(--text);
+    }
+    .btn {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-weight: 600;
+      transition: .16s ease;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(16,24,40,.08); }
+    .btn.primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: transparent;
+      min-width: 128px;
+    }
+    .field, .select { min-width: 110px; }
+    .color { padding: 6px; width: 44px; }
+
+    .main {
+      display: grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap: 16px;
+      padding: 16px;
+      min-height: calc(100vh - 64px);
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff, #fcfdff);
+    }
+    .panel-title { font-size: 14px; font-weight: 700; }
+    .panel-desc { font-size: 12px; color: var(--muted); }
+
+    .editor-wrap { flex: 1; min-height: 0; background: var(--panel); }
+    #editor {
+      width: 100%;
+      height: 100%;
+      min-height: 70vh;
+      border: 0;
+      outline: none;
+      resize: none;
+      padding: 22px 22px 30px;
+      font-size: 15px;
+      line-height: 1.75;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      background: linear-gradient(180deg, #ffffff, #fbfcff);
+      color: #0f172a;
+      tab-size: 2;
+    }
+
+    .preview-shell {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      background: #eef2f8;
+      padding: 28px 20px 40px;
+    }
+    .phone-frame {
+      width: calc(var(--content-width) + var(--wechat-side-padding) * 2 + 2px);
+      margin: 0 auto;
+      border-radius: 0;
+      background: #fff;
+      border: 1px solid #dcdfe5;
+      box-shadow: none;
+      overflow: hidden;
+    }
+    .phone-top {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid #eef2f7;
+      background: #fafbfd;
+      font-size: 13px;
+      color: #667085;
+      font-weight: 600;
+      letter-spacing: .2px;
+    }
+    .preview-viewport {
+      width: 100%;
+      overflow: hidden;
+      background: #fff;
+    }
+    .preview {
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 18px var(--wechat-side-padding) 42px;
+      font-family: var(--preview-font);
+      font-size: 16px;
+      line-height: 1.75;
+      color: #222;
+      word-break: break-word;
+      background: #fff;
+    }
+
+    .preview h1,
+    .preview h2,
+    .preview h3,
+    .preview h4,
+    .preview p,
+    .preview ul,
+    .preview ol,
+    .preview blockquote,
+    .preview pre,
+    .preview table { margin-top: 0; }
+
+    .preview h1 {
+      width: fit-content;
+      margin: 26px auto 16px;
+      font-size: 19px;
+      line-height: 1.75;
+      font-weight: 700;
+      color: #111827;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary);
+      text-align: center;
+    }
+    .preview h2 {
+      width: fit-content;
+      margin: 30px auto 18px;
+      font-size: 19px;
+      line-height: 1.6;
+      font-weight: 700;
+      color: #fff;
+      background: var(--primary);
+      padding: 8px 14px;
+      text-align: center;
+    }
+    .preview h3 {
+      margin: 24px 0 14px;
+      font-size: 17px;
+      line-height: 1.75;
+      font-weight: 700;
+      color: #111827;
+      padding-left: 12px;
+      border-left: 4px solid var(--primary);
+    }
+    .preview h4 {
+      margin: 18px 0 10px;
+      font-size: 16px;
+      line-height: 1.75;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .preview p {
+      margin: 16px 0;
+      color: #222;
+      font-size: 16px;
+      line-height: 1.75;
+    }
+    .preview strong { font-weight: 700; color: var(--primary); }
+    .preview em { color: #444; }
+    .preview .inline-accent { color: var(--accent); font-weight: 700; }
+    .preview a {
+      color: var(--primary);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(23,179,148,.35);
+    }
+    .preview hr {
+      border: 0;
+      border-top: 1px dashed #d0d5dd;
+      margin: 28px 0;
+    }
+    .preview blockquote {
+      margin: 18px 0;
+      padding: 14px 16px;
+      background: #f7f8fa;
+      border-left: 4px solid var(--primary);
+      color: #3b4552;
+      font-size: 16px;
+      line-height: 1.75;
+      border-radius: 8px;
+    }
+    .preview blockquote p { margin: 0; color: inherit; }
+    .preview ul, .preview ol {
+      padding-left: 1.5em;
+      margin: 16px 0;
+      font-size: 16px;
+      line-height: 1.75;
+    }
+    .preview li { margin: 8px 0; }
+    .preview code {
+      background: #f2f4f7;
+      border: 1px solid #eaecf0;
+      border-radius: 6px;
+      padding: .12em .38em;
+      font-size: .92em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .preview pre {
+      margin: 18px 0;
+      padding: 16px;
+      overflow: auto;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .preview pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+    .preview table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      display: block;
+      overflow-x: auto;
+      border: 1px solid #eaecf0;
+    }
+    .preview table thead tr { background: #f8fafc; }
+    .preview th, .preview td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eaecf0;
+      text-align: left;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+    .preview img {
+      max-width: 100%;
+      display: block;
+      margin: 22px auto;
+      border-radius: 8px;
+    }
+
+    .statusbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      border-top: 1px solid var(--line);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      background: #fff;
+    }
+    .status-left, .status-right {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #12b76a;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    @media (max-width: 1080px) {
+      .main { grid-template-columns: 1fr; }
+      #editor { min-height: 42vh; }
+      .preview-shell { min-height: 50vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-badge"></div>
+      <div class="brand-text">
+        <div class="brand-title">公众号 Markdown 工作台</div>
+        <div class="brand-sub">单文件原型 · 左侧编辑 · 右侧微信风格预览 · 自动保存</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <select id="fontFamily" class="select">
+        <option value='-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif'>默认中文</option>
+        <option value='"PingFang SC", "Microsoft YaHei", sans-serif'>苹方 / 微软雅黑</option>
+        <option value='Georgia, "Times New Roman", serif'>衬线</option>
+        <option value='Inter, -apple-system, BlinkMacSystemFont, sans-serif'>Inter</option>
+      </select>
+      <select id="fontSize" class="select">
+        <option value="16" selected>16px</option>
+        <option value="17">17px</option>
+        <option value="18">18px</option>
+      </select>
+      <input id="themeColor" class="color" type="color" value="#17b394" title="主题色" />
+      <button id="copyWechat" class="btn primary">复制到公众号</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Markdown 编辑区</div>
+          <div class="panel-desc">这版去掉了我额外加的顶部标题，只渲染 Markdown 本身。</div>
+        </div>
+      </div>
+      <div class="editor-wrap">
+        <textarea id="editor" spellcheck="false"></textarea>
+      </div>
+      <div class="statusbar">
+        <div class="status-left">
+          <span><span class="dot"></span><span id="saveStatus">已就绪</span></span>
+          <span id="wordCount">0 字</span>
+          <span id="lineCount">0 行</span>
+        </div>
+        <div class="status-right">
+          <span>自动保存：localStorage</span>
+          <span>复制：输出公众号可粘贴富文本</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">微信风格预览</div>
+          <div class="panel-desc">h1=文字同宽下划线；h2=居中底色线；h3=左竖线。</div>
+        </div>
+      </div>
+      <div class="preview-shell">
+        <div class="phone-frame">
+          <div class="phone-top">公众号图文预览</div>
+          <div class="preview-viewport">
+            <article id="preview" class="preview"></article>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar">
+        <div class="status-left">
+          <span>模板版本：v6 标题结构按截图重排</span>
+          <span id="lastSavedLabel">未保存</span>
+        </div>
+        <div class="status-right">
+          <span>不再额外补标题</span>
+          <span>复制样式与预览同步</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const DEFAULT_MARKDOWN = `# 探索 Markdown 的奇妙世界
+
+欢迎来到 Markdown 的奇妙世界！无论你是写作爱好者、开发者、博主，还是想要简单记录点什么的人，Markdown 都能成为你新的好伙伴。
+
+Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简单、直观的语法而著称，可以快速地生成 HTML。
+
+## Markdown 基础语法
+
+### 1. 标题：让你的内容层次分明
+
+用 # 号来创建标题。标题从 # 开始，# 的数量表示标题的级别。
+
+#### h4 示例`;
+
+    const STORAGE_KEY = 'wechat-md-workbench-v6';
+    const editor = document.getElementById('editor');
+    const preview = document.getElementById('preview');
+    const previewShell = document.querySelector('.preview-shell');
+    const themeColor = document.getElementById('themeColor');
+    const fontSize = document.getElementById('fontSize');
+    const fontFamily = document.getElementById('fontFamily');
+    const saveStatus = document.getElementById('saveStatus');
+    const lastSavedLabel = document.getElementById('lastSavedLabel');
+    const wordCount = document.getElementById('wordCount');
+    const lineCount = document.getElementById('lineCount');
+
+    let saveTimer = null;
+    let activeScrollSource = null;
+    let scrollReleaseTimer = null;
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function inlineFormat(text) {
+      return text
+        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" />')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[\s（(“‘])'([^'\n]{1,80})'(?![\w])/g, '$1<span class="inline-accent">&#39;$2&#39;</span>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    }
+
+    function getMarkdownBlocks(md) {
+      const normalized = md.replace(/\r\n?/g, '\n');
+      const lines = normalized.split('\n');
+      const blocks = [];
+      let current = [];
+      let startLine = 1;
+      let inCodeFence = false;
+
+      const pushCurrent = () => {
+        if (!current.length) return;
+        blocks.push({ text: current.join('\n'), startLine });
+        current = [];
+      };
+
+      lines.forEach((line, index) => {
+        const lineNo = index + 1;
+        const trimmed = line.trim();
+
+        if (!current.length) startLine = lineNo;
+
+        if (inCodeFence) {
+          current.push(line);
+          if (/^```/.test(trimmed)) inCodeFence = false;
+          return;
+        }
+
+        if (!trimmed) {
+          pushCurrent();
+          return;
+        }
+
+        current.push(line);
+        if (/^```/.test(trimmed)) inCodeFence = true;
+      });
+
+      pushCurrent();
+      return { blocks, lineCount: lines.length || 1 };
+    }
+
+    function parseTable(block, startLine) {
+      const lines = block.trim().split('\n');
+      if (lines.length < 2) return null;
+      const rows = lines
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => line.replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => inlineFormat(escapeHtml(cell.trim()))));
+      if (!rows[1].every(cell => /^:?-{3,}:?$/.test(cell.replace(/<[^>]+>/g, '')))) return null;
+      const header = rows[0];
+      const body = rows.slice(2);
+      return `<table class="preview-block" data-source-line="${startLine}"><thead><tr>${header.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${body.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    }
+
+    function blockquoteToHtml(block, startLine) {
+      const lines = block.split('\n').map(line => line.replace(/^>\s?/, '').trim());
+      const content = lines.join('<br>');
+      return `<blockquote class="preview-block" data-source-line="${startLine}"><p>${inlineFormat(escapeHtml(content))}</p></blockquote>`;
+    }
+
+    function markdownToHtml(md) {
+      const { blocks } = getMarkdownBlocks(md);
+      let html = '';
+
+      for (const { text: rawBlock, startLine } of blocks) {
+        const block = rawBlock.trim();
+        if (!block) continue;
+
+        const tableHtml = parseTable(block, startLine);
+        if (tableHtml) {
+          html += tableHtml;
+          continue;
+        }
+
+        if (/^```/.test(block)) {
+          const code = block.replace(/^```[a-zA-Z0-9_-]*\n?/, '').replace(/```$/, '');
+          html += `<pre class="preview-block" data-source-line="${startLine}"><code>${escapeHtml(code)}</code></pre>`;
+          continue;
+        }
+
+        if (/^---+$/.test(block)) {
+          html += `<hr class="preview-block" data-source-line="${startLine}" />`;
+          continue;
+        }
+
+        if (/^>/.test(block)) {
+          html += blockquoteToHtml(block, startLine);
+          continue;
+        }
+
+        if (/^#{1,6}\s/.test(block)) {
+          const level = block.match(/^#+/)[0].length;
+          const text = block.replace(/^#{1,6}\s+/, '');
+          html += `<h${level} class="preview-block" data-source-line="${startLine}">${inlineFormat(escapeHtml(text))}</h${level}>`;
+          continue;
+        }
+
+        if (/^(-|\*|\+)\s+/m.test(block) && block.split('\n').every(line => /^(-|\*|\+)\s+/.test(line.trim()))) {
+          const items = block.split('\n').map(line => line.replace(/^(-|\*|\+)\s+/, '').trim()).map(item => `<li>${inlineFormat(escapeHtml(item))}</li>`).join('');
+          html += `<ul class="preview-block" data-source-line="${startLine}">${items}</ul>`;
+          continue;
+        }
+
+        if (/^\d+\.\s+/m.test(block) && block.split('\n').every(line => /^\d+\.\s+/.test(line.trim()))) {
+          const items = block.split('\n').map(line => line.replace(/^\d+\.\s+/, '').trim()).map(item => `<li>${inlineFormat(escapeHtml(item))}</li>`).join('');
+          html += `<ol class="preview-block" data-source-line="${startLine}">${items}</ol>`;
+          continue;
+        }
+
+        const paragraph = block.split('\n').map(line => inlineFormat(escapeHtml(line.trim()))).join('<br>');
+        html += `<p class="preview-block" data-source-line="${startLine}">${paragraph}</p>`;
+      }
+
+      return html;
+    }
+
+    function buildInlineWechatHtml() {
+      const color = themeColor.value;
+      const accent = '#d14d72';
+      const font = fontFamily.value;
+      const size = fontSize.value || '16';
+      const rendered = markdownToHtml(editor.value);
+      return `
+<section style="font-family:${font};font-size:${size}px;line-height:1.75;color:#222;word-break:break-word;">
+  <div style="width:100%; max-width:100%; padding-left:8px; padding-right:8px; box-sizing:border-box;">
+    <div class="wx" style="font-family:${font};font-size:${size}px;line-height:1.75;color:#222;">
+      ${rendered
+        .replace(/<h1([^>]*)>/g, `<h1$1 style="width:fit-content; margin:26px auto 16px; font-size:19px; line-height:1.75; font-weight:700; color:#111827; padding-bottom:8px; border-bottom:2px solid ${color}; text-align:center;">`)
+        .replace(/<h2([^>]*)>/g, `<h2$1 style="width:fit-content; margin:30px auto 18px; font-size:19px; line-height:1.6; font-weight:700; color:#fff; background:${color}; padding:8px 14px; text-align:center;">`)
+        .replace(/<h3([^>]*)>/g, `<h3$1 style="margin:24px 0 14px; font-size:17px; line-height:1.75; font-weight:700; color:#111827; padding-left:12px; border-left:4px solid ${color};">`)
+        .replace(/<h4([^>]*)>/g, `<h4$1 style="margin:18px 0 10px; font-size:16px; line-height:1.75; font-weight:700; color:${color};">`)
+        .replace(/<p([^>]*)>/g, `<p$1 style="margin:16px 0; font-size:${size}px; line-height:1.75; color:#222;">`)
+        .replace(/<blockquote([^>]*)>/g, `<blockquote$1 style="margin:18px 0; padding:14px 16px; background:#f7f8fa; border-left:4px solid ${color}; color:#3b4552; font-size:${size}px; line-height:1.75; border-radius:8px;">`)
+        .replace(/<ul([^>]*)>/g, `<ul$1 style="margin:16px 0; padding-left:1.5em; font-size:${size}px; line-height:1.75;">`)
+        .replace(/<ol([^>]*)>/g, `<ol$1 style="margin:16px 0; padding-left:1.5em; font-size:${size}px; line-height:1.75;">`)
+        .replace(/<li([^>]*)>/g, `<li$1 style="margin:8px 0;">`)
+        .replace(/<pre([^>]*)>/g, `<pre$1 style="margin:18px 0; padding:16px; overflow:auto; background:#111827; color:#e5e7eb; border-radius:10px; font-size:14px; line-height:1.7;">`)
+        .replace(/<code([^>]*)>/g, `<code$1 style="background:#f2f4f7; border:1px solid #eaecf0; border-radius:6px; padding:.12em .38em; font-size:.92em; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:${accent}; font-weight:700;">`)
+        .replace(/<pre([^>]*)><code([^>]*)>/g, `<pre$1><code$2 style="background:transparent;border:0;color:inherit;padding:0;font-size:inherit;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">`)
+        .replace(/<table([^>]*)>/g, `<table$1 style="width:100%; border-collapse:collapse; margin:18px 0; display:block; overflow-x:auto; border:1px solid #eaecf0;">`)
+        .replace(/<thead([^>]*)>/g, `<thead$1 style="background:#f8fafc;">`)
+        .replace(/<th([^>]*)>/g, `<th$1 style="padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;">`)
+        .replace(/<td([^>]*)>/g, `<td$1 style="padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;">`)
+        .replace(/<img([^>]*)>/g, `<img$1 style="max-width:100%; display:block; margin:22px auto; border-radius:8px;" />`)
+        .replace(/<a([^>]*)>/g, `<a$1 style="color:${color}; text-decoration:none; border-bottom:1px solid rgba(23,179,148,.35);">`)
+        .replace(/<strong([^>]*)>/g, `<strong$1 style="font-weight:700; color:${color};">`)
+        .replace(/<span class="inline-accent"([^>]*)>/g, `<span class="inline-accent"$1 style="color:${accent}; font-weight:700;">`)
+        .replace(/<em([^>]*)>/g, `<em$1 style="color:#444;">`)
+        .replace(/<hr([^>]*)\/>/g, `<hr$1 style="border:0; border-top:1px dashed #d0d5dd; margin:28px 0;" />`)}
+    </div>
+  </div>
+</section>`.trim();
+    }
+
+    function getEditorLineHeight() {
+      const styles = getComputedStyle(editor);
+      const font = parseFloat(styles.fontSize) || 15;
+      const lineHeight = parseFloat(styles.lineHeight);
+      return Number.isFinite(lineHeight) ? lineHeight : font * 1.75;
+    }
+
+    function getMarkdownLineCount() {
+      return editor.value ? editor.value.split('\n').length : 1;
+    }
+
+    function getPreviewBlocks() {
+      return Array.from(preview.querySelectorAll('[data-source-line]'));
+    }
+
+    function getPositionInPreviewShell(element) {
+      const shellRect = previewShell.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
+      return previewShell.scrollTop + (rect.top - shellRect.top);
+    }
+
+    function findPreviewScrollForLine(lineNo) {
+      const blocks = getPreviewBlocks();
+      const totalLines = getMarkdownLineCount();
+      if (!blocks.length) return 0;
+
+      for (let i = 0; i < blocks.length; i++) {
+        const currentLine = Number(blocks[i].dataset.sourceLine) || 1;
+        const nextLine = i + 1 < blocks.length ? Number(blocks[i + 1].dataset.sourceLine) || (totalLines + 1) : totalLines + 1;
+        if (lineNo < nextLine || i === blocks.length - 1) {
+          const currentTop = getPositionInPreviewShell(blocks[i]);
+          const nextTop = i + 1 < blocks.length ? getPositionInPreviewShell(blocks[i + 1]) : currentTop + blocks[i].offsetHeight;
+          const span = Math.max(1, nextLine - currentLine);
+          const ratio = clamp((lineNo - currentLine) / span, 0, 1);
+          return currentTop + (nextTop - currentTop) * ratio;
+        }
+      }
+
+      return 0;
+    }
+
+    function findEditorLineForPreviewScroll(scrollTop) {
+      const blocks = getPreviewBlocks();
+      const totalLines = getMarkdownLineCount();
+      if (!blocks.length) return 1;
+
+      const anchor = scrollTop + 1;
+      for (let i = 0; i < blocks.length; i++) {
+        const currentTop = getPositionInPreviewShell(blocks[i]);
+        const nextTop = i + 1 < blocks.length ? getPositionInPreviewShell(blocks[i + 1]) : currentTop + blocks[i].offsetHeight;
+        if (anchor < nextTop || i === blocks.length - 1) {
+          const currentLine = Number(blocks[i].dataset.sourceLine) || 1;
+          const nextLine = i + 1 < blocks.length ? Number(blocks[i + 1].dataset.sourceLine) || (totalLines + 1) : totalLines + 1;
+          const distance = Math.max(1, nextTop - currentTop);
+          const ratio = clamp((anchor - currentTop) / distance, 0, 1);
+          return Math.round(currentLine + (nextLine - currentLine) * ratio);
+        }
+      }
+
+      return 1;
+    }
+
+    function holdScrollLock(source) {
+      activeScrollSource = source;
+      clearTimeout(scrollReleaseTimer);
+      scrollReleaseTimer = setTimeout(() => {
+        activeScrollSource = null;
+      }, 80);
+    }
+
+    function syncPreviewToEditor() {
+      const lineHeight = getEditorLineHeight();
+      const lineNo = Math.max(1, Math.floor(editor.scrollTop / lineHeight) + 1);
+      const target = findPreviewScrollForLine(lineNo);
+      const maxScroll = Math.max(0, previewShell.scrollHeight - previewShell.clientHeight);
+      previewShell.scrollTop = clamp(target, 0, maxScroll);
+    }
+
+    function syncEditorToPreview() {
+      const lineHeight = getEditorLineHeight();
+      const lineNo = findEditorLineForPreviewScroll(previewShell.scrollTop);
+      const target = Math.max(0, (lineNo - 1) * lineHeight);
+      const maxScroll = Math.max(0, editor.scrollHeight - editor.clientHeight);
+      editor.scrollTop = clamp(target, 0, maxScroll);
+    }
+
+    function syncAfterRender(preferredSource = 'editor') {
+      requestAnimationFrame(() => {
+        holdScrollLock(preferredSource);
+        if (preferredSource === 'preview') {
+          syncEditorToPreview();
+        } else {
+          syncPreviewToEditor();
+        }
+      });
+    }
+
+    function updatePreview(preferredSource = activeScrollSource || 'editor') {
+      preview.innerHTML = markdownToHtml(editor.value);
+      const text = editor.value.replace(/\s+/g, '');
+      wordCount.textContent = `${text.length} 字`;
+      lineCount.textContent = `${editor.value.split('\n').length} 行`;
+      saveStatus.textContent = '编辑中…';
+      syncAfterRender(preferredSource);
+    }
+
+    function saveState() {
+      const data = {
+        markdown: editor.value,
+        themeColor: themeColor.value,
+        fontSize: fontSize.value,
+        fontFamily: fontFamily.value,
+        savedAt: new Date().toISOString()
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      saveStatus.textContent = '已自动保存';
+      lastSavedLabel.textContent = `最近保存：${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    }
+
+    function scheduleSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveState, 500);
+    }
+
+    function applySettings() {
+      document.documentElement.style.setProperty('--primary', themeColor.value);
+      document.documentElement.style.setProperty('--preview-font', fontFamily.value);
+      updatePreview(activeScrollSource || 'editor');
+      scheduleSave();
+    }
+
+    function loadState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        editor.value = DEFAULT_MARKDOWN;
+        return;
+      }
+      try {
+        const data = JSON.parse(raw);
+        editor.value = data.markdown || DEFAULT_MARKDOWN;
+        themeColor.value = data.themeColor || '#17b394';
+        fontSize.value = data.fontSize || '16';
+        fontFamily.value = data.fontFamily || '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+      } catch {
+        editor.value = DEFAULT_MARKDOWN;
+      }
+    }
+
+    async function copyWechatContent() {
+      try {
+        const html = buildInlineWechatHtml();
+        const text = preview.innerText;
+        if (navigator.clipboard && window.ClipboardItem) {
+          const item = new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([item]);
+        } else {
+          await navigator.clipboard.writeText(text);
+        }
+        saveStatus.textContent = '已复制到公众号';
+      } catch (e) {
+        saveStatus.textContent = '复制失败，请手动复制';
+      }
+    }
+
+    editor.addEventListener('input', () => {
+      holdScrollLock('editor');
+      updatePreview('editor');
+      scheduleSave();
+    });
+
+    editor.addEventListener('scroll', () => {
+      if (activeScrollSource === 'preview') return;
+      holdScrollLock('editor');
+      syncPreviewToEditor();
+    });
+
+    previewShell.addEventListener('scroll', () => {
+      if (activeScrollSource === 'editor') return;
+      holdScrollLock('preview');
+      syncEditorToPreview();
+    });
+
+    themeColor.addEventListener('input', applySettings);
+    fontSize.addEventListener('change', applySettings);
+    fontFamily.addEventListener('change', applySettings);
+    document.getElementById('copyWechat').addEventListener('click', copyWechatContent);
+
+    loadState();
+    applySettings();
+    updatePreview('editor');
+    saveStatus.textContent = '已加载';
+  </script>
+</body>
+</html>

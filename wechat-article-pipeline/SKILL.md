@@ -1,0 +1,248 @@
+---
+name: wechat-article-pipeline
+description: "Create a full WeChat/公众号 article package from a topic or direction, including article structure, self-media-style markdown content, built-in Codex image generation for supporting visuals, and a final single-file editable markdown HTML workbench. Use when the user wants a publish-ready long-form WeChat article that follows this order: (1) write the article first, (2) derive image jobs from the finished article content, (3) directly call Codex's built-in image generation tool for the cover, closing image, and in-body visuals, and (4) merge the article plus local generated images into one editable HTML with images embedded as data URIs."
+---
+
+# WeChat Article Pipeline
+
+Build one coherent WeChat article package from a single user idea: topic -> article -> derive image jobs from the article content -> directly generate images with Codex's built-in image tool -> editable single-file HTML.
+
+## Core rules
+
+1. Write the article first. Do not generate visuals before the argument is clear.
+2. Use self-media explanatory writing, not stiff report prose.
+3. Keep the final delivery centered on a single editable HTML workbench file, with every generated image embedded inside the HTML as a `data:image/...;base64,...` URI.
+4. Keep the existing workbench/template green as the default page theme. Do not rotate the whole article theme color just to avoid repetition unless the user explicitly asks for a different palette.
+5. Use Codex's built-in `image_gen` tool as the visual engine. Never start a nested Codex runtime from inside this skill.
+6. Save approved generated files under `<workspace>/image/<article-slug>/`, where `<workspace>` is the current Codex working directory unless the user specifies another output location.
+7. After the article is finished, always generate one cover image, one closing image, and in-body visuals at roughly one image per 200 Chinese characters of body copy. Treat the 200-character cadence as a density target, not a rigid quota.
+8. Before generating images, make an internal Image Plan: article summary -> slot roles -> local context -> per-slot prompt -> anti-repetition check.
+9. Write image prompts from the actual nearby paragraph content. Each image should support the local argument, not act as generic decoration.
+10. Keep prompt wording concrete, visually direct, and article-specific. Use the finished copy to drive scene, subject, and emphasis.
+11. Do not let every image summarize the full article. Cover and closing can read the whole article meaning; each `body-*` slot must mainly serve its own local context and role.
+12. Force variation across the image set: role, scene, composition, visual distance, emotional tone, abstraction level, and information density should not collapse into one repeated prompt shape.
+13. Self-check every generated visual before embedding it into the HTML. If a visual is noisy, generic, off-topic, or awkward, regenerate it once with a safer and simpler direction.
+14. Prefer a clean and conservative result over decorative complexity. Do not keep a technically valid image if it looks like filler.
+15. Default to single-shot execution. If the user gives a topic, rough idea, source fragments, or a short direction, infer the missing brief and proceed without making them repeat themselves.
+16. Only ask follow-up questions when the ambiguity would materially change the article's conclusion, audience, or risk profile. Otherwise, choose a reasonable default and keep moving.
+17. Determine the article type before visual generation and make the image language follow it.
+18. Avoid repetition by changing subject matter, framing, scene logic, and image mood first. Do not fake variation by swapping colors on the same idea.
+19. Before choosing image roles, classify the visual mode as `method_visual`, `emotional_illustration`, or `analysis_visual`.
+20. Use `method_visual` only when the article is truly teaching steps, tools, workflows, checklists, or procedures. It may use process nodes, arrows, numbered steps, checklist cards, comparison diagrams, and compact information graphics.
+21. Use `emotional_illustration` for stories, emotional essays, life principles, relationship pieces, ordinary-person reflections, and articles that primarily need resonance or atmosphere. It must use illustration logic: human moments, symbolic scenes, light, space, objects, tension, silence, and metaphor. Do not use numbered steps, arrows, process diagrams, checklist cards, information cards, UI panels, or icon matrices in body images for this mode.
+22. Use `analysis_visual` for industry, mechanism, evidence, and trend pieces. It may use evidence, contrast, mechanism, and restrained metaphor, but should avoid process graphics unless the local paragraph is actually procedural.
+
+## Default assumptions
+
+Unless the user explicitly overrides them, use these defaults:
+
+- target reader: Chinese users on WeChat official accounts or Toutiao
+- stance: rational, thoughtful, aimed at helping ordinary readers build cognition and practical ability
+- length: under 2000 Chinese characters, aim for about 1000 with high information density
+- tone: like a capable friend explaining something clearly
+- visual density: one generated cover image, one generated closing image, and roughly one in-body image per 200 Chinese characters for method articles; for emotional, story, or principle articles, use fewer and stronger in-body images at roughly 300-450 Chinese characters per image
+- output mode: single editable HTML file first, with images embedded directly in the HTML; local image assets and job/support files are only supporting files
+- theme color: keep the existing template green unless the user explicitly asks to change it
+
+If the user only provides a rough idea, internally infer:
+- topic
+- target reader
+- core claim
+- length target
+- tone
+- visual density and the image jobs that Codex will execute directly with the built-in image tool after writing
+
+## Workflow
+
+### 1. Draft the article brief
+
+Infer or define:
+- topic
+- target reader
+- core claim
+- length target
+- tone
+- visual plan
+
+Use [workflow.md](references/workflow.md) for the default structure.
+
+Do not stop to confirm the brief unless the user explicitly asks for planning first or the direction is too ambiguous to produce a defensible draft.
+
+### 2. Draft the markdown article
+
+Write the article in markdown first.
+
+Use:
+- [style-guide.md](references/style-guide.md)
+- [workflow.md](references/workflow.md)
+
+Reserve the visual slots after the article is written. Default to one generated cover image and one generated closing image. For method articles, use about one in-body image per 200 Chinese characters. For emotional, story, or principle articles, use a slower rhythm, roughly one stronger in-body illustration per 300-450 Chinese characters, then trim or merge if adjacent paragraphs are better served by one stronger image.
+
+Typical placeholder choices should use markdown image syntax:
+
+```markdown
+![题图]({{visual:cover}})
+![配图1]({{visual:body-1}})
+![配图2]({{visual:body-2}})
+![配图3]({{visual:body-3}})
+![尾图]({{visual:closing}})
+```
+
+The packager also tolerates bare `{{visual:name}}` placeholders and converts them into markdown images, but the markdown-image form above is preferred.
+
+### 3. Derive image jobs from the written article
+
+Generate an internal Image Plan before any actual image call.
+
+First classify the article into one of these working types:
+- news explanation
+- viewpoint/commentary
+- practical how-to
+- feature/story
+- industry analysis
+
+Then divide the article into image beats.
+
+Choose the visual mode before assigning body roles:
+- `method_visual`: use `inline_steps`, `inline_checklist`, `inline_detail`, `inline_contrast`, `inline_data_card`, and related method-friendly roles when the article is teaching steps, tools, workflows, or checklists.
+- `emotional_illustration`: use `inline_human_moment`, `inline_tension`, `inline_symbolic_scene`, `inline_silence`, `inline_scene`, `inline_metaphor`, and `inline_emotion` for stories, emotions, life principles, and "讲道理" pieces. Body images in this mode must not become numbered diagrams, process graphics, checklist cards, information cards, UI panels, or icon matrices.
+- `analysis_visual`: use `inline_explanation`, `inline_contrast`, `inline_evidence`, `inline_detail`, `inline_metaphor`, and occasional scenes for industry or mechanism analysis.
+
+Use nearby paragraphs as the source of truth. For each beat:
+- assign a slot role such as `hero_cover`, `inline_explanation`, `inline_scene`, `inline_contrast`, `inline_detail`, `inline_metaphor`, `inline_extension`, or `closing_image`
+- identify the paragraph range it supports
+- summarize the local point in one sentence
+- write one concrete image prompt that reflects that point
+- add anti-repetition guards so the new slot does not reuse the same scene/composition/metaphor as earlier slots
+- keep the placeholder aligned with that paragraph block
+
+Aim for one generated cover image and one generated closing image overall. For `method_visual`, use roughly one in-body image per 200 Chinese characters. For `emotional_illustration`, prefer fewer but stronger images, roughly one in-body image per 300-450 Chinese characters; a 1000-character article may only need two or three body illustrations.
+
+Default placeholder naming:
+- `cover`
+- `body-1`, `body-2`, `body-3` ...
+- `closing`
+
+Prefer:
+- one generated cover image
+- one generated closing image tied to the article's final takeaway
+- content-driven in-body visuals placed at roughly 200-character intervals
+- fewer but stronger in-body images when several adjacent paragraphs support the same visual idea
+
+Normal execution path after the article exists:
+
+```bash
+python3 scripts/make_wechat_article_image_jobs.py article.md output.image-jobs.json --debug-plan
+```
+
+This command must:
+- read the finished article markdown
+- derive an internal Image Plan plus the final `cover`, `closing`, and `body-*` image jobs from the article content itself
+- generate planning metadata for `cover` and `closing` from the full-article meaning, while each `body-*` image uses its local role plus the nearby paragraphs instead of reusing the cover/closing logic
+- preserve per-image role metadata in the generated markdown/job artifacts so one slot can be regenerated later without guessing what it was for
+
+### 4. Directly Generate Images With Codex
+
+After `output.image-jobs.json` is written, read its `jobs` array. For each job:
+
+- use the system `imagegen` skill / built-in `image_gen` tool directly from the current Codex turn
+- use `job.prompt` as the main prompt, preserving `must_include`, `must_avoid`, `composition`, `visual_mode`, and `content_focus`
+- generate exactly one bitmap image for that slot
+- copy the selected generated image from `$CODEX_HOME/generated_images/...` into the workspace image directory using the placeholder basename: `cover.png`, `body-1.png`, `closing.png`, etc.
+- never leave a final article asset only under `$CODEX_HOME/generated_images`
+- inspect the generated image before accepting it; if it fails the role, regenerate once with a simpler, stricter prompt
+
+Default image directory:
+
+```bash
+mkdir -p ./image/<article-slug>
+```
+
+Use the job's `output` field to choose the filename. If the field is relative, resolve it under the image directory.
+
+Do not use `scripts/image_gen.py` or any custom image API runner unless the user explicitly asks for the imagegen CLI/API fallback. This skill's default path is the current Codex turn's built-in image generation capability.
+
+### 5. Build the editable HTML workbench
+
+After all image files exist:
+
+```bash
+python3 scripts/package_wechat_article_bundle.py article.md output.html \
+  --plan-json output.image-jobs.json \
+  --images-dir ./image/<article-slug> \
+  --support-dir ./files/wechat-article-pipeline/<article-slug>
+```
+
+This packager will:
+- read markdown with `{{visual:name}}` placeholders
+- discover matching local files such as `cover.png`, `body-1.png`, and `closing.png`
+- write a job JSON automatically
+- embed every matched image into the final HTML as a `data:image/...;base64,...` URI
+- generate a content-fingerprinted storage key so a newly generated HTML does not load stale browser localStorage from an older file with the same title
+- fail if any visual placeholder remains unresolved or if the generated HTML still points to local image files
+- build the final editable single-file HTML workbench
+- optionally emit support files and a quality report
+
+Before generating visuals, pick a visual direction explicitly. Keep the page/theme chrome on the existing green template unless the user asks otherwise; vary the image treatment, composition, and subject matter instead.
+
+Useful article-type to visual-direction mappings:
+- news explanation: sharper, evidence-led, cleaner newsroom or blueprint feel
+- viewpoint/commentary: stronger contrast, fewer cards, more poster-like cover
+- practical how-to: clearer procedural scenes, calmer palette, steps and checklists only when the local paragraph is actually procedural
+- emotional or feature writing: use cinematic illustration, concrete human moments, symbolic spaces, light, tension, silence, and metaphor; avoid all numbered/process/checklist/information-card body images
+- industry analysis: restrained palette, concrete metaphors, less decorative cover treatment
+
+Do not default to named SVG-card patterns such as `compare`, `definition`, `steps`, or other layout-led placeholders. The sequence is now content-led: write the article, mark `body-*` beats, generate images from those paragraph blocks, and keep `cover` and `closing` as required special cases.
+
+Within one article, vary the visual mix. Across unrelated articles, actively avoid repeating the same cover framing, same middle-image rhythm, or same symbolic metaphor.
+
+Before locking the plan, do a quick anti-repetition check:
+- does this look too similar to the last unrelated article package
+- is the chosen cover treatment appropriate for this article type
+- are image content, composition, and scene treatment genuinely different, rather than just the palette
+- if this still looks like the last article in another color, rewrite the prompt and regenerate instead of forcing it through
+
+Before packaging, inspect each visual against these minimum checks:
+- no crowded center area in the cover
+- no visual element that competes with the headline
+- no generic “AI wallpaper” that ignores the paragraph it is supposed to support
+- no obviously awkward spacing, text rendering, or off-topic symbolism
+
+If a visual fails this bar, retry once with a safer prompt or a different visual direction and use that version in the final package.
+
+Low-level fallback when a job JSON already exists:
+
+```bash
+python3 scripts/build_wechat_article_workbench.py job.json output.html
+```
+
+This will:
+- read image assets from local files, embedded payloads, or URLs
+- embed them into markdown as data URIs when given base64 or local file paths
+- inject the markdown into the workbench template
+- output a single HTML file
+- optionally save raw markdown, resolved asset references, and a quality report
+
+## Output policy
+
+Default deliverables:
+- single-file editable HTML workbench with generated images embedded as data URIs
+- source markdown
+- local image assets or asset references
+- job JSON
+- quality report for resolved visuals
+
+Default interaction policy:
+- take one input from the user and produce the package
+- avoid multi-round brief collection unless necessary
+- optimize for a usable first draft instead of a “fully confirmed” plan
+
+Save the final HTML under `<workspace>/files/` unless the user asks otherwise.
+Default image output directory: `<workspace>/image/<article-slug>/`.
+
+## Resources
+
+- [workflow.md](references/workflow.md) — article workflow and section expectations
+- [style-guide.md](references/style-guide.md) — tone, pacing, and visual defaults
+- [job-schema.md](references/job-schema.md) — JSON contract for the build script
+- [wechat-md-workbench.template.html](assets/templates/wechat-md-workbench.template.html) — editable HTML workbench template used by the build scripts
