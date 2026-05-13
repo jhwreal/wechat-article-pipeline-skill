@@ -34,6 +34,7 @@ quality-report.json
 image-plan.md
 image-plan.json
 article.md
+!examples/*.html
 
 # Local Codex build/test artifacts
 .codex-skill-build*/

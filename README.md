@@ -75,7 +75,9 @@ python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
 ├── LICENSE
 ├── examples/
 │   ├── method-article.md
-│   └── emotion-article.md
+│   ├── emotion-article.md
+│   ├── 方法.html
+│   └── output 情绪.html
 └── wechat-article-pipeline/
     ├── SKILL.md
     ├── agents/openai.yaml
@@ -167,7 +169,9 @@ python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
 ├── LICENSE
 ├── examples/
 │   ├── method-article.md
-│   └── emotion-article.md
+│   ├── emotion-article.md
+│   ├── 方法.html
+│   └── output 情绪.html
 └── wechat-article-pipeline/
     ├── SKILL.md
     ├── agents/openai.yaml
