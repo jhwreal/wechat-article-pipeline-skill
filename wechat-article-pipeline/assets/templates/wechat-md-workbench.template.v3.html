@@ -286,6 +286,10 @@
       font-weight: 700;
     }
     .preview pre {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
       margin: 18px 0;
       padding: 16px;
       overflow: auto;
@@ -294,12 +298,22 @@
       border-radius: 10px;
       font-size: 14px;
       line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .preview pre code {
+      display: block;
       background: transparent;
       border: 0;
       color: inherit;
       padding: 0;
+      font-size: inherit;
+      line-height: inherit;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .preview table {
       width: 100%;
@@ -424,7 +438,7 @@
       </div>
       <div class="statusbar">
         <div class="status-left">
-          <span>模板版本：v6 标题结构按截图重排</span>
+          <span>模板版本：v8 代码块复制稳定版</span>
           <span id="lastSavedLabel">未保存</span>
         </div>
         <div class="status-right">
@@ -607,35 +621,98 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       const color = themeColor.value;
       const accent = '#d14d72';
       const font = fontFamily.value;
+      const safeFont = font.replace(/"/g, "'");
       const size = fontSize.value || '16';
-      const rendered = markdownToHtml(editor.value);
+
+      const root = document.createElement('div');
+      root.innerHTML = markdownToHtml(editor.value);
+
+      const setStyle = (selector, style) => {
+        root.querySelectorAll(selector).forEach(el => {
+          el.setAttribute('style', style);
+        });
+      };
+
+      const codeBlockStyle = [
+        'display:block',
+        'width:100%',
+        'max-width:100%',
+        'box-sizing:border-box',
+        'margin:18px 0',
+        'padding:14px 16px',
+        'background:#111827',
+        'color:#e5e7eb',
+        'border-radius:10px',
+        'font-size:14px',
+        'line-height:1.7',
+        'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+        'word-break:break-word',
+        'overflow-wrap:anywhere'
+      ].join(';');
+
+      const codeLineStyle = [
+        'display:block',
+        'min-height:1.7em',
+        'margin:0',
+        'padding:0',
+        'background:transparent',
+        'color:#e5e7eb',
+        'font-size:14px',
+        'line-height:1.7',
+        'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+        'word-break:break-word',
+        'overflow-wrap:anywhere'
+      ].join(';');
+
+      // 关键修复：复制给公众号时，代码块不再保留 pre/code，避免被识别成行内 code 红色字段。
+      root.querySelectorAll('pre').forEach(pre => {
+        const code = pre.querySelector('code');
+        const codeText = code ? code.textContent : pre.textContent;
+
+        const block = document.createElement('section');
+        block.setAttribute('style', codeBlockStyle);
+
+        const sourceLine = pre.getAttribute('data-source-line');
+        if (sourceLine) block.setAttribute('data-source-line', sourceLine);
+        if (pre.className) block.className = pre.className;
+
+        const lines = codeText.replace(/\n$/, '').split('\n');
+        block.innerHTML = lines.map(line => {
+          const escaped = escapeHtml(line).replace(/ /g, '&nbsp;');
+          return `<span style="${codeLineStyle}">${escaped || '&nbsp;'}</span>`;
+        }).join('');
+
+        pre.replaceWith(block);
+      });
+
+      setStyle('h1', `width:fit-content; margin:26px auto 16px; font-size:19px; line-height:1.75; font-weight:700; color:#111827; padding-bottom:8px; border-bottom:2px solid ${color}; text-align:center;`);
+      setStyle('h2', `width:fit-content; margin:30px auto 18px; font-size:19px; line-height:1.6; font-weight:700; color:#fff; background:${color}; padding:8px 14px; text-align:center;`);
+      setStyle('h3', `margin:24px 0 14px; font-size:17px; line-height:1.75; font-weight:700; color:#111827; padding-left:12px; border-left:4px solid ${color};`);
+      setStyle('h4', `margin:18px 0 10px; font-size:16px; line-height:1.75; font-weight:700; color:${color};`);
+      setStyle('p', `margin:16px 0; font-size:${size}px; line-height:1.75; color:#222;`);
+      setStyle('blockquote', `margin:18px 0; padding:14px 16px; background:#f7f8fa; border-left:4px solid ${color}; color:#3b4552; font-size:${size}px; line-height:1.75; border-radius:8px;`);
+      setStyle('ul', `margin:16px 0; padding-left:1.5em; font-size:${size}px; line-height:1.75;`);
+      setStyle('ol', `margin:16px 0; padding-left:1.5em; font-size:${size}px; line-height:1.75;`);
+      setStyle('li', 'margin:8px 0;');
+      setStyle('table', 'width:100%; border-collapse:collapse; margin:18px 0; display:block; overflow-x:auto; border:1px solid #eaecf0;');
+      setStyle('thead', 'background:#f8fafc;');
+      setStyle('th', 'padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;');
+      setStyle('td', 'padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;');
+      setStyle('img', 'max-width:100%; display:block; margin:22px auto; border-radius:8px;');
+      setStyle('a', `color:${color}; text-decoration:none; border-bottom:1px solid rgba(23,179,148,.35);`);
+      setStyle('strong', `font-weight:700; color:${color};`);
+      setStyle('span.inline-accent', `color:${accent}; font-weight:700;`);
+      setStyle('em', 'color:#444;');
+      setStyle('hr', 'border:0; border-top:1px dashed #d0d5dd; margin:28px 0;');
+
+      // 剩下的 code 都是行内代码。
+      setStyle('code', `background:#f2f4f7; border:1px solid #eaecf0; border-radius:6px; padding:.12em .38em; font-size:.92em; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:${accent}; font-weight:700;`);
+
       return `
-<section style="font-family:${font};font-size:${size}px;line-height:1.75;color:#222;word-break:break-word;">
+<section style="font-family:${safeFont};font-size:${size}px;line-height:1.75;color:#222;word-break:break-word;">
   <div style="width:100%; max-width:100%; padding-left:8px; padding-right:8px; box-sizing:border-box;">
-    <div class="wx" style="font-family:${font};font-size:${size}px;line-height:1.75;color:#222;">
-      ${rendered
-        .replace(/<h1([^>]*)>/g, `<h1$1 style="width:fit-content; margin:26px auto 16px; font-size:19px; line-height:1.75; font-weight:700; color:#111827; padding-bottom:8px; border-bottom:2px solid ${color}; text-align:center;">`)
-        .replace(/<h2([^>]*)>/g, `<h2$1 style="width:fit-content; margin:30px auto 18px; font-size:19px; line-height:1.6; font-weight:700; color:#fff; background:${color}; padding:8px 14px; text-align:center;">`)
-        .replace(/<h3([^>]*)>/g, `<h3$1 style="margin:24px 0 14px; font-size:17px; line-height:1.75; font-weight:700; color:#111827; padding-left:12px; border-left:4px solid ${color};">`)
-        .replace(/<h4([^>]*)>/g, `<h4$1 style="margin:18px 0 10px; font-size:16px; line-height:1.75; font-weight:700; color:${color};">`)
-        .replace(/<p([^>]*)>/g, `<p$1 style="margin:16px 0; font-size:${size}px; line-height:1.75; color:#222;">`)
-        .replace(/<blockquote([^>]*)>/g, `<blockquote$1 style="margin:18px 0; padding:14px 16px; background:#f7f8fa; border-left:4px solid ${color}; color:#3b4552; font-size:${size}px; line-height:1.75; border-radius:8px;">`)
-        .replace(/<ul([^>]*)>/g, `<ul$1 style="margin:16px 0; padding-left:1.5em; font-size:${size}px; line-height:1.75;">`)
-        .replace(/<ol([^>]*)>/g, `<ol$1 style="margin:16px 0; padding-left:1.5em; font-size:${size}px; line-height:1.75;">`)
-        .replace(/<li([^>]*)>/g, `<li$1 style="margin:8px 0;">`)
-        .replace(/<pre([^>]*)>/g, `<pre$1 style="margin:18px 0; padding:16px; overflow:auto; background:#111827; color:#e5e7eb; border-radius:10px; font-size:14px; line-height:1.7;">`)
-        .replace(/<code([^>]*)>/g, `<code$1 style="background:#f2f4f7; border:1px solid #eaecf0; border-radius:6px; padding:.12em .38em; font-size:.92em; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:${accent}; font-weight:700;">`)
-        .replace(/<pre([^>]*)><code([^>]*)>/g, `<pre$1><code$2 style="background:transparent;border:0;color:inherit;padding:0;font-size:inherit;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">`)
-        .replace(/<table([^>]*)>/g, `<table$1 style="width:100%; border-collapse:collapse; margin:18px 0; display:block; overflow-x:auto; border:1px solid #eaecf0;">`)
-        .replace(/<thead([^>]*)>/g, `<thead$1 style="background:#f8fafc;">`)
-        .replace(/<th([^>]*)>/g, `<th$1 style="padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;">`)
-        .replace(/<td([^>]*)>/g, `<td$1 style="padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;">`)
-        .replace(/<img([^>]*)>/g, `<img$1 style="max-width:100%; display:block; margin:22px auto; border-radius:8px;" />`)
-        .replace(/<a([^>]*)>/g, `<a$1 style="color:${color}; text-decoration:none; border-bottom:1px solid rgba(23,179,148,.35);">`)
-        .replace(/<strong([^>]*)>/g, `<strong$1 style="font-weight:700; color:${color};">`)
-        .replace(/<span class="inline-accent"([^>]*)>/g, `<span class="inline-accent"$1 style="color:${accent}; font-weight:700;">`)
-        .replace(/<em([^>]*)>/g, `<em$1 style="color:#444;">`)
-        .replace(/<hr([^>]*)\/>/g, `<hr$1 style="border:0; border-top:1px dashed #d0d5dd; margin:28px 0;" />`)}
+    <div class="wx" style="font-family:${safeFont};font-size:${size}px;line-height:1.75;color:#222;">
+      ${root.innerHTML}
     </div>
   </div>
 </section>`.trim();
@@ -789,22 +866,53 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       }
     }
 
-    async function copyWechatContent() {
-      try {
-        const html = buildInlineWechatHtml();
-        const text = preview.innerText;
-        if (navigator.clipboard && window.ClipboardItem) {
-          const item = new ClipboardItem({
-            'text/html': new Blob([html], { type: 'text/html' }),
-            'text/plain': new Blob([text], { type: 'text/plain' })
-          });
-          await navigator.clipboard.write([item]);
-        } else {
-          await navigator.clipboard.writeText(text);
+    function copyWechatContent() {
+      const html = buildInlineWechatHtml();
+      const text = preview.innerText;
+
+      const writeByCopyEvent = () => {
+        const handler = event => {
+          event.clipboardData.setData('text/html', html);
+          event.clipboardData.setData('text/plain', text);
+          event.preventDefault();
+        };
+
+        document.addEventListener('copy', handler);
+        const ok = document.execCommand('copy');
+        document.removeEventListener('copy', handler);
+        return ok;
+      };
+
+      const writeByHiddenSelection = () => {
+        const box = document.createElement('div');
+        box.style.position = 'fixed';
+        box.style.left = '-99999px';
+        box.style.top = '0';
+        box.style.width = '430px';
+        box.style.maxWidth = '430px';
+        box.style.background = '#fff';
+        box.innerHTML = html;
+        document.body.appendChild(box);
+
+        const selection = window.getSelection();
+        const range = document.createRange();
+
+        try {
+          selection.removeAllRanges();
+          range.selectNodeContents(box);
+          selection.addRange(range);
+          return document.execCommand('copy');
+        } finally {
+          selection.removeAllRanges();
+          document.body.removeChild(box);
         }
-        saveStatus.textContent = '已复制到公众号';
+      };
+
+      try {
+        const ok = writeByCopyEvent() || writeByHiddenSelection();
+        saveStatus.textContent = ok ? '已复制到公众号' : '复制失败，请手动复制右侧预览';
       } catch (e) {
-        saveStatus.textContent = '复制失败，请手动复制';
+        saveStatus.textContent = '复制失败，请手动复制右侧预览';
       }
     }
 
