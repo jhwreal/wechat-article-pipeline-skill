@@ -1,0 +1,66 @@
+name: Package Skill
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-skill:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate skill structure
+        run: |
+          test -d wechat-article-pipeline
+          test -f wechat-article-pipeline/SKILL.md
+          test -d wechat-article-pipeline/scripts
+
+      - name: Build skill zip
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="manual-${GITHUB_SHA::7}"
+          fi
+
+          rm -rf build dist
+          mkdir -p build dist
+
+          rsync -a \
+            --exclude=".DS_Store" \
+            --exclude="__pycache__/" \
+            --exclude="*.pyc" \
+            wechat-article-pipeline/ build/wechat-article-pipeline/
+
+          echo "${VERSION}" > build/wechat-article-pipeline/VERSION
+
+          cd build
+          zip -r "../dist/wechat-article-pipeline-${VERSION}.zip" wechat-article-pipeline
+          cd ..
+
+          shasum -a 256 "dist/wechat-article-pipeline-${VERSION}.zip" \
+            > "dist/wechat-article-pipeline-${VERSION}.zip.sha256"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wechat-article-pipeline-skill
+          path: dist/*
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
