@@ -245,4 +245,4 @@ Default image output directory: `<workspace>/image/<article-slug>/`.
 - [workflow.md](references/workflow.md) — article workflow and section expectations
 - [style-guide.md](references/style-guide.md) — tone, pacing, and visual defaults
 - [job-schema.md](references/job-schema.md) — JSON contract for the build script
-- [wechat-md-workbench.template.html](assets/templates/wechat-md-workbench.template.html) — editable HTML workbench template used by the build scripts
+- [wechat-md-workbench.template.v3.html](assets/templates/wechat-md-workbench.template.v3.html) — editable HTML workbench template used by the build scripts

@@ -76,11 +76,10 @@ python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
 ├── examples/
 │   ├── method-article.md
 │   ├── emotion-article.md
-│   ├── 方法.html
-│   └── output 情绪.html
+│   ├── method-article.html
+│   └── emotion-article.html
 └── wechat-article-pipeline/
     ├── SKILL.md
-    ├── agents/openai.yaml
     ├── assets/templates/
     ├── references/
     └── scripts/
@@ -170,11 +169,10 @@ python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
 ├── examples/
 │   ├── method-article.md
 │   ├── emotion-article.md
-│   ├── 方法.html
-│   └── output 情绪.html
+│   ├── method-article.html
+│   └── emotion-article.html
 └── wechat-article-pipeline/
     ├── SKILL.md
-    ├── agents/openai.yaml
     ├── assets/templates/
     ├── references/
     └── scripts/

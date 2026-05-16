@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "templates" / "wechat-md-workbench.template.html"
+DEFAULT_TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "templates" / "wechat-md-workbench.template.v3.html"
 PLACEHOLDER_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
 
 
