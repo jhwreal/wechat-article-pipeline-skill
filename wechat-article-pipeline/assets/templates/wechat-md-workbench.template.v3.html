@@ -916,6 +916,59 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       }
     }
 
+    function getArticleTitle() {
+      const match = editor.value.match(/^\s*#\s+(.+?)\s*$/m);
+      return match ? match[1].trim() : document.title.replace(/工作台$/, '').trim();
+    }
+
+    function getArticleDigest(limit = 120) {
+      const withoutImages = editor.value
+        .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+        .replace(/```[\s\S]*?```/g, '')
+        .split(/\n\s*\n/)
+        .map(block => block
+          .replace(/^#{1,6}\s+/gm, '')
+          .replace(/^>\s?/gm, '')
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/[`*_]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim())
+        .filter(Boolean);
+      const firstBody = withoutImages.find(block => block !== getArticleTitle()) || '';
+      return firstBody.slice(0, limit);
+    }
+
+    function getArticleImages() {
+      const images = [];
+      const re = /!\[([^\]]*)\]\(([^)]+)\)/g;
+      let match;
+      while ((match = re.exec(editor.value))) {
+        const alt = match[1] || '';
+        let name = `image-${images.length + 1}`;
+        if (/题图|cover/i.test(alt)) name = 'cover';
+        if (/尾图|closing/i.test(alt)) name = 'closing';
+        images.push({ name, alt, src: match[2] });
+      }
+      return images;
+    }
+
+    window.__WECHAT_ARTICLE_EXPORT__ = function() {
+      const images = getArticleImages();
+      const cover = images.find(image => image.name === 'cover') || images[0] || null;
+      return {
+        title: getArticleTitle(),
+        digest: getArticleDigest(),
+        content_html: buildInlineWechatHtml(),
+        content_text: preview.innerText,
+        images,
+        cover,
+        themeColor: themeColor.value,
+        fontSize: fontSize.value,
+        fontFamily: fontFamily.value,
+        exportedAt: new Date().toISOString()
+      };
+    };
+
     editor.addEventListener('input', () => {
       holdScrollLock('editor');
       updatePreview('editor');

@@ -5,6 +5,8 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
+import sys
 import unicodedata
 from pathlib import Path
 
@@ -13,6 +15,7 @@ import build_wechat_article_workbench as builder
 
 WORKSPACE = Path.cwd()
 DEFAULT_IMAGE_ROOT = WORKSPACE / "image"
+MAKE_PUBLISH_MANIFEST = Path(__file__).resolve().parent / "make_wechat_publish_manifest.py"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 
@@ -62,6 +65,28 @@ def parse_args() -> argparse.Namespace:
         help="Theme color injected into the HTML workbench.",
     )
     parser.add_argument("--storage-key", help="Optional storage key override.")
+    parser.add_argument(
+        "--publish-manifest-out",
+        type=Path,
+        help="Optional path to save the WeChat API draft manifest. Defaults to publish-manifest.json next to the HTML output.",
+    )
+    parser.add_argument(
+        "--no-publish-manifest",
+        action="store_true",
+        help="Skip writing the WeChat API draft manifest.",
+    )
+    parser.add_argument(
+        "--publisher-config",
+        type=Path,
+        help="Local publisher config path. Defaults to ~/.codex/wechat-article-pipeline/publisher-config.json.",
+    )
+    parser.add_argument("--author", help="Author override for the publish manifest.")
+    parser.add_argument("--preview-account", help="Preview WeChat account override for the publish manifest.")
+    parser.add_argument(
+        "--remember-publisher-config",
+        action="store_true",
+        help="Persist provided author/preview values into the local publisher config.",
+    )
     return parser.parse_args()
 
 
@@ -253,6 +278,37 @@ def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, 
         )
 
 
+def write_publish_manifest(
+    job_path: Path,
+    out_path: Path,
+    workbench_html: Path,
+    article_slug: str,
+    config_path: Path | None,
+    author: str | None,
+    preview_account: str | None,
+    remember: bool,
+) -> None:
+    command = [
+        sys.executable,
+        str(MAKE_PUBLISH_MANIFEST),
+        str(job_path),
+        str(out_path),
+        "--workbench-html",
+        str(workbench_html),
+        "--article-slug",
+        article_slug,
+    ]
+    if config_path:
+        command.extend(["--config", str(config_path.expanduser())])
+    if author:
+        command.extend(["--author", author])
+    if preview_account:
+        command.extend(["--preview-account", preview_account])
+    if remember:
+        command.append("--remember")
+    subprocess.run(command, check=True)
+
+
 def validate_embedded_html(html: str, expected_visual_count: int) -> None:
     if "{{visual:" in html:
         raise SystemExit("Generated HTML still contains unresolved {{visual:*}} placeholders")
@@ -308,8 +364,23 @@ def main() -> None:
         support_dir=args.support_dir.resolve() if args.support_dir else None,
     )
 
+    if not args.no_publish_manifest:
+        manifest_out = (args.publish_manifest_out or (args.out.resolve().parent / "publish-manifest.json")).resolve()
+        write_publish_manifest(
+            job_path=job_out,
+            out_path=manifest_out,
+            workbench_html=args.out.resolve(),
+            article_slug=slug_source,
+            config_path=args.publisher_config,
+            author=args.author,
+            preview_account=args.preview_account,
+            remember=args.remember_publisher_config,
+        )
+
     print(f"Wrote {job_out}")
     print(f"Wrote {args.out.resolve()}")
+    if not args.no_publish_manifest:
+        print(f"Wrote {(args.publish_manifest_out or (args.out.resolve().parent / 'publish-manifest.json')).resolve()}")
     if args.support_dir:
         print(f"Wrote support files to {args.support_dir.resolve()}")
 

@@ -99,3 +99,43 @@ Build outputs may also include:
 - `resolved-assets.json` — records the final URI used for each placeholder
 - `image-plan.json` — records the role-based slot plan
 - `image-plan.md` — debug-friendly markdown table for the slot plan
+- `publish-manifest.json` — records the WeChat backend draft/preview handoff data
+
+## Publish Manifest
+
+`package_wechat_article_bundle.py` writes a publishing manifest by default. It is used by the optional official WeChat API draft-box workflow in [publishing.md](publishing.md). The manifest only contains fields the official API workflow can use; it does not include original declaration, reward account, or collection fields.
+
+```json
+{
+  "schema_version": 1,
+  "article_slug": "wechat-article",
+  "title": "标题",
+  "author": "",
+  "digest": "摘要",
+  "content_html": "<section>...</section>",
+  "content_text": "纯文本正文",
+  "workbench_html": "/absolute/path/output.html",
+  "cover": {
+    "name": "cover",
+    "alt": "题图",
+    "src": "data:image/png;base64,..."
+  },
+  "image_candidates": [],
+  "preview": {
+    "method": "message/mass/preview",
+    "account": ""
+  },
+  "publisher_config_path": "~/.codex/wechat-article-pipeline/publisher-config.json",
+  "api_config_path": "~/.codex/wechat-article-pipeline/wechat-api-config.json",
+  "safety": {
+    "use_official_api_only": true,
+    "avoid_computer_use_on_mp_backend": true,
+    "never_click_publish": true,
+    "never_call_publish_api_by_default": true
+  }
+}
+```
+
+Author and optional preview account are local defaults. Keep them in `~/.codex/wechat-article-pipeline/publisher-config.json`, not in Git.
+
+Official API credentials are also local-only. Keep AppID/AppSecret and token cache in `~/.codex/wechat-article-pipeline/wechat-api-config.json`, not in Git.

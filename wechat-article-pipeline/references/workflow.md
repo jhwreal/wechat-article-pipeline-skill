@@ -50,8 +50,18 @@ Visual packaging rule:
 4. If it fails, regenerate once with a safer and simpler prompt or a different visual direction.
 5. Save the approved file with the matching placeholder basename such as `body-2.png`.
 6. Package the markdown plus local image directory into the final HTML with `scripts/package_wechat_article_bundle.py`, keeping role metadata in the markdown/job artifacts.
+7. Keep the generated `publish-manifest.json` next to the HTML. It is the handoff file for the optional WeChat API draft-box stage.
 
 For cover and closing visuals, bias toward quieter composition:
 - fewer competing elements
 - clearer whitespace around the headline
 - no noisy fake UI clutter or text-heavy overlays
+
+Draft-box API stage rule:
+
+- Only run the WeChat API delivery stage when the user explicitly asks for draft-box creation, draft saving, or API publishing assistance.
+- Use official WeChat server APIs through `scripts/publish_wechat_api.py`; never use private WeChat backend APIs.
+- Read `references/publishing.md` before creating the draft or sending preview.
+- Use `publish-manifest.json` for title, digest, author, cover, body HTML, and optional preview account.
+- If WeChat returns IP whitelist, administrator confirmation, credential, permission, or risk-control errors, stop and ask the user to resolve them.
+- Create the draft only. Send preview only if the user explicitly asks for preview. Do not call final publish/group-send APIs by default.
