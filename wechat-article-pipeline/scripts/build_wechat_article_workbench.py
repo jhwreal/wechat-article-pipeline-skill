@@ -13,6 +13,7 @@ from typing import Any
 
 DEFAULT_TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "templates" / "wechat-md-workbench.template.v3.html"
 PLACEHOLDER_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
+FRONT_MATTER_RE = re.compile(r"\A---[ \t]*\n(?P<body>.*?)[ \t]*\n---[ \t]*(?:\n|$)", re.S)
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +47,29 @@ def escape_for_js_template(text: str) -> str:
         .replace("${", "\\${")
         .replace("</script>", "<\\/script>")
     )
+
+
+def parse_front_matter(raw: str) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", 1)
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if key:
+            metadata[key] = value
+    return metadata
+
+
+def split_front_matter(markdown: str) -> tuple[str, dict[str, Any]]:
+    match = FRONT_MATTER_RE.match(markdown)
+    if not match:
+        return markdown, {}
+    raw = match.group("body").strip()
+    body = markdown[match.end() :].lstrip("\n")
+    return body, {"raw": raw, **parse_front_matter(raw)}
 
 
 def ensure_data_uri(payload: bytes, mime_type: str) -> str:
@@ -94,7 +118,17 @@ def replace_default_markdown(template: str, markdown: str) -> str:
     escaped = escape_for_js_template(markdown)
     return re.sub(
         r"const DEFAULT_MARKDOWN = `.*?`;",
-        f"const DEFAULT_MARKDOWN = `{escaped}`;",
+        lambda _match: f"const DEFAULT_MARKDOWN = `{escaped}`;",
+        template,
+        flags=re.S,
+    )
+
+
+def replace_default_metadata(template: str, metadata: dict[str, Any]) -> str:
+    payload = json.dumps(metadata, ensure_ascii=False)
+    return re.sub(
+        r"const ARTICLE_METADATA = .*?;",
+        lambda _match: f"const ARTICLE_METADATA = {payload};",
         template,
         flags=re.S,
     )
@@ -105,6 +139,8 @@ def replace_first(pattern: str, repl: str, text: str) -> str:
 
 
 def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
+    markdown, markdown_metadata = split_front_matter(markdown)
+    article_metadata = job.get("article_metadata") or markdown_metadata
     page_title = str(job.get("page_title", "公众号 Markdown 工作台"))
     storage_key = str(job.get("storage_key", "wechat-md-workbench-generated"))
     brand_title = str(job.get("brand_title", "公众号 Markdown 工作台"))
@@ -118,6 +154,7 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     html_text = replace_first(r'(<input id="themeColor"[^>]*value=")[^"]+(")', rf"\g<1>{html.escape(theme_color, quote=True)}\2", html_text)
     html_text = replace_first(r"const STORAGE_KEY = .*?;", f"const STORAGE_KEY = {json.dumps(storage_key, ensure_ascii=False)};", html_text)
     html_text = replace_default_markdown(html_text, markdown)
+    html_text = replace_default_metadata(html_text, article_metadata if isinstance(article_metadata, dict) else {})
     return html_text
 
 
@@ -191,7 +228,9 @@ def main() -> None:
     template = args.template.read_text(encoding="utf-8")
     job_dir = args.job.parent.resolve()
 
-    markdown = job["article_markdown"]
+    markdown, article_metadata = split_front_matter(job["article_markdown"])
+    if article_metadata and not job.get("article_metadata"):
+        job["article_metadata"] = article_metadata
     visuals = job.get("visuals", {})
     rendered_visuals: dict[str, str] = {}
     quality_report: dict[str, Any] = {"visuals": {}}

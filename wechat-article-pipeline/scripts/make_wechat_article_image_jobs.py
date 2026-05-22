@@ -8,6 +8,8 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+import build_wechat_article_workbench as builder
+
 
 PLACEHOLDER_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
@@ -1318,7 +1320,7 @@ def build_jobs(article_path: Path, article_slug: str, markdown: str, target_body
 def main() -> None:
     args = parse_args()
     article = args.article.resolve()
-    markdown = article.read_text(encoding="utf-8")
+    markdown, _article_metadata = builder.split_front_matter(article.read_text(encoding="utf-8"))
     title = extract_title(markdown, article.stem)
     article_slug = args.article_slug or infer_article_slug(article, title)
     payload = build_jobs(

@@ -140,10 +140,10 @@ def markdown_to_wechat_html(markdown: str) -> str:
                 style = f"width:fit-content;margin:26px auto 16px;font-size:19px;line-height:1.75;font-weight:700;color:#111827;padding-bottom:8px;border-bottom:2px solid {color};text-align:center"
                 html_blocks.append(f'<h1 style="{style}">{text}</h1>')
             elif level == 2:
-                style = f"width:fit-content;margin:30px auto 18px;font-size:19px;line-height:1.6;font-weight:700;color:#fff;background:{color};padding:8px 14px;text-align:center"
+                style = f"width:fit-content;margin:30px auto 18px;font-size:19px;line-height:1.6;font-weight:700;color:#fff;background:{color};padding:8px 20px;border-radius:7px;box-shadow:0 8px 16px rgba(23,179,148,.22),0 2px 5px rgba(15,23,42,.08);text-align:center"
                 html_blocks.append(f'<h2 style="{style}">{text}</h2>')
             elif level == 3:
-                style = f"margin:24px 0 14px;font-size:17px;line-height:1.75;font-weight:700;color:#111827;padding-left:12px;border-left:4px solid {color}"
+                style = f"width:fit-content;margin:24px 0 14px;font-size:17px;line-height:1.75;font-weight:700;color:#111827;padding:0 0 3px 10px;border-left:4px solid {color};border-bottom:1px dashed {color}"
                 html_blocks.append(f'<h3 style="{style}">{text}</h3>')
             else:
                 style = f"margin:18px 0 10px;font-size:16px;line-height:1.75;font-weight:700;color:{color}"

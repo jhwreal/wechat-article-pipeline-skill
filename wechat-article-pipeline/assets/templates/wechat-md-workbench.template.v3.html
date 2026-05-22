@@ -219,17 +219,21 @@
       font-weight: 700;
       color: #fff;
       background: var(--primary);
-      padding: 8px 14px;
+      padding: 8px 20px;
+      border-radius: 7px;
+      box-shadow: 0 8px 16px rgba(23, 179, 148, .22), 0 2px 5px rgba(15, 23, 42, .08);
       text-align: center;
     }
     .preview h3 {
+      width: fit-content;
       margin: 24px 0 14px;
       font-size: 17px;
       line-height: 1.75;
       font-weight: 700;
       color: #111827;
-      padding-left: 12px;
+      padding: 0 0 3px 10px;
       border-left: 4px solid var(--primary);
+      border-bottom: 1px dashed var(--primary);
     }
     .preview h4 {
       margin: 18px 0 10px;
@@ -438,7 +442,7 @@
       </div>
       <div class="statusbar">
         <div class="status-left">
-          <span>模板版本：v8 代码块复制稳定版</span>
+          <span>模板版本：v10 本地存储兼容版</span>
           <span id="lastSavedLabel">未保存</span>
         </div>
         <div class="status-right">
@@ -464,7 +468,8 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
 
 #### h4 示例`;
 
-    const STORAGE_KEY = 'wechat-md-workbench-v6';
+    const ARTICLE_METADATA = {};
+    const STORAGE_KEY = 'wechat-md-workbench-template-v10';
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const previewShell = document.querySelector('.preview-shell');
@@ -686,8 +691,8 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       });
 
       setStyle('h1', `width:fit-content; margin:26px auto 16px; font-size:19px; line-height:1.75; font-weight:700; color:#111827; padding-bottom:8px; border-bottom:2px solid ${color}; text-align:center;`);
-      setStyle('h2', `width:fit-content; margin:30px auto 18px; font-size:19px; line-height:1.6; font-weight:700; color:#fff; background:${color}; padding:8px 14px; text-align:center;`);
-      setStyle('h3', `margin:24px 0 14px; font-size:17px; line-height:1.75; font-weight:700; color:#111827; padding-left:12px; border-left:4px solid ${color};`);
+      setStyle('h2', `width:fit-content; margin:30px auto 18px; font-size:19px; line-height:1.6; font-weight:700; color:#fff; background:${color}; padding:8px 20px; border-radius:7px; box-shadow:0 8px 16px rgba(23,179,148,.22),0 2px 5px rgba(15,23,42,.08); text-align:center;`);
+      setStyle('h3', `width:fit-content; margin:24px 0 14px; font-size:17px; line-height:1.75; font-weight:700; color:#111827; padding:0 0 3px 10px; border-left:4px solid ${color}; border-bottom:1px dashed ${color};`);
       setStyle('h4', `margin:18px 0 10px; font-size:16px; line-height:1.75; font-weight:700; color:${color};`);
       setStyle('p', `margin:16px 0; font-size:${size}px; line-height:1.75; color:#222;`);
       setStyle('blockquote', `margin:18px 0; padding:14px 16px; background:#f7f8fa; border-left:4px solid ${color}; color:#3b4552; font-size:${size}px; line-height:1.75; border-radius:8px;`);
@@ -815,6 +820,23 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       });
     }
 
+    function safeGetStorage(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+
+    function safeSetStorage(key, value) {
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     function updatePreview(preferredSource = activeScrollSource || 'editor') {
       preview.innerHTML = markdownToHtml(editor.value);
       const text = editor.value.replace(/\s+/g, '');
@@ -832,8 +854,8 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
         fontFamily: fontFamily.value,
         savedAt: new Date().toISOString()
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      saveStatus.textContent = '已自动保存';
+      const saved = safeSetStorage(STORAGE_KEY, JSON.stringify(data));
+      saveStatus.textContent = saved ? '已自动保存' : '已加载';
       lastSavedLabel.textContent = `最近保存：${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
     }
 
@@ -850,14 +872,14 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     }
 
     function loadState() {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = safeGetStorage(STORAGE_KEY);
       if (!raw) {
         editor.value = DEFAULT_MARKDOWN;
         return;
       }
       try {
         const data = JSON.parse(raw);
-        editor.value = data.markdown || DEFAULT_MARKDOWN;
+        editor.value = data.markdown && data.markdown.trim() ? data.markdown : DEFAULT_MARKDOWN;
         themeColor.value = data.themeColor || '#17b394';
         fontSize.value = data.fontSize || '16';
         fontFamily.value = data.fontFamily || '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
@@ -956,6 +978,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       const images = getArticleImages();
       const cover = images.find(image => image.name === 'cover') || images[0] || null;
       return {
+        metadata: ARTICLE_METADATA,
         title: getArticleTitle(),
         digest: getArticleDigest(),
         content_html: buildInlineWechatHtml(),

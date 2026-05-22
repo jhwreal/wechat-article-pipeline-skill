@@ -18,6 +18,7 @@ DEFAULT_IMAGE_ROOT = WORKSPACE / "image"
 MAKE_PUBLISH_MANIFEST = Path(__file__).resolve().parent / "make_wechat_publish_manifest.py"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
+WORKBENCH_STORAGE_VERSION = "v9"
 
 
 def parse_args() -> argparse.Namespace:
@@ -135,7 +136,7 @@ def make_content_storage_key(page_title: str, markdown: str, visuals: dict[str, 
         path_value = visuals[name].get("path")
         if path_value:
             digest.update(file_digest(Path(path_value)).encode("ascii"))
-    return f"wechat-md-workbench-{make_storage_slug(page_title)}-{digest.hexdigest()[:10]}"
+    return f"wechat-md-workbench-{WORKBENCH_STORAGE_VERSION}-{make_storage_slug(page_title)}-{digest.hexdigest()[:10]}"
 
 
 
@@ -150,6 +151,13 @@ def infer_image_dir_name(article_path: Path, plan: dict | None) -> str:
     if parent:
         return make_path_name(parent)
     return make_path_name(stem or article_path.name)
+
+
+def infer_article_slug(article_path: Path, plan: dict | None, metadata: dict | None) -> str:
+    metadata_slug = str((metadata or {}).get("slug", "")).strip()
+    if metadata_slug:
+        return make_path_name(metadata_slug)
+    return infer_image_dir_name(article_path, plan)
 
 
 def find_placeholders(markdown: str) -> list[str]:
@@ -201,6 +209,7 @@ def build_job(
     markdown: str,
     images_dir: Path,
     plan: dict | None,
+    article_metadata: dict | None,
     page_title: str,
     storage_key: str,
     brand_title: str,
@@ -225,6 +234,7 @@ def build_job(
         "brand_title": brand_title,
         "brand_subtitle": brand_subtitle,
         "theme_color": theme_color,
+        "article_metadata": article_metadata or {},
         "article_markdown": markdown,
         "visuals": visuals,
     }
@@ -328,11 +338,13 @@ def validate_embedded_html(html: str, expected_visual_count: int) -> None:
 
 def main() -> None:
     args = parse_args()
-    markdown = args.article.read_text(encoding="utf-8")
+    source_markdown = args.article.read_text(encoding="utf-8")
+    markdown, article_metadata = builder.split_front_matter(source_markdown)
     plan = read_plan(args.plan_json.resolve() if args.plan_json else None)
 
-    page_title = args.page_title or extract_title(markdown, args.article.stem)
-    image_dir_name = infer_image_dir_name(args.article.resolve(), plan)
+    metadata_title = str(article_metadata.get("title", "")).strip()
+    page_title = args.page_title or extract_title(markdown, metadata_title or args.article.stem)
+    image_dir_name = infer_article_slug(args.article.resolve(), plan, article_metadata)
     slug_source = image_dir_name or args.article.stem or page_title
     images_dir = (args.images_dir or (DEFAULT_IMAGE_ROOT / image_dir_name)).resolve()
     if not images_dir.exists() or not images_dir.is_dir():
@@ -345,6 +357,7 @@ def main() -> None:
         markdown=markdown,
         images_dir=images_dir,
         plan=plan,
+        article_metadata=article_metadata,
         page_title=page_title,
         storage_key=args.storage_key or "pending-content-hash",
         brand_title=brand_title,
