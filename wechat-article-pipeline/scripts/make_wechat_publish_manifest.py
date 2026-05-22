@@ -12,7 +12,8 @@ import build_wechat_article_workbench as builder
 
 
 DEFAULT_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "publisher-config.json"
-DEFAULT_API_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-api-config.json"
+DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-token-cache.json"
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
@@ -22,10 +23,11 @@ def parse_args() -> argparse.Namespace:
         description="Build a WeChat Official Account publishing manifest from a rendered article job."
     )
     parser.add_argument("job", type=Path, help="Rendered or source job JSON from package_wechat_article_bundle.py.")
-    parser.add_argument("out", type=Path, help="Path to write publish-manifest.json.")
+    parser.add_argument("out", type=Path, help="Path to write <html-stem>.publish-manifest.json.")
     parser.add_argument("--workbench-html", type=Path, help="Path to the generated HTML workbench.")
     parser.add_argument("--article-slug", help="Optional article slug override.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="Local publisher config path.")
+    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="Local .env with publisher defaults.")
     parser.add_argument("--author", help="Author override. Also used for this manifest without persisting.")
     parser.add_argument("--preview-account", help="Preview WeChat account override without persisting.")
     parser.add_argument("--remember", action="store_true", help="Persist provided author/preview values to config.")
@@ -44,6 +46,20 @@ def read_config(path: Path) -> dict[str, str]:
         "author": str(data.get("author", "")).strip(),
         "preview_account": str(data.get("preview_account", "")).strip(),
     }
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    path = path.expanduser()
+    if not path.exists():
+        return {}
+    env: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        env[key.strip()] = value.strip().strip('"').strip("'")
+    return env
 
 
 def write_config(path: Path, config: dict[str, str]) -> None:
@@ -140,7 +156,7 @@ def markdown_to_wechat_html(markdown: str) -> str:
                 style = f"width:fit-content;margin:26px auto 16px;font-size:19px;line-height:1.75;font-weight:700;color:#111827;padding-bottom:8px;border-bottom:2px solid {color};text-align:center"
                 html_blocks.append(f'<h1 style="{style}">{text}</h1>')
             elif level == 2:
-                style = f"width:fit-content;margin:30px auto 18px;font-size:19px;line-height:1.6;font-weight:700;color:#fff;background:{color};padding:8px 20px;border-radius:7px;box-shadow:0 8px 16px rgba(23,179,148,.22),0 2px 5px rgba(15,23,42,.08);text-align:center"
+                style = f"width:fit-content;margin:30px auto 18px;font-size:19px;line-height:1.6;font-weight:700;color:#fff;background:{color};padding:8px 20px;border-radius:7px;box-shadow:0 4px 10px rgba(15,23,42,.16);text-align:center"
                 html_blocks.append(f'<h2 style="{style}">{text}</h2>')
             elif level == 3:
                 style = f"width:fit-content;margin:24px 0 14px;font-size:17px;line-height:1.75;font-weight:700;color:#111827;padding:0 0 3px 10px;border-left:4px solid {color};border-bottom:1px dashed {color}"
@@ -174,6 +190,11 @@ def main() -> None:
     args = parse_args()
     job = read_json(args.job.resolve())
     config = read_config(args.config.expanduser())
+    env = read_env_file(args.env_file)
+    if env.get("WECHAT_AUTHOR"):
+        config["author"] = env["WECHAT_AUTHOR"].strip()
+    if env.get("WECHAT_PREVIEW_ACCOUNT"):
+        config["preview_account"] = env["WECHAT_PREVIEW_ACCOUNT"].strip()
 
     overrides = {
         "author": args.author,
@@ -220,8 +241,8 @@ def main() -> None:
             "method": "message/mass/preview",
             "account": config.get("preview_account", ""),
         },
-        "publisher_config_path": str(args.config.expanduser()),
-        "api_config_path": str(DEFAULT_API_CONFIG),
+        "env_file": str(args.env_file.expanduser()),
+        "token_cache_path": str(DEFAULT_TOKEN_CACHE),
         "safety": {
             "use_official_api_only": True,
             "avoid_computer_use_on_mp_backend": True,

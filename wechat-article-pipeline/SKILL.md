@@ -35,7 +35,7 @@ Build one coherent WeChat article package from a single user idea: topic -> arti
 21. Use `emotional_illustration` for stories, emotional essays, life principles, relationship pieces, ordinary-person reflections, and articles that primarily need resonance or atmosphere. It must use illustration logic: human moments, symbolic scenes, light, space, objects, tension, silence, and metaphor. Do not use numbered steps, arrows, process diagrams, checklist cards, information cards, UI panels, or icon matrices in body images for this mode.
 22. Use `analysis_visual` for industry, mechanism, evidence, and trend pieces. It may use evidence, contrast, mechanism, and restrained metaphor, but should avoid process graphics unless the local paragraph is actually procedural.
 23. When the user asks to create a WeChat draft, read [publishing.md](references/publishing.md) and use only official WeChat APIs. Do not use private WeChat backend APIs or browser automation against `mp.weixin.qq.com`.
-24. Store AppID/AppSecret/access tokens only in local config outside the skill package. Never write secrets into Git-tracked files or final article bundles.
+24. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
 25. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward account, or collection set, because the public draft API does not expose those fields.
 
 ## Default assumptions
@@ -49,7 +49,7 @@ Unless the user explicitly overrides them, use these defaults:
 - visual density: one generated cover image, one generated closing image, and roughly one in-body image per 200 Chinese characters for method articles; for emotional, story, or principle articles, use fewer and stronger in-body images at roughly 300-450 Chinese characters per image
 - output mode: single editable HTML file first, with images embedded directly in the HTML; local image assets and job/support files are only supporting files
 - theme color: keep the existing template green unless the user explicitly asks to change it
-- backend delivery: do not run by default; when explicitly requested, use `publish-manifest.json`, local publisher defaults from `~/.codex/wechat-article-pipeline/publisher-config.json`, and official API credentials from `~/.codex/wechat-article-pipeline/wechat-api-config.json`
+- backend delivery: do not run by default; when explicitly requested, use the HTML-matched `<html-stem>.publish-manifest.json`, publisher defaults from the local `.env`, and official API credentials from `WECHAT_APPID` / `WECHAT_APPSECRET` in that `.env`
 
 If the user only provides a rough idea, internally infer:
 - topic
@@ -188,7 +188,7 @@ This packager will:
 - generate a content-fingerprinted storage key so a newly generated HTML does not load stale browser localStorage from an older file with the same title
 - fail if any visual placeholder remains unresolved or if the generated HTML still points to local image files
 - build the final editable single-file HTML workbench
-- write `publish-manifest.json` next to the HTML by default for WeChat backend draft/preview automation
+- write `<html-stem>.publish-manifest.json` next to the HTML by default for WeChat backend draft/preview automation
 - optionally emit support files and a quality report
 
 Before generating visuals, pick a visual direction explicitly. Keep the page/theme chrome on the existing green template unless the user asks otherwise; vary the image treatment, composition, and subject matter instead.
@@ -224,7 +224,7 @@ Only do this when the user explicitly asks for draft creation, draft-box upload,
 
 Read [publishing.md](references/publishing.md), then:
 
-1. Use the generated `publish-manifest.json` as the source of truth for only the fields the official draft API can set: title, author, digest, body HTML, cover image, body images, and optional preview account.
+1. Use the generated `<html-stem>.publish-manifest.json` as the source of truth for only the fields the official draft API can set: title, author, digest, body HTML, cover image, body images, and optional preview account.
 2. Use `scripts/publish_wechat_api.py` to:
    - fetch or reuse `access_token` through `cgi-bin/stable_token`;
    - upload body images through `cgi-bin/media/uploadimg`;
@@ -234,50 +234,31 @@ Read [publishing.md](references/publishing.md), then:
 3. If WeChat returns IP whitelist, administrator confirmation, credential, or permission errors, report the exact official error and stop for the user to resolve it.
 4. Stop after the draft is created. Do not call publish/group-send APIs unless separately requested and confirmed.
 
-Publisher defaults live outside the skill package:
+Publisher defaults and API credentials live in a local `.env` file copied from `.env.example`. This file is excluded from Git and must never be uploaded to GitHub.
 
 ```text
-~/.codex/wechat-article-pipeline/publisher-config.json
-```
-
-The file starts empty and may remember:
-
-```json
-{
-  "author": "",
-  "preview_account": ""
-}
-```
-
-Do not commit this config. If the user supplies these values during a successful run, persist them with `scripts/make_wechat_publish_manifest.py --remember`.
-
-Official API credentials live outside the skill package:
-
-```text
-~/.codex/wechat-article-pipeline/wechat-api-config.json
+.env
 ```
 
 Shape:
 
-```json
-{
-  "appid": "",
-  "appsecret": "",
-  "access_token_cache": {
-    "access_token": "",
-    "expires_at": 0
-  }
-}
+```dotenv
+WECHAT_APPID=
+WECHAT_APPSECRET=
+WECHAT_AUTHOR=
+WECHAT_PREVIEW_ACCOUNT=
 ```
+
+If `.env` does not exist or lacks `WECHAT_APPID` / `WECHAT_APPSECRET`, ask the user for those values and create the file locally with restrictive permissions. The GitHub version must include `.env.example` and setup instructions, but never `.env`.
 
 Create a draft:
 
 ```bash
-python3 scripts/publish_wechat_api.py publish-manifest.json \
-  --appid APPID \
-  --appsecret APPSECRET \
+python3 scripts/publish_wechat_api.py output.publish-manifest.json \
+  --env-file /path/to/.env \
   --remember \
-  --check-draft-switch
+  --check-draft-switch \
+  --verify-draft
 ```
 
 Add `--send-preview` only when the user explicitly asks to send a preview.
@@ -301,7 +282,7 @@ This will:
 
 Default deliverables:
 - single-file editable HTML workbench with generated images embedded as data URIs
-- `publish-manifest.json` for optional WeChat API draft/preview automation
+- `<html-stem>.publish-manifest.json` for optional WeChat API draft/preview automation
 - source markdown
 - local image assets or asset references
 - job JSON

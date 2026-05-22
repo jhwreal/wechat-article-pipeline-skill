@@ -20,8 +20,10 @@ from typing import Any
 
 
 DEFAULT_API_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-api-config.json"
+DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-token-cache.json"
 API_BASE = "https://api.weixin.qq.com"
 DATA_IMAGE_RE = re.compile(r'src=(["\'])(data:image/[^"\']+)\1', re.I)
+VISUAL_PLACEHOLDER_RE = re.compile(r"\{\{visual:[^}]+\}\}")
 ERROR_HELP = {
     40164: "当前调用 IP 不在公众号接口 IP 白名单。把这台机器的出口 IP 加到公众平台开发配置后重试。",
     48001: "公众号没有开通或没有获得该接口权限。",
@@ -35,26 +37,32 @@ ERROR_HELP = {
 class LocalImage:
     path: Path
     mime: str
+    width: int = 0
+    height: int = 0
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Create a WeChat Official Account draft from publish-manifest.json via official APIs."
+        description="Create a WeChat Official Account draft from a publish manifest via official APIs."
     )
-    parser.add_argument("manifest", type=Path, help="publish-manifest.json from package_wechat_article_bundle.py.")
-    parser.add_argument("--config", type=Path, default=DEFAULT_API_CONFIG, help="Local API config path.")
-    parser.add_argument("--appid", help="WeChat Official Account AppID. Stored only when --remember is set.")
-    parser.add_argument("--appsecret", help="WeChat Official Account AppSecret. Stored only when --remember is set.")
+    parser.add_argument("manifest", type=Path, help="<html-stem>.publish-manifest.json from package_wechat_article_bundle.py.")
+    parser.add_argument("--env-file", type=Path, help="Local .env file containing WECHAT_APPID and WECHAT_APPSECRET.")
+    parser.add_argument("--config", type=Path, default=DEFAULT_API_CONFIG, help="Legacy local API config path.")
+    parser.add_argument("--token-cache", type=Path, default=DEFAULT_TOKEN_CACHE, help="Local access_token cache path.")
+    parser.add_argument("--appid", help="WeChat Official Account AppID. Overrides .env and legacy config.")
+    parser.add_argument("--appsecret", help="WeChat Official Account AppSecret. Overrides .env and legacy config.")
     parser.add_argument("--access-token", help="Use an existing access_token instead of fetching one.")
     parser.add_argument("--force-refresh-token", action="store_true", help="Force refresh stable access_token.")
-    parser.add_argument("--remember", action="store_true", help="Persist appid/appsecret and token cache to local config.")
+    parser.add_argument("--remember", action="store_true", help="Persist token cache. Credentials are read from .env, not written to result files.")
     parser.add_argument("--check-draft-switch", action="store_true", help="Check draft switch state before creating a draft.")
     parser.add_argument("--open-draft-switch", action="store_true", help="Open the draft switch if WeChat reports it closed.")
+    parser.add_argument("--verify-draft", action="store_true", help="Fetch the created draft and verify the returned title.")
     parser.add_argument("--send-preview", action="store_true", help="Send a preview after the draft is created.")
     parser.add_argument("--preview-account", help="Preview target WeChat ID. Overrides manifest preview.account.")
     parser.add_argument("--preview-openid", help="Preview target OpenID. Takes precedence over WeChat ID.")
     parser.add_argument("--content-source-url", default="", help="Optional original/source URL for the article.")
     parser.add_argument("--dry-run", action="store_true", help="Validate and write the draft request payload without API calls.")
+    parser.add_argument("--include-payload", action="store_true", help="Include full draft payload in result JSON. This can be very large.")
     parser.add_argument(
         "--out",
         type=Path,
@@ -79,6 +87,41 @@ def read_config(path: Path) -> dict[str, Any]:
     return read_json(path)
 
 
+def find_env_file(manifest: Path, explicit: Path | None) -> Path | None:
+    if explicit:
+        return explicit.expanduser()
+    candidates = [
+        Path.cwd() / ".env",
+        manifest.resolve().parent / ".env",
+        manifest.resolve().parent.parent / ".env",
+        Path(__file__).resolve().parents[1] / ".env",
+        Path(__file__).resolve().parents[2] / ".env",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def read_env_file(path: Path | None) -> dict[str, str]:
+    if not path:
+        return {}
+    path = path.expanduser()
+    if not path.exists():
+        return {}
+    env: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            env[key] = value
+    return env
+
+
 def save_config(path: Path, config: dict[str, Any]) -> None:
     path = path.expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,6 +130,11 @@ def save_config(path: Path, config: dict[str, Any]) -> None:
         path.chmod(0o600)
     except OSError:
         pass
+
+
+def save_token_cache(path: Path, token: str, expires_in: int) -> None:
+    data = {"access_token": token, "expires_at": int(time.time()) + expires_in}
+    save_config(path, data)
 
 
 def api_post_json(path: str, payload: dict[str, Any], access_token: str | None = None) -> dict[str, Any]:
@@ -163,20 +211,21 @@ def request_json(req: urllib.request.Request) -> dict[str, Any]:
     return result
 
 
-def get_access_token(args: argparse.Namespace, config: dict[str, Any]) -> str:
+def get_access_token(args: argparse.Namespace, config: dict[str, Any], env: dict[str, str]) -> str:
     if args.access_token:
         return args.access_token.strip()
 
-    cached = config.get("access_token_cache") or {}
+    token_cache = read_config(args.token_cache)
+    cached = token_cache or (config.get("access_token_cache") or {})
     if not args.force_refresh_token and cached.get("access_token") and float(cached.get("expires_at", 0)) > time.time() + 300:
         return str(cached["access_token"])
 
-    appid = (args.appid or config.get("appid") or "").strip()
-    appsecret = (args.appsecret or config.get("appsecret") or "").strip()
+    appid = (args.appid or env.get("WECHAT_APPID") or config.get("appid") or "").strip()
+    appsecret = (args.appsecret or env.get("WECHAT_APPSECRET") or config.get("appsecret") or "").strip()
     if not appid or not appsecret:
         raise SystemExit(
-            "Missing AppID/AppSecret. Pass --appid and --appsecret, or store them in "
-            f"{args.config.expanduser()}."
+            "Missing WECHAT_APPID/WECHAT_APPSECRET. Ask the user for AppID and AppSecret, then create a local .env "
+            "from .env.example. You can also pass --appid and --appsecret for one-off runs."
         )
 
     payload: dict[str, Any] = {"grant_type": "client_credential", "appid": appid, "secret": appsecret}
@@ -186,10 +235,7 @@ def get_access_token(args: argparse.Namespace, config: dict[str, Any]) -> str:
     token = str(token_resp["access_token"])
     expires_in = int(token_resp.get("expires_in", 7200))
     if args.remember:
-        config["appid"] = appid
-        config["appsecret"] = appsecret
-        config["access_token_cache"] = {"access_token": token, "expires_at": int(time.time()) + expires_in}
-        save_config(args.config, config)
+        save_token_cache(args.token_cache, token, expires_in)
     return token
 
 
@@ -201,7 +247,15 @@ def decode_data_image(data_uri: str, suffix_hint: str) -> LocalImage:
     tmp = tempfile.NamedTemporaryFile(prefix="wechat-image-", suffix=suffix, delete=False)
     tmp.write(raw)
     tmp.close()
-    return LocalImage(Path(tmp.name), mime)
+    width = height = 0
+    try:
+        from PIL import Image
+
+        with Image.open(tmp.name) as img:
+            width, height = img.size
+    except Exception:
+        pass
+    return LocalImage(Path(tmp.name), mime, width, height)
 
 
 def normalize_body_image(image: LocalImage) -> LocalImage:
@@ -257,13 +311,32 @@ def upload_cover(manifest: dict[str, Any], access_token: str) -> dict[str, str]:
         "thumb_media_id": str(resp["media_id"]),
         "url": str(resp.get("url", "")),
         "local_path": str(image.path),
+        "width": str(image.width),
+        "height": str(image.height),
     }
 
 
-def default_crop_values() -> dict[str, str]:
+def format_crop_value(values: tuple[float, float, float, float]) -> str:
+    return "_".join(f"{max(0.0, min(1.0, value)):.6f}".rstrip("0").rstrip(".") for value in values)
+
+
+def crop_for_ratio(width: int, height: int, target_ratio: float) -> str:
+    if width <= 0 or height <= 0:
+        width, height = 16, 9
+    aspect = width / height
+    if aspect > target_ratio:
+        crop_width = target_ratio / aspect
+        x1 = (1 - crop_width) / 2
+        return format_crop_value((x1, 0, 1 - x1, 1))
+    crop_height = aspect / target_ratio
+    y1 = (1 - crop_height) / 2
+    return format_crop_value((0, y1, 1, 1 - y1))
+
+
+def crop_values_for_cover(width: int, height: int) -> dict[str, str]:
     return {
-        "pic_crop_235_1": "0_0.287234_1_0.712766",
-        "pic_crop_1_1": "0.21875_0_0.78125_1",
+        "pic_crop_235_1": crop_for_ratio(width, height, 2.35),
+        "pic_crop_1_1": crop_for_ratio(width, height, 1.0),
     }
 
 
@@ -272,6 +345,7 @@ def build_draft_payload(
     content_html: str,
     thumb_media_id: str,
     content_source_url: str,
+    crop_values: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     title = str(manifest.get("title", "")).strip()
     if not title:
@@ -288,9 +362,35 @@ def build_draft_payload(
         "thumb_media_id": thumb_media_id,
         "need_open_comment": 0,
         "only_fans_can_comment": 0,
-        **default_crop_values(),
+        **(crop_values or crop_values_for_cover(0, 0)),
     }
     return {"articles": [article]}
+
+
+def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, Any]:
+    title = str(manifest.get("title", "")).strip()
+    digest = str(manifest.get("digest", "")).strip()
+    cover_src = str((manifest.get("cover") or {}).get("src", "")).strip()
+    if not title:
+        raise SystemExit("Manifest title is empty.")
+    if not digest:
+        raise SystemExit("Manifest digest is empty.")
+    if not content_html.strip():
+        raise SystemExit("Manifest content_html is empty.")
+    if VISUAL_PLACEHOLDER_RE.search(content_html):
+        raise SystemExit("Manifest content_html still contains unresolved {{visual:*}} placeholders.")
+    if not cover_src.startswith("data:image/"):
+        raise SystemExit("Manifest cover.src must be a data:image URI for API publishing.")
+    data_images = DATA_IMAGE_RE.findall(content_html)
+    if not data_images:
+        raise SystemExit("Manifest content_html has no embedded data:image assets to upload.")
+    return {
+        "title": title,
+        "digest_length": len(digest),
+        "content_html_length": len(content_html),
+        "body_data_image_count": len(data_images),
+        "cover_is_data_uri": True,
+    }
 
 
 def check_or_open_draft_switch(access_token: str, open_switch: bool) -> dict[str, Any]:
@@ -303,6 +403,18 @@ def check_or_open_draft_switch(access_token: str, open_switch: bool) -> dict[str
 def create_draft(payload: dict[str, Any], access_token: str) -> str:
     resp = api_post_json("/cgi-bin/draft/add", payload, access_token)
     return str(resp["media_id"])
+
+
+def verify_draft(media_id: str, expected_title: str, access_token: str) -> dict[str, Any]:
+    resp = api_post_json("/cgi-bin/draft/get", {"media_id": media_id}, access_token)
+    articles = (resp.get("news_item") or resp.get("articles") or [])
+    first = articles[0] if articles else {}
+    returned_title = str(first.get("title", "")).strip() if isinstance(first, dict) else ""
+    return {
+        "verified": returned_title == expected_title,
+        "title": returned_title,
+        "article_count": len(articles) if isinstance(articles, list) else 0,
+    }
 
 
 def send_preview(media_id: str, args: argparse.Namespace, manifest: dict[str, Any], access_token: str) -> dict[str, Any]:
@@ -322,38 +434,81 @@ def main() -> None:
     args = parse_args()
     manifest = read_json(args.manifest.resolve())
     config = read_config(args.config)
+    env_file = find_env_file(args.manifest, args.env_file)
+    env = read_env_file(env_file)
 
     content_html = str(manifest.get("content_html", ""))
-    if not content_html:
-        raise SystemExit("Manifest content_html is empty.")
+    validation = validate_manifest(manifest, content_html)
 
-    result: dict[str, Any] = {"manifest": str(args.manifest.resolve()), "dry_run": args.dry_run}
+    result: dict[str, Any] = {
+        "manifest": str(args.manifest.resolve()),
+        "dry_run": args.dry_run,
+        "env_file": str(env_file.resolve()) if env_file and env_file.exists() else "",
+        "validation": validation,
+    }
     draft_payload: dict[str, Any]
 
     if args.dry_run:
-        draft_payload = build_draft_payload(manifest, content_html, "DRY_RUN_THUMB_MEDIA_ID", args.content_source_url)
-        result["draft_payload"] = draft_payload
+        cover_src = str((manifest.get("cover") or {}).get("src", ""))
+        cover_image = decode_data_image(cover_src, "png")
+        crop_values = crop_values_for_cover(cover_image.width, cover_image.height)
+        draft_payload = build_draft_payload(
+            manifest,
+            content_html,
+            "DRY_RUN_THUMB_MEDIA_ID",
+            args.content_source_url,
+            crop_values,
+        )
+        result["draft_payload_summary"] = {
+            "article_count": len(draft_payload["articles"]),
+            "title": draft_payload["articles"][0]["title"],
+            "digest": draft_payload["articles"][0]["digest"],
+            "thumb_media_id": draft_payload["articles"][0]["thumb_media_id"],
+            "pic_crop_235_1": draft_payload["articles"][0]["pic_crop_235_1"],
+            "pic_crop_1_1": draft_payload["articles"][0]["pic_crop_1_1"],
+        }
+        if args.include_payload:
+            result["draft_payload"] = draft_payload
     else:
-        access_token = get_access_token(args, config)
+        access_token = get_access_token(args, config, env)
         if args.check_draft_switch:
             result["draft_switch"] = check_or_open_draft_switch(access_token, args.open_draft_switch)
         uploaded_content_html, body_uploads = upload_body_images(content_html, access_token)
         cover_upload = upload_cover(manifest, access_token)
+        crop_values = crop_values_for_cover(int(cover_upload["width"]), int(cover_upload["height"]))
         draft_payload = build_draft_payload(
             manifest,
             uploaded_content_html,
             cover_upload["thumb_media_id"],
             args.content_source_url,
+            crop_values,
         )
         media_id = create_draft(draft_payload, access_token)
         result.update(
             {
+                "body_upload_count": len(body_uploads),
                 "body_uploads": body_uploads,
-                "cover_upload": cover_upload,
-                "draft_payload": draft_payload,
+                "cover_upload": {
+                    "thumb_media_id": cover_upload["thumb_media_id"],
+                    "url": cover_upload.get("url", ""),
+                    "width": cover_upload.get("width", ""),
+                    "height": cover_upload.get("height", ""),
+                },
+                "draft_payload_summary": {
+                    "article_count": len(draft_payload["articles"]),
+                    "title": draft_payload["articles"][0]["title"],
+                    "digest": draft_payload["articles"][0]["digest"],
+                    "thumb_media_id": draft_payload["articles"][0]["thumb_media_id"],
+                    "pic_crop_235_1": draft_payload["articles"][0]["pic_crop_235_1"],
+                    "pic_crop_1_1": draft_payload["articles"][0]["pic_crop_1_1"],
+                },
                 "draft_media_id": media_id,
             }
         )
+        if args.include_payload:
+            result["draft_payload"] = draft_payload
+        if args.verify_draft:
+            result["draft_verification"] = verify_draft(media_id, validation["title"], access_token)
         if args.send_preview:
             result["preview"] = send_preview(media_id, args, manifest, access_token)
 

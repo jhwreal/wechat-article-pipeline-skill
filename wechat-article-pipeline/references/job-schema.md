@@ -99,7 +99,7 @@ Build outputs may also include:
 - `resolved-assets.json` — records the final URI used for each placeholder
 - `image-plan.json` — records the role-based slot plan
 - `image-plan.md` — debug-friendly markdown table for the slot plan
-- `publish-manifest.json` — records the WeChat backend draft/preview handoff data
+- `<html-stem>.publish-manifest.json` — records the WeChat backend draft/preview handoff data
 
 ## Publish Manifest
 
@@ -125,8 +125,8 @@ Build outputs may also include:
     "method": "message/mass/preview",
     "account": ""
   },
-  "publisher_config_path": "~/.codex/wechat-article-pipeline/publisher-config.json",
-  "api_config_path": "~/.codex/wechat-article-pipeline/wechat-api-config.json",
+  "env_file": ".env",
+  "token_cache_path": "~/.codex/wechat-article-pipeline/wechat-token-cache.json",
   "safety": {
     "use_official_api_only": true,
     "avoid_computer_use_on_mp_backend": true,
@@ -136,6 +136,6 @@ Build outputs may also include:
 }
 ```
 
-Author and optional preview account are local defaults. Keep them in `~/.codex/wechat-article-pipeline/publisher-config.json`, not in Git.
+Author, optional preview account, AppID, and AppSecret are local defaults. Keep them in `.env`, copied from `.env.example`; `.env` is ignored by Git and must never be committed.
 
-Official API credentials are also local-only. Keep AppID/AppSecret and token cache in `~/.codex/wechat-article-pipeline/wechat-api-config.json`, not in Git.
+Access tokens are cached locally in `~/.codex/wechat-article-pipeline/wechat-token-cache.json`, outside the repo.

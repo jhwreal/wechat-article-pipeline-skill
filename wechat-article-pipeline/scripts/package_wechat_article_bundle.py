@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--publish-manifest-out",
         type=Path,
-        help="Optional path to save the WeChat API draft manifest. Defaults to publish-manifest.json next to the HTML output.",
+        help="Optional path to save the WeChat API draft manifest. Defaults to <html-stem>.publish-manifest.json.",
     )
     parser.add_argument(
         "--no-publish-manifest",
@@ -80,6 +80,11 @@ def parse_args() -> argparse.Namespace:
         "--publisher-config",
         type=Path,
         help="Local publisher config path. Defaults to ~/.codex/wechat-article-pipeline/publisher-config.json.",
+    )
+    parser.add_argument(
+        "--publisher-env-file",
+        type=Path,
+        help="Local .env file with WECHAT_AUTHOR and WECHAT_PREVIEW_ACCOUNT defaults.",
     )
     parser.add_argument("--author", help="Author override for the publish manifest.")
     parser.add_argument("--preview-account", help="Preview WeChat account override for the publish manifest.")
@@ -294,6 +299,7 @@ def write_publish_manifest(
     workbench_html: Path,
     article_slug: str,
     config_path: Path | None,
+    env_file: Path | None,
     author: str | None,
     preview_account: str | None,
     remember: bool,
@@ -310,6 +316,8 @@ def write_publish_manifest(
     ]
     if config_path:
         command.extend(["--config", str(config_path.expanduser())])
+    if env_file:
+        command.extend(["--env-file", str(env_file.expanduser())])
     if author:
         command.extend(["--author", author])
     if preview_account:
@@ -317,6 +325,10 @@ def write_publish_manifest(
     if remember:
         command.append("--remember")
     subprocess.run(command, check=True)
+
+
+def default_publish_manifest_path(out_path: Path) -> Path:
+    return out_path.resolve().with_suffix(".publish-manifest.json")
 
 
 def validate_embedded_html(html: str, expected_visual_count: int) -> None:
@@ -378,13 +390,14 @@ def main() -> None:
     )
 
     if not args.no_publish_manifest:
-        manifest_out = (args.publish_manifest_out or (args.out.resolve().parent / "publish-manifest.json")).resolve()
+        manifest_out = (args.publish_manifest_out or default_publish_manifest_path(args.out)).resolve()
         write_publish_manifest(
             job_path=job_out,
             out_path=manifest_out,
             workbench_html=args.out.resolve(),
             article_slug=slug_source,
             config_path=args.publisher_config,
+            env_file=args.publisher_env_file,
             author=args.author,
             preview_account=args.preview_account,
             remember=args.remember_publisher_config,
@@ -393,7 +406,7 @@ def main() -> None:
     print(f"Wrote {job_out}")
     print(f"Wrote {args.out.resolve()}")
     if not args.no_publish_manifest:
-        print(f"Wrote {(args.publish_manifest_out or (args.out.resolve().parent / 'publish-manifest.json')).resolve()}")
+        print(f"Wrote {(args.publish_manifest_out or default_publish_manifest_path(args.out)).resolve()}")
     if args.support_dir:
         print(f"Wrote support files to {args.support_dir.resolve()}")
 

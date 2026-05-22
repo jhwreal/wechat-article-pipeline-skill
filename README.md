@@ -23,7 +23,7 @@ wechat-article-pipeline/
 - emotional/story content uses illustration logic instead of step diagrams
 - deterministic scripts for image-job planning and HTML packaging
 - single-file editable HTML output with embedded images
-- `publish-manifest.json` for WeChat API draft/preview automation
+- `<html-stem>.publish-manifest.json` for WeChat API draft/preview automation
 - official API workflow for body image upload, cover material upload, and draft creation; preview is optional only when explicitly requested
 - no nested `codex exec` runtime
 
@@ -70,27 +70,24 @@ python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
   --images-dir image/<article-slug>
 ```
 
-The packager also writes `publish-manifest.json` next to `output.html`. By default, the skill stops after generating the article HTML package. If the user explicitly asks to push to the WeChat draft box, use `wechat-article-pipeline/references/publishing.md` with the official API script:
+The packager also writes `<html-stem>.publish-manifest.json` next to `output.html`. For example, `output.html` gets `output.publish-manifest.json`. By default, the skill stops after generating the article HTML package. If the user explicitly asks to push to the WeChat draft box, use `wechat-article-pipeline/references/publishing.md` with the official API script:
+
+Create a local `.env` from `.env.example` first. The real `.env` is ignored by Git and must not be uploaded to GitHub:
+
+```dotenv
+WECHAT_APPID=
+WECHAT_APPSECRET=
+WECHAT_AUTHOR=
+WECHAT_PREVIEW_ACCOUNT=
+```
 
 ```bash
 python3 wechat-article-pipeline/scripts/publish_wechat_api.py \
-  publish-manifest.json \
-  --appid APPID \
-  --appsecret APPSECRET \
+  output.publish-manifest.json \
+  --env-file .env \
   --remember \
-  --check-draft-switch
-```
-
-Local author and optional preview account defaults are stored outside the repo:
-
-```text
-~/.codex/wechat-article-pipeline/publisher-config.json
-```
-
-Official API credentials are also local-only:
-
-```text
-~/.codex/wechat-article-pipeline/wechat-api-config.json
+  --check-draft-switch \
+  --verify-draft
 ```
 
 ## Repository Layout
@@ -142,7 +139,7 @@ wechat-article-pipeline/
 - 情绪/故事类内容使用插画逻辑，而不是步骤图或流程图
 - 提供确定性的脚本，用于生成图片任务计划和 HTML 打包
 - 输出带内嵌图片的单文件可编辑 HTML
-- 输出用于公众号 API 草稿/预览自动化的 `publish-manifest.json`
+- 输出用于公众号 API 草稿/预览自动化的 `<html文件名>.publish-manifest.json`
 - 提供官方 API 流程：正文图片上传、封面素材上传、创建草稿；只有明确要求时才发送预览
 - 不在 skill 内部嵌套调用 `codex exec`
 
@@ -189,27 +186,24 @@ python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
   --images-dir image/<article-slug>
 ```
 
-打包脚本会默认在 `output.html` 同目录生成 `publish-manifest.json`。默认情况下，skill 只执行生成 HTML 文章包这一段。只有当用户明确要求推送到公众号草稿箱时，才按 `wechat-article-pipeline/references/publishing.md` 使用官方 API 脚本：
+打包脚本会默认在 `output.html` 同目录生成 `output.publish-manifest.json`，即 manifest 和 HTML 同名，不再复用固定的 `publish-manifest.json`。默认情况下，skill 只执行生成 HTML 文章包这一段。只有当用户明确要求推送到公众号草稿箱时，才按 `wechat-article-pipeline/references/publishing.md` 使用官方 API 脚本：
+
+先从 `.env.example` 复制出本地 `.env`。真实 `.env` 已被 Git 忽略，上传 GitHub 时不能包含：
+
+```dotenv
+WECHAT_APPID=
+WECHAT_APPSECRET=
+WECHAT_AUTHOR=
+WECHAT_PREVIEW_ACCOUNT=
+```
 
 ```bash
 python3 wechat-article-pipeline/scripts/publish_wechat_api.py \
-  publish-manifest.json \
-  --appid APPID \
-  --appsecret APPSECRET \
+  output.publish-manifest.json \
+  --env-file .env \
   --remember \
-  --check-draft-switch
-```
-
-作者和可选预览微信号保存在本机配置，不进仓库：
-
-```text
-~/.codex/wechat-article-pipeline/publisher-config.json
-```
-
-微信 API 凭据也只保存在本机：
-
-```text
-~/.codex/wechat-article-pipeline/wechat-api-config.json
+  --check-draft-switch \
+  --verify-draft
 ```
 
 ## 仓库结构
