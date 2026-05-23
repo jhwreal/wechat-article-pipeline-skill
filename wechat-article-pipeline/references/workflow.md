@@ -24,6 +24,11 @@ Interaction rule:
 Visual defaults:
 
 - finish the article first, then decide image placement
+- after the user confirms the article copy, run `scripts/mark_wechat_article_focus.py article.md article.focused.md` before deriving image jobs
+- use the focus-marked markdown for image jobs, HTML packaging, publish manifest generation, and optional WeChat draft creation
+- in roughly every 300 Chinese characters, add at most one markdown blockquote for a genuinely memorable sentence and 1-2 `**bold**` marks for useful key terms, focus words, or concepts
+- treat focus marks as reading aids, not decoration; too many marks dilute attention and should be avoided
+- do not mark headings, image placeholders, code blocks, inline code, commands, or dense list-only sections
 - before any actual image generation, make an internal Image Plan for all slots: article summary -> slot role -> local context -> prompt -> anti-repetition check
 - always generate one cover image and one closing image
 - aim for about one in-body image per 200 Chinese characters for method articles, and about one stronger in-body illustration per 300-450 Chinese characters for emotional, story, or principle articles
@@ -44,13 +49,15 @@ Keep explanatory visuals close to the paragraph they support.
 
 Visual packaging rule:
 
-1. Generate the draft image after the nearby paragraphs are written.
-2. Check that the slot role is correct for that position instead of defaulting to another generic theme image.
-3. Check whether it matches the paragraph point, feels generic, or competes with the headline.
-4. If it fails, regenerate once with a safer and simpler prompt or a different visual direction.
-5. Save the approved file with the matching placeholder basename such as `body-2.png`.
-6. Package the markdown plus local image directory into the final HTML with `scripts/package_wechat_article_bundle.py`, keeping role metadata in the markdown/job artifacts.
-7. Keep the generated `<html-stem>.publish-manifest.json` next to the HTML. It is the handoff file for the optional WeChat API draft-box stage.
+1. Confirm the article copy.
+2. Run focus marking on the confirmed markdown.
+3. Generate the draft image after the nearby paragraphs are written and marked.
+4. Check that the slot role is correct for that position instead of defaulting to another generic theme image.
+5. Check whether it matches the paragraph point, feels generic, or competes with the headline.
+6. If it fails, regenerate once with a safer and simpler prompt or a different visual direction.
+7. Save the approved file with the matching placeholder basename such as `body-2.png`.
+8. Package the focus-marked markdown plus local image directory into the final HTML with `scripts/package_wechat_article_bundle.py`, keeping role metadata in the markdown/job artifacts.
+9. Keep the generated `<html-stem>.publish-manifest.json` next to the HTML. It is the handoff file for the optional WeChat API draft-box stage.
 
 For cover and closing visuals, bias toward quieter composition:
 - fewer competing elements

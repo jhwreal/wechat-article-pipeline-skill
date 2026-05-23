@@ -8,6 +8,7 @@ import mimetypes
 import re
 import secrets
 import ssl
+import subprocess
 import sys
 import tempfile
 import time
@@ -24,6 +25,8 @@ DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wech
 API_BASE = "https://api.weixin.qq.com"
 DATA_IMAGE_RE = re.compile(r'src=(["\'])(data:image/[^"\']+)\1', re.I)
 VISUAL_PLACEHOLDER_RE = re.compile(r"\{\{visual:[^}]+\}\}")
+MAX_BODY_IMAGE_BYTES = 1024 * 1024
+BODY_IMAGE_TARGET_BYTES = MAX_BODY_IMAGE_BYTES - 2048
 ERROR_HELP = {
     40164: "当前调用 IP 不在公众号接口 IP 白名单。把这台机器的出口 IP 加到公众平台开发配置后重试。",
     48001: "公众号没有开通或没有获得该接口权限。",
@@ -39,6 +42,10 @@ class LocalImage:
     mime: str
     width: int = 0
     height: int = 0
+    original_bytes: int = 0
+    upload_bytes: int = 0
+    quality: int = 0
+    scale: float = 1.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -255,33 +262,144 @@ def decode_data_image(data_uri: str, suffix_hint: str) -> LocalImage:
             width, height = img.size
     except Exception:
         pass
-    return LocalImage(Path(tmp.name), mime, width, height)
+    size = Path(tmp.name).stat().st_size
+    return LocalImage(Path(tmp.name), mime, width, height, original_bytes=size, upload_bytes=size)
 
 
 def normalize_body_image(image: LocalImage) -> LocalImage:
     allowed = {"image/jpeg", "image/png"}
-    if image.mime in allowed and image.path.stat().st_size <= 1024 * 1024:
+    original_size = image.path.stat().st_size
+    image.original_bytes = image.original_bytes or original_size
+    image.upload_bytes = original_size
+    if image.mime in allowed and original_size <= MAX_BODY_IMAGE_BYTES:
         return image
     try:
         from PIL import Image
     except Exception as exc:  # pragma: no cover - optional dependency
+        return normalize_body_image_with_sips(image, exc)
+
+    def save_candidate(img: Any, quality: int) -> tuple[Path, int]:
+        out = tempfile.NamedTemporaryFile(prefix="wechat-body-", suffix=".jpg", delete=False)
+        out.close()
+        img.save(out.name, "JPEG", quality=quality, optimize=True, progressive=True)
+        path = Path(out.name)
+        return path, path.stat().st_size
+
+    def best_quality_under_limit(img: Any) -> tuple[Path, int, int] | None:
+        best: tuple[Path, int, int] | None = None
+        low, high = 40, 95
+        while low <= high:
+            quality = (low + high) // 2
+            path, size = save_candidate(img, quality)
+            if size <= BODY_IMAGE_TARGET_BYTES:
+                if best is None or size > best[1]:
+                    best = (path, size, quality)
+                low = quality + 1
+            else:
+                high = quality - 1
+        return best
+
+    with Image.open(image.path) as img:
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img.convert("RGBA"), mask=img.convert("RGBA").getchannel("A"))
+            base = background
+        else:
+            base = img.convert("RGB")
+
+        scale = 1.0
+        working = base
+        while min(working.size) >= 320:
+            candidate = best_quality_under_limit(working)
+            if candidate:
+                path, size, quality = candidate
+                return LocalImage(
+                    path=path,
+                    mime="image/jpeg",
+                    width=working.width,
+                    height=working.height,
+                    original_bytes=image.original_bytes,
+                    upload_bytes=size,
+                    quality=quality,
+                    scale=scale,
+                )
+            scale *= 0.9
+            next_size = (max(1, int(base.width * scale)), max(1, int(base.height * scale)))
+            working = base.resize(next_size, Image.LANCZOS)
+    raise SystemExit(f"Could not compress body image {image.path} under 1MB.")
+
+
+def image_size_with_sips(path: Path) -> tuple[int, int]:
+    proc = subprocess.run(
+        ["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    width = height = 0
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("pixelWidth:"):
+            width = int(line.split(":", 1)[1].strip())
+        elif line.startswith("pixelHeight:"):
+            height = int(line.split(":", 1)[1].strip())
+    return width, height
+
+
+def normalize_body_image_with_sips(image: LocalImage, pillow_exc: Exception) -> LocalImage:
+    try:
+        width, height = image_size_with_sips(image.path)
+    except Exception as exc:  # pragma: no cover - platform fallback
         raise SystemExit(
             f"Body image {image.path} is {image.mime} or larger than 1MB. "
             "Install Pillow or provide jpg/png body images under 1MB."
-        ) from exc
-    with Image.open(image.path) as img:
-        img = img.convert("RGB")
-        max_side = max(img.size)
-        if max_side > 1400:
-            ratio = 1400 / max_side
-            img = img.resize((int(img.width * ratio), int(img.height * ratio)))
+        ) from pillow_exc or exc
+
+    def save_candidate(quality: int, max_side: int | None) -> tuple[Path, int]:
         out = tempfile.NamedTemporaryFile(prefix="wechat-body-", suffix=".jpg", delete=False)
-        quality = 88
-        while quality >= 55:
-            img.save(out.name, "JPEG", quality=quality, optimize=True)
-            if Path(out.name).stat().st_size <= 1024 * 1024:
-                return LocalImage(Path(out.name), "image/jpeg")
-            quality -= 8
+        out.close()
+        cmd = ["sips"]
+        if max_side:
+            cmd.extend(["-Z", str(max_side)])
+        cmd.extend(["-s", "format", "jpeg", "-s", "formatOptions", str(quality), str(image.path), "--out", out.name])
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        path = Path(out.name)
+        return path, path.stat().st_size
+
+    def best_quality_under_limit(max_side: int | None) -> tuple[Path, int, int] | None:
+        best: tuple[Path, int, int] | None = None
+        low, high = 40, 100
+        while low <= high:
+            quality = (low + high) // 2
+            path, size = save_candidate(quality, max_side)
+            if size <= BODY_IMAGE_TARGET_BYTES:
+                if best is None or size > best[1]:
+                    best = (path, size, quality)
+                low = quality + 1
+            else:
+                high = quality - 1
+        return best
+
+    scale = 1.0
+    max_side = max(width, height)
+    current_max_side: int | None = None
+    while int(max_side * scale) >= 320:
+        candidate = best_quality_under_limit(current_max_side)
+        if candidate:
+            path, size, quality = candidate
+            out_width, out_height = image_size_with_sips(path)
+            return LocalImage(
+                path=path,
+                mime="image/jpeg",
+                width=out_width,
+                height=out_height,
+                original_bytes=image.original_bytes,
+                upload_bytes=size,
+                quality=quality,
+                scale=scale,
+            )
+        scale *= 0.9
+        current_max_side = max(320, int(max_side * scale))
     raise SystemExit(f"Could not compress body image {image.path} under 1MB.")
 
 
@@ -291,10 +409,22 @@ def upload_body_images(content_html: str, access_token: str) -> tuple[str, list[
     def replace(match: re.Match[str]) -> str:
         quote = match.group(1)
         data_uri = match.group(2)
-        image = normalize_body_image(decode_data_image(data_uri, "png"))
+        source_image = decode_data_image(data_uri, "png")
+        image = normalize_body_image(source_image)
         resp = api_post_multipart("/cgi-bin/media/uploadimg", {}, {"media": image}, access_token)
         url = str(resp["url"])
-        uploads.append({"kind": "body", "local_path": str(image.path), "url": url})
+        uploads.append(
+            {
+                "kind": "body",
+                "local_path": str(image.path),
+                "url": url,
+                "original_bytes": str(source_image.original_bytes or source_image.path.stat().st_size),
+                "upload_bytes": str(image.upload_bytes or image.path.stat().st_size),
+                "compressed": str(image.path != source_image.path).lower(),
+                "quality": str(image.quality),
+                "scale": f"{image.scale:.4f}",
+            }
+        )
         return f"src={quote}{url}{quote}"
 
     return DATA_IMAGE_RE.sub(replace, content_html), uploads

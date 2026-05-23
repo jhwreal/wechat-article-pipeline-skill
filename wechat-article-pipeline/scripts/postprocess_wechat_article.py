@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+MARK_FOCUS = SCRIPT_DIR / "mark_wechat_article_focus.py"
 MAKE_JOBS = SCRIPT_DIR / "make_wechat_article_image_jobs.py"
 PACKAGE = SCRIPT_DIR / "package_wechat_article_bundle.py"
 WORKSPACE = Path.cwd()
@@ -28,7 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--jobs-out", type=Path, help="Optional path for the generated image jobs JSON.")
     parser.add_argument("--images-dir", type=Path, help="Directory containing generated cover/body/closing images.")
     parser.add_argument("--job-out", type=Path, help="Optional path for the generated HTML builder job JSON.")
+    parser.add_argument("--focused-article-out", type=Path, help="Optional path for the marked article markdown.")
     parser.add_argument("--support-dir", type=Path, help="Optional support file directory.")
+    parser.add_argument("--focus-target-chars", type=int, default=300)
+    parser.add_argument("--max-bold-per-focus-zone", type=int, default=2)
+    parser.add_argument("--no-focus-marking", action="store_true", help="Skip pull quote/key term/concept marking.")
     parser.add_argument("--target-body-chars", type=int, default=200)
     parser.add_argument("--min-body-chars", type=int, default=120)
     parser.add_argument("--workspace", type=Path, default=WORKSPACE, help="Workspace root. Defaults to current directory.")
@@ -84,17 +89,36 @@ def assert_images_ready(jobs_path: Path, images_dir: Path) -> None:
 
 def main() -> None:
     args = parse_args()
-    article = args.article.resolve()
+    source_article = args.article.resolve()
     out = args.out.resolve()
-    article_slug = args.article_slug or infer_article_slug(article)
+    article_slug = args.article_slug or infer_article_slug(source_article)
     jobs_out = (args.jobs_out or out.with_suffix(".image-jobs.json")).resolve()
     workspace = args.workspace.resolve()
     images_dir = (args.images_dir or (workspace / "image" / article_slug)).resolve()
+    focused_article = (
+        source_article
+        if args.no_focus_marking
+        else (args.focused_article_out or source_article.with_suffix(".focused.md")).resolve()
+    )
+
+    if not args.no_focus_marking:
+        run(
+            [
+                sys.executable,
+                str(MARK_FOCUS),
+                str(source_article),
+                str(focused_article),
+                "--target-chars",
+                str(args.focus_target_chars),
+                "--max-bold-per-zone",
+                str(args.max_bold_per_focus_zone),
+            ]
+        )
 
     make_jobs_cmd = [
         sys.executable,
         str(MAKE_JOBS),
-        str(article),
+        str(focused_article),
         str(jobs_out),
         "--article-slug",
         article_slug,
@@ -117,7 +141,7 @@ def main() -> None:
     package_cmd = [
         sys.executable,
         str(PACKAGE),
-        str(article),
+        str(focused_article),
         str(out),
         "--plan-json",
         str(jobs_out),

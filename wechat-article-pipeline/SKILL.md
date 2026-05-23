@@ -34,9 +34,11 @@ Build one coherent WeChat article package from a single user idea: topic -> arti
 20. Use `method_visual` only when the article is truly teaching steps, tools, workflows, checklists, or procedures. It may use process nodes, arrows, numbered steps, checklist cards, comparison diagrams, and compact information graphics.
 21. Use `emotional_illustration` for stories, emotional essays, life principles, relationship pieces, ordinary-person reflections, and articles that primarily need resonance or atmosphere. It must use illustration logic: human moments, symbolic scenes, light, space, objects, tension, silence, and metaphor. Do not use numbered steps, arrows, process diagrams, checklist cards, information cards, UI panels, or icon matrices in body images for this mode.
 22. Use `analysis_visual` for industry, mechanism, evidence, and trend pieces. It may use evidence, contrast, mechanism, and restrained metaphor, but should avoid process graphics unless the local paragraph is actually procedural.
-23. When the user asks to create a WeChat draft, read [publishing.md](references/publishing.md) and use only official WeChat APIs. Do not use private WeChat backend APIs or browser automation against `mp.weixin.qq.com`.
-24. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
-25. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward account, or collection set, because the public draft API does not expose those fields.
+23. After the user confirms the article copy, and before deriving image jobs, run the focus-marking step so the final article contains pull quotes, key terms, and concept highlights for reader attention.
+24. In roughly every 300 Chinese characters of body copy, mark at most one genuinely strong pull quote as a markdown blockquote and mark 1-2 useful key terms/concepts with `**bold**`. This is an attention aid, not decoration: avoid dense highlighting, avoid weak pull quotes, do not rewrite the article, and do not mark headings, image placeholders, code blocks, or command snippets.
+25. When the user asks to create a WeChat draft, read [publishing.md](references/publishing.md) and use only official WeChat APIs. Do not use private WeChat backend APIs or browser automation against `mp.weixin.qq.com`.
+26. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
+27. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward account, or collection set, because the public draft API does not expose those fields.
 
 ## Default assumptions
 
@@ -99,6 +101,21 @@ The packager also tolerates bare `{{visual:name}}` placeholders and converts the
 
 ### 3. Derive image jobs from the written article
 
+After the article copy is approved, create a focus-marked markdown copy before generating image jobs:
+
+```bash
+python3 scripts/mark_wechat_article_focus.py article.md article.focused.md
+```
+
+This command must:
+- keep the prose unchanged except for markdown marking
+- add `> ...` pull quotes for memorable sentences when a 300-character zone has one
+- add `**...**` emphasis to key terms, focus words, and concepts
+- skip headings, image placeholders, code fences, inline code, and command/list-heavy blocks
+- avoid visual noise by keeping the default to at most one strong pull quote and 1-2 bold marks per zone
+
+Use `article.focused.md` as the source for image-job derivation, packaging, and optional WeChat API draft delivery.
+
 Generate an internal Image Plan before any actual image call.
 
 First classify the article into one of these working types:
@@ -139,11 +156,12 @@ Prefer:
 Normal execution path after the article exists:
 
 ```bash
-python3 scripts/make_wechat_article_image_jobs.py article.md output.image-jobs.json --debug-plan
+python3 scripts/mark_wechat_article_focus.py article.md article.focused.md
+python3 scripts/make_wechat_article_image_jobs.py article.focused.md output.image-jobs.json --debug-plan
 ```
 
 This command must:
-- read the finished article markdown
+- read the focus-marked finished article markdown
 - derive an internal Image Plan plus the final `cover`, `closing`, and `body-*` image jobs from the article content itself
 - generate planning metadata for `cover` and `closing` from the full-article meaning, while each `body-*` image uses its local role plus the nearby paragraphs instead of reusing the cover/closing logic
 - preserve per-image role metadata in the generated markdown/job artifacts so one slot can be regenerated later without guessing what it was for
