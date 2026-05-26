@@ -275,6 +275,7 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
     text = PLACEHOLDER_RE.sub(" ", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"==([^=\n]+)==", r"\1", text)
     text = re.sub(r"[`>*_#-]+", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()

@@ -504,6 +504,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
         .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/==([^=\n]+)==/g, '<span class="inline-accent">$1</span>')
         .replace(/(^|[\s（(“‘])'([^'\n]{1,80})'(?![\w])/g, '$1<span class="inline-accent">&#39;$2&#39;</span>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>');
     }
@@ -952,6 +953,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
           .replace(/^#{1,6}\s+/gm, '')
           .replace(/^>\s?/gm, '')
           .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/==([^=\n]+)==/g, '$1')
           .replace(/[`*_]/g, '')
           .replace(/\s+/g, ' ')
           .trim())

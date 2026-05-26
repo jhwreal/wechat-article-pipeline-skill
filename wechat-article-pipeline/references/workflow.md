@@ -26,7 +26,10 @@ Visual defaults:
 - finish the article first, then decide image placement
 - after the user confirms the article copy, run `scripts/mark_wechat_article_focus.py article.md article.focused.md` before deriving image jobs
 - use the focus-marked markdown for image jobs, HTML packaging, publish manifest generation, and optional WeChat draft creation
-- in roughly every 300 Chinese characters, add at most one markdown blockquote for a genuinely memorable sentence and 1-2 `**bold**` marks for useful key terms, focus words, or concepts
+- while drafting, prefer clear `##` section headings whenever the structure naturally supports them
+- in roughly every 300 Chinese characters, mark one core sentence with `**...**` for the green key-sentence style
+- keep the pink accent style available in the template, but do not add automatic pink keyword marks by default
+- only convert a sentence to a markdown blockquote when it is genuinely quotable; move/mark the original sentence as `> ...` instead of repeating it below the paragraph
 - treat focus marks as reading aids, not decoration; too many marks dilute attention and should be avoided
 - do not mark headings, image placeholders, code blocks, inline code, commands, or dense list-only sections
 - before any actual image generation, make an internal Image Plan for all slots: article summary -> slot role -> local context -> prompt -> anti-repetition check

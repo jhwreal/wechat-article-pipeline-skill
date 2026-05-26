@@ -34,8 +34,8 @@ Build one coherent WeChat article package from a single user idea: topic -> arti
 20. Use `method_visual` only when the article is truly teaching steps, tools, workflows, checklists, or procedures. It may use process nodes, arrows, numbered steps, checklist cards, comparison diagrams, and compact information graphics.
 21. Use `emotional_illustration` for stories, emotional essays, life principles, relationship pieces, ordinary-person reflections, and articles that primarily need resonance or atmosphere. It must use illustration logic: human moments, symbolic scenes, light, space, objects, tension, silence, and metaphor. Do not use numbered steps, arrows, process diagrams, checklist cards, information cards, UI panels, or icon matrices in body images for this mode.
 22. Use `analysis_visual` for industry, mechanism, evidence, and trend pieces. It may use evidence, contrast, mechanism, and restrained metaphor, but should avoid process graphics unless the local paragraph is actually procedural.
-23. After the user confirms the article copy, and before deriving image jobs, run the focus-marking step so the final article contains pull quotes, key terms, and concept highlights for reader attention.
-24. In roughly every 300 Chinese characters of body copy, mark at most one genuinely strong pull quote as a markdown blockquote and mark 1-2 useful key terms/concepts with `**bold**`. This is an attention aid, not decoration: avoid dense highlighting, avoid weak pull quotes, do not rewrite the article, and do not mark headings, image placeholders, code blocks, or command snippets.
+23. After the user confirms the article copy, and before deriving image jobs, run the focus-marking step so the final article contains core sentence highlights and occasional pull quotes for reader attention.
+24. Apply reading-focus marks in this order: first make the structure clear with useful `##` section headings while drafting; then mark one core sentence in a zone with `**...**` so it renders green; finally, only when a sentence is genuinely quotable, turn that original sentence into a markdown blockquote. Never duplicate a sentence just to create a pull quote. Keep the pink accent style available in the template, but do not add automatic pink keyword marks by default.
 25. When the user asks to create a WeChat draft, read [publishing.md](references/publishing.md) and use only official WeChat APIs. Do not use private WeChat backend APIs or browser automation against `mp.weixin.qq.com`.
 26. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
 27. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward account, or collection set, because the public draft API does not expose those fields.
@@ -109,10 +109,11 @@ python3 scripts/mark_wechat_article_focus.py article.md article.focused.md
 
 This command must:
 - keep the prose unchanged except for markdown marking
-- add `> ...` pull quotes for memorable sentences when a 300-character zone has one
-- add `**...**` emphasis to key terms, focus words, and concepts
+- prefer clear `##` section structure from the article draft itself
+- add `**...**` to the most useful core sentence in a focus zone so it renders as the green key sentence
+- convert an existing memorable sentence to `> ...` only when it is strong enough; do not append a repeated quote after the paragraph
 - skip headings, image placeholders, code fences, inline code, and command/list-heavy blocks
-- avoid visual noise by keeping the default to at most one strong pull quote and 1-2 bold marks per zone
+- avoid visual noise by keeping the default to one green sentence and zero or one strong pull quote per zone
 
 Use `article.focused.md` as the source for image-job derivation, packaging, and optional WeChat API draft delivery.
 

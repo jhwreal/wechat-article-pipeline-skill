@@ -32,8 +32,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--focused-article-out", type=Path, help="Optional path for the marked article markdown.")
     parser.add_argument("--support-dir", type=Path, help="Optional support file directory.")
     parser.add_argument("--focus-target-chars", type=int, default=300)
-    parser.add_argument("--max-bold-per-focus-zone", type=int, default=2)
-    parser.add_argument("--no-focus-marking", action="store_true", help="Skip pull quote/key term/concept marking.")
+    parser.add_argument(
+        "--max-bold-per-focus-zone",
+        "--max-accent-per-focus-zone",
+        dest="max_bold_per_focus_zone",
+        type=int,
+        default=0,
+        help="Deprecated compatibility option. Automatic pink accent term marking is currently disabled.",
+    )
+    parser.add_argument("--no-focus-marking", action="store_true", help="Skip key-sentence/quote marking.")
     parser.add_argument("--target-body-chars", type=int, default=200)
     parser.add_argument("--min-body-chars", type=int, default=120)
     parser.add_argument("--workspace", type=Path, default=WORKSPACE, help="Workspace root. Defaults to current directory.")

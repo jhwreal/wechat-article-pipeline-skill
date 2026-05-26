@@ -16,6 +16,11 @@ DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-token-cache.json"
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+IMAGE_STYLE = "max-width:100%;display:block;margin:22px auto;border-radius:8px"
+STRONG_STYLE = "font-weight:700;color:#17b394"
+ACCENT_STYLE = "color:#d14d72;font-weight:700"
+LINK_STYLE = "color:#17b394;text-decoration:none;border-bottom:1px solid rgba(23,179,148,.35)"
+CODE_STYLE = "background:#f2f4f7;border:1px solid #eaecf0;border-radius:6px;padding:.12em .38em;font-size:.92em;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d14d72;font-weight:700"
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,6 +84,7 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"==([^=\n]+)==", r"\1", text)
     text = re.sub(r"\*([^*]+)\*", r"\1", text)
     text = re.sub(r"__([^_]+)__", r"\1", text)
     text = re.sub(r"_([^_]+)_", r"\1", text)
@@ -123,10 +129,15 @@ def image_candidates(markdown: str, visuals: dict[str, Any]) -> list[dict[str, s
 
 def inline_format(text: str) -> str:
     escaped = html.escape(text, quote=True)
-    escaped = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", r'<img alt="\1" src="\2" />', escaped)
-    escaped = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', escaped)
-    escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
-    escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
+    escaped = re.sub(
+        r"!\[([^\]]*)\]\(([^)]+)\)",
+        rf'<img alt="\1" src="\2" style="{IMAGE_STYLE}" />',
+        escaped,
+    )
+    escaped = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", rf'<a href="\2" style="{LINK_STYLE}">\1</a>', escaped)
+    escaped = re.sub(r"`([^`]+)`", rf'<code style="{CODE_STYLE}">\1</code>', escaped)
+    escaped = re.sub(r"\*\*([^*]+)\*\*", rf'<strong style="{STRONG_STYLE}">\1</strong>', escaped)
+    escaped = re.sub(r"==([^=\n]+)==", rf'<span style="{ACCENT_STYLE}">\1</span>', escaped)
     escaped = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", escaped)
     return escaped
 

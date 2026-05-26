@@ -15,6 +15,10 @@ Writing rules:
 - explain a term before expanding it
 - use bullets only when they help comprehension
 - keep each section doing one job
+- when the article has clear internal turns, use `##` section headings before relying on visual emphasis
+- use `**...**` for a whole core sentence that deserves the green key-sentence treatment
+- keep the pink accent style available for future manual use, but do not add automatic pink keyword marks by default
+- use `> ...` only for a genuinely strong quote, and convert the original sentence instead of repeating it
 - keep the article compact: under 2000 Chinese characters by default, aim near 1000
 - optimize for completion rate: cut padding, keep information density high
 - bias toward practical cognition gains, not empty attitude or slogan writing
