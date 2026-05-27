@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import mimetypes
 import re
@@ -56,6 +57,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--env-file", type=Path, help="Local .env file containing WECHAT_APPID and WECHAT_APPSECRET.")
     parser.add_argument("--config", type=Path, default=DEFAULT_API_CONFIG, help="Legacy local API config path.")
     parser.add_argument("--token-cache", type=Path, default=DEFAULT_TOKEN_CACHE, help="Local access_token cache path.")
+    parser.add_argument(
+        "--account",
+        help=(
+            "Official Account selector. Matches WECHAT_ACCOUNT_<ALIAS>_NAME first, then <ALIAS>. "
+            "Use this when one .env stores multiple accounts."
+        ),
+    )
     parser.add_argument("--appid", help="WeChat Official Account AppID. Overrides .env and legacy config.")
     parser.add_argument("--appsecret", help="WeChat Official Account AppSecret. Overrides .env and legacy config.")
     parser.add_argument("--access-token", help="Use an existing access_token instead of fetching one.")
@@ -127,6 +135,95 @@ def read_env_file(path: Path | None) -> dict[str, str]:
         if key:
             env[key] = value
     return env
+
+
+def normalize_account_alias(alias: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_]+", "_", alias.strip()).strip("_").upper()
+    return cleaned
+
+
+def find_account_profile(env: dict[str, str], selector: str | None) -> dict[str, str]:
+    groups: dict[str, dict[str, str]] = {}
+    pattern = re.compile(r"^WECHAT_ACCOUNT_([A-Z0-9_]+)_(NAME|APPID|APPSECRET|AUTHOR|PREVIEW_ACCOUNT)$")
+    for key, value in env.items():
+        match = pattern.match(key)
+        if not match:
+            continue
+        alias, field = match.groups()
+        groups.setdefault(alias, {})[field.lower()] = value.strip()
+
+    if not selector:
+        credential_groups = {
+            alias: profile for alias, profile in groups.items() if profile.get("appid") or profile.get("appsecret")
+        }
+        if len(credential_groups) == 1:
+            alias, profile = next(iter(credential_groups.items()))
+            return {
+                "selector": "",
+                "alias": alias,
+                "name": profile.get("name", "").strip(),
+                "appid": profile.get("appid", "").strip(),
+                "appsecret": profile.get("appsecret", "").strip(),
+                "author": profile.get("author", "").strip(),
+                "preview_account": profile.get("preview_account", "").strip(),
+            }
+        if len(credential_groups) > 1:
+            available = sorted(f"{profile.get('name', '').strip() or alias} ({alias})" for alias, profile in credential_groups.items())
+            raise SystemExit(
+                "Multiple WeChat accounts are configured. Ask the user which account to use, then pass --account. "
+                f"Available accounts: {', '.join(available)}."
+            )
+        return {
+            "selector": "",
+            "alias": "",
+            "name": env.get("WECHAT_ACCOUNT_NAME", "").strip(),
+            "appid": env.get("WECHAT_APPID", "").strip(),
+            "appsecret": env.get("WECHAT_APPSECRET", "").strip(),
+            "author": env.get("WECHAT_AUTHOR", "").strip(),
+            "preview_account": env.get("WECHAT_PREVIEW_ACCOUNT", "").strip(),
+        }
+
+    selector = selector.strip()
+    selector_alias = normalize_account_alias(selector)
+    matches: list[tuple[str, dict[str, str]]] = []
+    for alias, profile in groups.items():
+        if profile.get("name") == selector or (selector_alias and alias == selector_alias):
+            matches.append((alias, profile))
+
+    if not matches:
+        available = sorted(
+            f"{profile.get('name', '').strip() or alias} ({alias})"
+            for alias, profile in groups.items()
+            if profile.get("appid") or profile.get("appsecret")
+        )
+        suffix = f" Available accounts: {', '.join(available)}." if available else ""
+        raise SystemExit(
+            f"Unknown WeChat account selector: {selector}. "
+            "Set WECHAT_ACCOUNT_<ALIAS>_NAME plus APPID/APPSECRET in .env."
+            + suffix
+        )
+    if len(matches) > 1:
+        aliases = ", ".join(alias for alias, _ in matches)
+        raise SystemExit(f"WeChat account selector {selector} matches multiple aliases: {aliases}. Use the alias explicitly.")
+
+    alias, profile = matches[0]
+    return {
+        "selector": selector,
+        "alias": alias,
+        "name": profile.get("name", "").strip(),
+        "appid": profile.get("appid", "").strip(),
+        "appsecret": profile.get("appsecret", "").strip(),
+        "author": profile.get("author", "").strip(),
+        "preview_account": profile.get("preview_account", "").strip(),
+    }
+
+
+def account_token_cache_path(path: Path, profile: dict[str, str]) -> Path:
+    if not profile.get("alias") or path.expanduser() != DEFAULT_TOKEN_CACHE:
+        return path
+    label = profile.get("name") or profile["alias"]
+    digest = hashlib.sha1(label.encode("utf-8")).hexdigest()[:10]
+    return path.with_name(f"{path.stem}-{profile['alias'].lower()}-{digest}{path.suffix}")
 
 
 def save_config(path: Path, config: dict[str, Any]) -> None:
@@ -218,7 +315,11 @@ def request_json(req: urllib.request.Request) -> dict[str, Any]:
     return result
 
 
-def get_access_token(args: argparse.Namespace, config: dict[str, Any], env: dict[str, str]) -> str:
+def get_access_token(
+    args: argparse.Namespace,
+    config: dict[str, Any],
+    account: dict[str, str],
+) -> str:
     if args.access_token:
         return args.access_token.strip()
 
@@ -227,12 +328,13 @@ def get_access_token(args: argparse.Namespace, config: dict[str, Any], env: dict
     if not args.force_refresh_token and cached.get("access_token") and float(cached.get("expires_at", 0)) > time.time() + 300:
         return str(cached["access_token"])
 
-    appid = (args.appid or env.get("WECHAT_APPID") or config.get("appid") or "").strip()
-    appsecret = (args.appsecret or env.get("WECHAT_APPSECRET") or config.get("appsecret") or "").strip()
+    appid = (args.appid or account.get("appid") or config.get("appid") or "").strip()
+    appsecret = (args.appsecret or account.get("appsecret") or config.get("appsecret") or "").strip()
     if not appid or not appsecret:
         raise SystemExit(
-            "Missing WECHAT_APPID/WECHAT_APPSECRET. Ask the user for AppID and AppSecret, then create a local .env "
-            "from .env.example. You can also pass --appid and --appsecret for one-off runs."
+            "Missing WeChat AppID/AppSecret. For the default account, set WECHAT_APPID/WECHAT_APPSECRET. "
+            "For a named account, set WECHAT_ACCOUNT_<ALIAS>_NAME, WECHAT_ACCOUNT_<ALIAS>_APPID, "
+            "and WECHAT_ACCOUNT_<ALIAS>_APPSECRET in .env. You can also pass --appid and --appsecret for one-off runs."
         )
 
     payload: dict[str, Any] = {"grant_type": "client_credential", "appid": appid, "secret": appsecret}
@@ -547,16 +649,22 @@ def verify_draft(media_id: str, expected_title: str, access_token: str) -> dict[
     }
 
 
-def send_preview(media_id: str, args: argparse.Namespace, manifest: dict[str, Any], access_token: str) -> dict[str, Any]:
+def send_preview(
+    media_id: str,
+    args: argparse.Namespace,
+    manifest: dict[str, Any],
+    account: dict[str, str],
+    access_token: str,
+) -> dict[str, Any]:
     preview = manifest.get("preview") or {}
     payload: dict[str, Any] = {"mpnews": {"media_id": media_id}, "msgtype": "mpnews"}
     if args.preview_openid:
         payload["touser"] = args.preview_openid.strip()
     else:
-        account = (args.preview_account or preview.get("account") or "").strip()
-        if not account:
+        preview_account = (args.preview_account or preview.get("account") or account.get("preview_account") or "").strip()
+        if not preview_account:
             raise SystemExit("Preview account is empty. Pass --preview-account or set manifest.preview.account.")
-        payload["towxname"] = account
+        payload["towxname"] = preview_account
     return api_post_json("/cgi-bin/message/mass/preview", payload, access_token)
 
 
@@ -566,6 +674,8 @@ def main() -> None:
     config = read_config(args.config)
     env_file = find_env_file(args.manifest, args.env_file)
     env = read_env_file(env_file)
+    account = find_account_profile(env, args.account)
+    args.token_cache = account_token_cache_path(args.token_cache.expanduser(), account)
 
     content_html = str(manifest.get("content_html", ""))
     validation = validate_manifest(manifest, content_html)
@@ -574,6 +684,12 @@ def main() -> None:
         "manifest": str(args.manifest.resolve()),
         "dry_run": args.dry_run,
         "env_file": str(env_file.resolve()) if env_file and env_file.exists() else "",
+        "account": {
+            "selector": account.get("selector", ""),
+            "alias": account.get("alias", ""),
+            "name": account.get("name", ""),
+        },
+        "token_cache": str(args.token_cache),
         "validation": validation,
     }
     draft_payload: dict[str, Any]
@@ -600,7 +716,7 @@ def main() -> None:
         if args.include_payload:
             result["draft_payload"] = draft_payload
     else:
-        access_token = get_access_token(args, config, env)
+        access_token = get_access_token(args, config, account)
         if args.check_draft_switch:
             result["draft_switch"] = check_or_open_draft_switch(access_token, args.open_draft_switch)
         uploaded_content_html, body_uploads = upload_body_images(content_html, access_token)
@@ -640,7 +756,7 @@ def main() -> None:
         if args.verify_draft:
             result["draft_verification"] = verify_draft(media_id, validation["title"], access_token)
         if args.send_preview:
-            result["preview"] = send_preview(media_id, args, manifest, access_token)
+            result["preview"] = send_preview(media_id, args, manifest, account, access_token)
 
     out = (args.out or args.manifest.with_suffix(".wechat-api-result.json")).resolve()
     write_json(out, result)

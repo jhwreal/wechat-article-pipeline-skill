@@ -51,7 +51,7 @@ Unless the user explicitly overrides them, use these defaults:
 - visual density: one generated cover image, one generated closing image, and roughly one in-body image per 200 Chinese characters for method articles; for emotional, story, or principle articles, use fewer and stronger in-body images at roughly 300-450 Chinese characters per image
 - output mode: single editable HTML file first, with images embedded directly in the HTML; local image assets and job/support files are only supporting files
 - theme color: keep the existing template green unless the user explicitly asks to change it
-- backend delivery: do not run by default; when explicitly requested, use the HTML-matched `<html-stem>.publish-manifest.json`, publisher defaults from the local `.env`, and official API credentials from `WECHAT_APPID` / `WECHAT_APPSECRET` in that `.env`
+- backend delivery: do not run by default; when explicitly requested, use the HTML-matched `<html-stem>.publish-manifest.json`, publisher defaults from the local `.env`, and official API credentials from either default `WECHAT_APPID` / `WECHAT_APPSECRET` or a selected named account group in that `.env`
 
 If the user only provides a rough idea, internally infer:
 - topic
@@ -264,21 +264,39 @@ Shape:
 ```dotenv
 WECHAT_APPID=
 WECHAT_APPSECRET=
+WECHAT_ACCOUNT_NAME=
 WECHAT_AUTHOR=
 WECHAT_PREVIEW_ACCOUNT=
 ```
 
-If `.env` does not exist or lacks `WECHAT_APPID` / `WECHAT_APPSECRET`, ask the user for those values and create the file locally with restrictive permissions. The GitHub version must include `.env.example` and setup instructions, but never `.env`.
+For multiple public accounts, use ASCII aliases for environment variable names and a separate account-name field for matching:
+
+```dotenv
+WECHAT_ACCOUNT_JUZI_NAME=橘子
+WECHAT_ACCOUNT_JUZI_APPID=
+WECHAT_ACCOUNT_JUZI_APPSECRET=
+WECHAT_ACCOUNT_JUZI_AUTHOR=
+WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
+```
+
+`NAME` is the account selector used by `--account`. `AUTHOR` is only the article byline and must not be used to identify credentials.
+
+When `.env` contains exactly one named account, use it by default if the user has not specified an account. When `.env` contains multiple named accounts and the user has not specified which one to use, ask the user to choose by public account name before creating the draft.
+
+If `.env` does not exist or lacks credentials for the selected account, ask the user for the account name, AppID, and AppSecret, then create the file locally with restrictive permissions. The GitHub version must include `.env.example` and setup instructions, but never `.env`.
 
 Create a draft:
 
 ```bash
 python3 scripts/publish_wechat_api.py output.publish-manifest.json \
   --env-file /path/to/.env \
+  --account 橘子 \
   --remember \
   --check-draft-switch \
   --verify-draft
 ```
+
+Omit `--account` only when using the default `WECHAT_APPID` / `WECHAT_APPSECRET` pair or when `.env` contains exactly one named account.
 
 Add `--send-preview` only when the user explicitly asks to send a preview.
 

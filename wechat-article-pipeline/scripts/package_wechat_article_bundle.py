@@ -86,6 +86,10 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Local .env file with WECHAT_AUTHOR and WECHAT_PREVIEW_ACCOUNT defaults.",
     )
+    parser.add_argument(
+        "--publisher-account",
+        help="Official Account selector for publisher defaults. Matches WECHAT_ACCOUNT_<ALIAS>_NAME first, then <ALIAS>.",
+    )
     parser.add_argument("--author", help="Author override for the publish manifest.")
     parser.add_argument("--preview-account", help="Preview WeChat account override for the publish manifest.")
     parser.add_argument(
@@ -300,6 +304,7 @@ def write_publish_manifest(
     article_slug: str,
     config_path: Path | None,
     env_file: Path | None,
+    account: str | None,
     author: str | None,
     preview_account: str | None,
     remember: bool,
@@ -318,6 +323,8 @@ def write_publish_manifest(
         command.extend(["--config", str(config_path.expanduser())])
     if env_file:
         command.extend(["--env-file", str(env_file.expanduser())])
+    if account:
+        command.extend(["--account", account])
     if author:
         command.extend(["--author", author])
     if preview_account:
@@ -398,6 +405,7 @@ def main() -> None:
             article_slug=slug_source,
             config_path=args.publisher_config,
             env_file=args.publisher_env_file,
+            account=args.publisher_account,
             author=args.author,
             preview_account=args.preview_account,
             remember=args.remember_publisher_config,

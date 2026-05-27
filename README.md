@@ -82,11 +82,26 @@ python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
 ```dotenv
 WECHAT_APPID=
 WECHAT_APPSECRET=
+WECHAT_ACCOUNT_NAME=
 WECHAT_AUTHOR=
 WECHAT_PREVIEW_ACCOUNT=
 ```
 
-如果 `.env` 不存在或缺少 `WECHAT_APPID` / `WECHAT_APPSECRET`，使用 skill 时应先询问用户，然后在本地生成 `.env`，并设置较严格的本地权限。
+如果要保存多个公众号，变量后缀用英文/拼音别名，公众号名称单独放在 `NAME` 字段里，提交草稿时按这个名称匹配：
+
+```dotenv
+WECHAT_ACCOUNT_JUZI_NAME=橘子
+WECHAT_ACCOUNT_JUZI_APPID=
+WECHAT_ACCOUNT_JUZI_APPSECRET=
+WECHAT_ACCOUNT_JUZI_AUTHOR=
+WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
+```
+
+`NAME` 是公众号匹配名；`AUTHOR` 只是文章作者署名，不用于匹配凭据。
+
+如果 `.env` 里只有一个命名公众号，不传 `--account` 时会默认使用这一组。若存在多个命名公众号，使用 skill 时应先询问用户要导入哪个公众号，再把公众号名称传给 `--account`。
+
+如果 `.env` 不存在或缺少所选公众号的 AppID/AppSecret，使用 skill 时应先询问用户，然后在本地生成 `.env`，并设置较严格的本地权限。
 
 创建草稿：
 
@@ -94,15 +109,18 @@ WECHAT_PREVIEW_ACCOUNT=
 python3 wechat-article-pipeline/scripts/publish_wechat_api.py \
   output.publish-manifest.json \
   --env-file .env \
+  --account 橘子 \
   --remember \
   --check-draft-switch \
   --verify-draft
 ```
 
+只有使用默认 `WECHAT_APPID` / `WECHAT_APPSECRET`，或 `.env` 里只有一个命名公众号时，才省略 `--account`。
+
 脚本会完成：
 
-1. 从 `.env` 读取 AppID/AppSecret
-2. 获取或复用 stable access token
+1. 从 `.env` 读取所选公众号的 AppID/AppSecret
+2. 获取或复用该公众号专属的 stable access token 缓存
 3. 查询公众号草稿箱开关
 4. 上传正文内嵌图片到微信正文图片接口
 5. 上传封面图到永久素材接口
@@ -219,11 +237,26 @@ Create a local `.env` from `.env.example` first. The real `.env` is ignored by G
 ```dotenv
 WECHAT_APPID=
 WECHAT_APPSECRET=
+WECHAT_ACCOUNT_NAME=
 WECHAT_AUTHOR=
 WECHAT_PREVIEW_ACCOUNT=
 ```
 
-If `.env` is missing or lacks `WECHAT_APPID` / `WECHAT_APPSECRET`, ask the user for those values, then create the local `.env` with restrictive permissions.
+For multiple Official Accounts, use an ASCII alias in the environment variable suffix and store the account name in a separate `NAME` field:
+
+```dotenv
+WECHAT_ACCOUNT_JUZI_NAME=橘子
+WECHAT_ACCOUNT_JUZI_APPID=
+WECHAT_ACCOUNT_JUZI_APPSECRET=
+WECHAT_ACCOUNT_JUZI_AUTHOR=
+WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
+```
+
+`NAME` is the selector used by `--account`. `AUTHOR` is only the article byline and is not used to match credentials.
+
+If `.env` contains exactly one named account, it is selected automatically when `--account` is omitted. If multiple named accounts exist, ask the user which public account name to use before creating the draft.
+
+If `.env` is missing or lacks credentials for the selected account, ask the user for the account name, AppID, and AppSecret, then create the local `.env` with restrictive permissions.
 
 Create a draft:
 
@@ -231,15 +264,18 @@ Create a draft:
 python3 wechat-article-pipeline/scripts/publish_wechat_api.py \
   output.publish-manifest.json \
   --env-file .env \
+  --account 橘子 \
   --remember \
   --check-draft-switch \
   --verify-draft
 ```
 
+Omit `--account` only when using the default `WECHAT_APPID` / `WECHAT_APPSECRET` pair or when `.env` contains exactly one named account.
+
 The script will:
 
-1. Read AppID/AppSecret from `.env`
-2. Fetch or reuse a stable access token
+1. Read the selected account credentials from `.env`
+2. Fetch or reuse an account-specific stable access token
 3. Check the draft-box switch
 4. Upload embedded body images to the WeChat body-image API
 5. Upload the cover image as permanent material

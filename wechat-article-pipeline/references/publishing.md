@@ -37,11 +37,26 @@ Shape:
 ```dotenv
 WECHAT_APPID=
 WECHAT_APPSECRET=
+WECHAT_ACCOUNT_NAME=
 WECHAT_AUTHOR=
 WECHAT_PREVIEW_ACCOUNT=
 ```
 
-If `.env` is missing or lacks `WECHAT_APPID` / `WECHAT_APPSECRET`, ask the user for AppID/AppSecret and generate the file locally with restrictive permissions. Do not echo AppSecret in final answers or logs.
+For multiple Official Accounts, keep the environment variable suffix as an ASCII alias and store the public account name in a separate `NAME` field. Match by that name when creating a draft:
+
+```dotenv
+WECHAT_ACCOUNT_JUZI_NAME=橘子
+WECHAT_ACCOUNT_JUZI_APPID=
+WECHAT_ACCOUNT_JUZI_APPSECRET=
+WECHAT_ACCOUNT_JUZI_AUTHOR=
+WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
+```
+
+`NAME` is the account selector. `AUTHOR` is only the article byline and must not be used to identify credentials.
+
+When no `--account` is provided, a single named account is selected automatically. If multiple named accounts are configured, ask the user which public account name to use, then pass that value with `--account`.
+
+If `.env` is missing or lacks credentials for the selected account, ask the user for the account name, AppID, and AppSecret, then generate the file locally with restrictive permissions. Do not echo AppSecret in final answers or logs.
 
 Access token cache is local-only and outside the repo:
 
@@ -75,10 +90,13 @@ Create a draft:
 ```bash
 python3 scripts/publish_wechat_api.py output.publish-manifest.json \
   --env-file /path/to/.env \
+  --account 橘子 \
   --remember \
   --check-draft-switch \
   --verify-draft
 ```
+
+Omit `--account` only for the default `WECHAT_APPID` / `WECHAT_APPSECRET` pair or when `.env` contains exactly one named account.
 
 Send a preview only when explicitly requested:
 
@@ -95,7 +113,7 @@ If `manifest.preview.account` is empty, pass `--preview-account WECHAT_ID`. If a
 
 The script performs:
 
-1. Read `WECHAT_APPID` / `WECHAT_APPSECRET` from `.env`, then obtain `access_token` from `cgi-bin/stable_token`, reusing a valid local cache when possible.
+1. Read the selected account credentials from `.env`, then obtain `access_token` from `cgi-bin/stable_token`, reusing a valid account-specific local cache when possible.
 2. Optionally check the draft switch through `cgi-bin/draft/switch?checkonly=1`.
 3. Upload every `data:image` in `content_html` through `cgi-bin/media/uploadimg`.
 4. Replace article image `src` values with WeChat image URLs.

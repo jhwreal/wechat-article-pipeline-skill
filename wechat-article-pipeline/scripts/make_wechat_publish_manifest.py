@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import re
@@ -33,6 +34,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--article-slug", help="Optional article slug override.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="Local publisher config path.")
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="Local .env with publisher defaults.")
+    parser.add_argument(
+        "--account",
+        help=(
+            "Official Account selector for publisher defaults. Matches WECHAT_ACCOUNT_<ALIAS>_NAME first, then <ALIAS>."
+        ),
+    )
     parser.add_argument("--author", help="Author override. Also used for this manifest without persisting.")
     parser.add_argument("--preview-account", help="Preview WeChat account override without persisting.")
     parser.add_argument("--remember", action="store_true", help="Persist provided author/preview values to config.")
@@ -65,6 +72,82 @@ def read_env_file(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         env[key.strip()] = value.strip().strip('"').strip("'")
     return env
+
+
+def normalize_account_alias(alias: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", alias.strip()).strip("_").upper()
+
+
+def find_account_profile(env: dict[str, str], selector: str | None) -> dict[str, str]:
+    groups: dict[str, dict[str, str]] = {}
+    pattern = re.compile(r"^WECHAT_ACCOUNT_([A-Z0-9_]+)_(NAME|APPID|APPSECRET|AUTHOR|PREVIEW_ACCOUNT)$")
+    for key, value in env.items():
+        match = pattern.match(key)
+        if not match:
+            continue
+        alias, field = match.groups()
+        groups.setdefault(alias, {})[field.lower()] = value.strip()
+
+    if not selector:
+        credential_groups = {
+            alias: profile for alias, profile in groups.items() if profile.get("appid") or profile.get("appsecret")
+        }
+        if len(credential_groups) == 1:
+            alias, profile = next(iter(credential_groups.items()))
+            return {
+                "selector": "",
+                "alias": alias,
+                "name": profile.get("name", "").strip(),
+                "author": profile.get("author", "").strip(),
+                "preview_account": profile.get("preview_account", "").strip(),
+            }
+        if len(credential_groups) > 1:
+            available = sorted(f"{profile.get('name', '').strip() or alias} ({alias})" for alias, profile in credential_groups.items())
+            raise SystemExit(
+                "Multiple WeChat accounts are configured. Ask the user which account to use, then pass --account. "
+                f"Available accounts: {', '.join(available)}."
+            )
+        return {
+            "selector": "",
+            "alias": "",
+            "name": env.get("WECHAT_ACCOUNT_NAME", "").strip(),
+            "author": env.get("WECHAT_AUTHOR", "").strip(),
+            "preview_account": env.get("WECHAT_PREVIEW_ACCOUNT", "").strip(),
+        }
+
+    selector = selector.strip()
+    selector_alias = normalize_account_alias(selector)
+    matches: list[tuple[str, dict[str, str]]] = []
+    for alias, profile in groups.items():
+        if profile.get("name") == selector or (selector_alias and alias == selector_alias):
+            matches.append((alias, profile))
+
+    if not matches:
+        available = sorted(f"{profile.get('name', '').strip() or alias} ({alias})" for alias, profile in groups.items())
+        suffix = f" Available accounts: {', '.join(available)}." if available else ""
+        raise SystemExit(
+            f"Unknown WeChat account selector: {selector}. Set WECHAT_ACCOUNT_<ALIAS>_NAME in .env." + suffix
+        )
+    if len(matches) > 1:
+        aliases = ", ".join(alias for alias, _ in matches)
+        raise SystemExit(f"WeChat account selector {selector} matches multiple aliases: {aliases}. Use the alias explicitly.")
+
+    alias, profile = matches[0]
+    return {
+        "selector": selector,
+        "alias": alias,
+        "name": profile.get("name", "").strip(),
+        "author": profile.get("author", "").strip(),
+        "preview_account": profile.get("preview_account", "").strip(),
+    }
+
+
+def account_token_cache_path(profile: dict[str, str]) -> Path:
+    if not profile.get("alias"):
+        return DEFAULT_TOKEN_CACHE
+    label = profile.get("name") or profile["alias"]
+    digest = hashlib.sha1(label.encode("utf-8")).hexdigest()[:10]
+    return DEFAULT_TOKEN_CACHE.with_name(f"{DEFAULT_TOKEN_CACHE.stem}-{profile['alias'].lower()}-{digest}{DEFAULT_TOKEN_CACHE.suffix}")
 
 
 def write_config(path: Path, config: dict[str, str]) -> None:
@@ -202,10 +285,11 @@ def main() -> None:
     job = read_json(args.job.resolve())
     config = read_config(args.config.expanduser())
     env = read_env_file(args.env_file)
-    if env.get("WECHAT_AUTHOR"):
-        config["author"] = env["WECHAT_AUTHOR"].strip()
-    if env.get("WECHAT_PREVIEW_ACCOUNT"):
-        config["preview_account"] = env["WECHAT_PREVIEW_ACCOUNT"].strip()
+    account = find_account_profile(env, args.account)
+    if account.get("author"):
+        config["author"] = account["author"]
+    if account.get("preview_account"):
+        config["preview_account"] = account["preview_account"]
 
     overrides = {
         "author": args.author,
@@ -246,6 +330,11 @@ def main() -> None:
         "content_html": markdown_to_wechat_html(markdown),
         "content_text": strip_markdown(markdown),
         "workbench_html": str(args.workbench_html.resolve()) if args.workbench_html else "",
+        "account": {
+            "selector": account.get("selector", ""),
+            "alias": account.get("alias", ""),
+            "name": account.get("name", ""),
+        },
         "cover": cover,
         "image_candidates": candidates,
         "preview": {
@@ -253,7 +342,7 @@ def main() -> None:
             "account": config.get("preview_account", ""),
         },
         "env_file": str(args.env_file.expanduser()),
-        "token_cache_path": str(DEFAULT_TOKEN_CACHE),
+        "token_cache_path": str(account_token_cache_path(account)),
         "safety": {
             "use_official_api_only": True,
             "avoid_computer_use_on_mp_backend": True,
