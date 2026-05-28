@@ -10,21 +10,25 @@
 wechat-article-pipeline/
 ```
 
-## 功能特性
+## 一、功能特性
 
 - 面向微信公众号/公众号风格的长文创作流程
 - 支持方法类、分析类、情绪/故事类视觉模式
 - 情绪/故事类内容使用插画逻辑，而不是步骤图或流程图
-- 提供确定性的脚本，用于生成图片任务计划和 HTML 打包
+- 可根据正文自动规划题图、正文配图和尾图
 - 输出带内嵌图片的单文件可编辑 HTML
-- 输出与 HTML 同名的 `<html文件名>.publish-manifest.json`
 - 可通过微信官方 API 上传正文图片、上传封面素材、创建草稿箱草稿并验证草稿
 - 只有明确要求时才发送预览；不会自动发布或群发
-- 不在 skill 内部嵌套调用 `codex exec`
 
-## 安装
+## 二、安装
 
-将 skill 目录复制到 Codex 的 skills 目录：
+推荐在 Codex App 或 Codex CLI 中直接粘贴下面这段话，让 Codex 帮你安装：
+
+```text
+请从 GitHub 安装这个 Codex skill：https://github.com/jhwreal/wechat-article-pipeline-skill ，安装其中的 wechat-article-pipeline skill 到本机 Codex skills 目录。
+```
+
+也可以手工将 skill 目录复制到 Codex 的 skills 目录：
 
 ```bash
 mkdir -p ~/.codex/skills
@@ -33,91 +37,68 @@ rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 
 安装后重启或刷新 Codex。
 
-## 基本流程
+## 三、使用方法
 
-在 Codex 中给出一个选题或文章方向即可使用该 skill。默认流程会生成一套可本地审核和编辑的文章包：
+在 Codex 中说明你要写的公众号文章主题、方向或已有初稿即可。默认流程会生成一套可本地审核和编辑的文章包：
 
 1. 先写文章正文
 2. 根据写好的文章内容生成按角色划分的图片计划
 3. 直接调用 Codex 内置图片生成工具生成题图、正文配图和尾图
 4. 将文章和图片打包成一个可编辑的单文件 HTML 工作台
-5. 生成同名发布清单，用于后续导入公众号草稿箱
+5. 如果你要求导入公众号草稿箱，再使用微信官方 API 创建草稿
 
-手动脚本流程如下：
+### 文稿来源
 
-```bash
-python3 wechat-article-pipeline/scripts/make_wechat_article_image_jobs.py \
-  examples/method-article.md \
-  output.image-jobs.json \
-  --debug-plan
-```
+文稿可以来自两种方式：
 
-然后使用 Codex 内置图片生成工具直接生成图片，并保存为：
+1. 你先用其他大模型或自己写好初稿，再交给 Codex 使用该 skill 排版、配图和打包。
+2. 你只给 Codex 一个选题、观点或文章方向，由 Codex 使用该 skill 直接完成初稿。
 
-```text
-image/<article-slug>/cover.png
-image/<article-slug>/body-1.png
-image/<article-slug>/body-2.png
-image/<article-slug>/closing.png
-```
+如果已有初稿，可以直接粘贴正文，并说明目标风格、读者、是否需要压缩篇幅。若没有初稿，可以只描述主题，例如“写一篇面向普通读者的公众号文章，解释某个新趋势/方法/产品”。
 
-最后打包可编辑 HTML：
+### 配图方式
 
-```bash
-python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
-  examples/method-article.md \
-  output.html \
-  --plan-json output.image-jobs.json \
-  --images-dir image/<article-slug>
-```
+配图也可以来自两种方式：
 
-打包脚本会默认在 `output.html` 同目录生成 `output.publish-manifest.json`，即 manifest 和 HTML 同名，不再复用固定的 `publish-manifest.json`。
+1. 使用其他图片模型先生成图片，再把图片文件交给 Codex 打包进 HTML。
+2. 由 Codex 根据文章内容自动规划题图、正文配图和尾图，并调用内置图片生成能力完成配图。
 
-## 直接导入公众号草稿箱
+默认情况下，该 skill 会先写完文章，再根据正文内容生成图片计划，避免先出图再硬套文章。
+
+### 审稿和发布
+
+审稿有两种方式：
+
+1. 输出单文件 HTML 工作台，你在浏览器里打开检查标题、正文、配图和排版，再手工复制到微信公众号后台。
+2. 在已绑定公众号凭据的情况下，让 Codex 调用微信官方 API 直接创建公众号草稿，然后到公众号草稿箱里检查。
+
+该 skill 只负责创建草稿和可选发送预览，不会自动群发或发布。
+
+## 四、直接导入公众号草稿箱
 
 只有当用户明确要求“导入公众号草稿箱”“创建微信草稿”“推送到草稿箱”等操作时，才执行这一阶段。该阶段只使用微信官方 API，不使用 `mp.weixin.qq.com` 私有后台接口，也不会调用发布/群发 API。
 
-先从 `.env.example` 复制出本地 `.env`。真实 `.env` 已被 Git 忽略，上传 GitHub 时不能包含：
+### 绑定公众号
 
-```dotenv
-WECHAT_APPID=
-WECHAT_APPSECRET=
-WECHAT_ACCOUNT_NAME=
-WECHAT_AUTHOR=
-WECHAT_PREVIEW_ACCOUNT=
+先进入微信开发者平台：
+
+```text
+https://developers.weixin.qq.com/platform
 ```
 
-如果要保存多个公众号，变量后缀用英文/拼音别名，公众号名称单独放在 `NAME` 字段里，提交草稿时按这个名称匹配：
+在平台里找到公众号相关设置，完成三件事：
 
-```dotenv
-WECHAT_ACCOUNT_JUZI_NAME=橘子
-WECHAT_ACCOUNT_JUZI_APPID=
-WECHAT_ACCOUNT_JUZI_APPSECRET=
-WECHAT_ACCOUNT_JUZI_AUTHOR=
-WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
-```
+1. 获取公众号的 `AppID`
+2. 生成或查看 `AppSecret`
+3. 将本机公网 IP 加入接口调用白名单
 
-`NAME` 是公众号匹配名；`AUTHOR` 只是文章作者署名，不用于匹配凭据。
+本机公网 IP 可以通过常见的“查询本机 IP”网站查看。白名单里要填写的是公网出口 IP，不一定是局域网里的 `192.168.x.x` 或 `10.x.x.x` 地址。如果网络环境变化，例如切换公司、家里、热点或 VPN，公网 IP 可能也会变化，需要重新加入白名单。
 
-如果 `.env` 里只有一个命名公众号，不传 `--account` 时会默认使用这一组。若存在多个命名公众号，使用 skill 时应先询问用户要导入哪个公众号，再把公众号名称传给 `--account`。
+拿到 `AppID` 和 `AppSecret` 后，把这两个值告诉 Codex，并说明公众号名称。Codex 会在本机生成本地配置文件；这个文件只保存在本机，不应提交到 GitHub，也不要贴到公开聊天或文档里。
 
-如果 `.env` 不存在或缺少所选公众号的 AppID/AppSecret，使用 skill 时应先询问用户，然后在本地生成 `.env`，并设置较严格的本地权限。
+如果只绑定一个公众号，后续导入草稿时通常不需要再指定公众号名称。如果绑定了多个公众号，导入草稿前需要告诉 Codex 要导入到哪一个公众号。
 
-创建草稿：
-
-```bash
-python3 wechat-article-pipeline/scripts/publish_wechat_api.py \
-  output.publish-manifest.json \
-  --env-file .env \
-  --account 橘子 \
-  --remember \
-  --check-draft-switch \
-  --verify-draft
-```
-
-只有使用默认 `WECHAT_APPID` / `WECHAT_APPSECRET`，或 `.env` 里只有一个命名公众号时，才省略 `--account`。
-
-脚本会完成：
+导入草稿时，Codex 会完成：
 
 1. 从 `.env` 读取所选公众号的 AppID/AppSecret
 2. 获取或复用该公众号专属的 stable access token 缓存
@@ -129,7 +110,7 @@ python3 wechat-article-pipeline/scripts/publish_wechat_api.py \
 
 发送预览需要额外明确要求，并传入 `--send-preview` 及预览账号参数。正式发布/群发不属于默认自动化范围。
 
-## 仓库结构
+## 五、仓库结构
 
 ```text
 .
@@ -147,11 +128,17 @@ python3 wechat-article-pipeline/scripts/publish_wechat_api.py \
     └── scripts/
 ```
 
-## 说明
+## 六、说明
 
 - Codex 内置图片工具通常会把生成图片保存到 `$CODEX_HOME/generated_images`；打包前请将选中的图片复制到项目的图片目录。
 - 打包脚本会校验生成的 HTML 是否包含内嵌图片，并确认没有未解析的 `{{visual:*}}` 占位符。
 - `.env`、token cache、生成的文章包和图片都不应提交到 GitHub。
+
+## 七、版本说明
+
+- `V 1.1.0`：增加接入多个公众号的能力。
+- `V 1.0.0`：支持调用微信官方 API，直接导入微信公众号草稿箱。
+- `V 0.5.0`：支持将文稿和配图打包成可编辑 HTML，需手工复制到微信公众号后台。
 
 ---
 
@@ -165,21 +152,25 @@ The installable skill lives in:
 wechat-article-pipeline/
 ```
 
-## Features
+## 1. Features
 
 - WeChat/official-account style long-form article workflow
 - Method, analysis, and emotional/story visual modes
 - Emotional/story content uses illustration logic instead of step diagrams
-- Deterministic scripts for image-job planning and HTML packaging
+- Automatic cover/body/closing image planning based on the finished article
 - Single-file editable HTML output with embedded images
-- HTML-matched `<html-stem>.publish-manifest.json`
 - Official API workflow for body image upload, cover material upload, draft creation, and draft verification
 - Preview is sent only when explicitly requested; publishing and mass sending are never automatic
-- No nested `codex exec` runtime
 
-## Install
+## 2. Install
 
-Copy the skill directory into your Codex skills directory:
+In Codex App or Codex CLI, paste this prompt and let Codex install the skill:
+
+```text
+Please install this Codex skill from GitHub: https://github.com/jhwreal/wechat-article-pipeline-skill . Install the wechat-article-pipeline skill into my local Codex skills directory.
+```
+
+You can also copy the skill directory manually:
 
 ```bash
 mkdir -p ~/.codex/skills
@@ -188,91 +179,68 @@ rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 
 Restart or refresh Codex after installing.
 
-## Basic Workflow
+## 3. Usage
 
-Use the skill from Codex with a topic or article direction. By default, it produces a local article package for review and editing:
+In Codex, describe the WeChat Official Account article topic, direction, or draft you already have. By default, the skill produces a local package for review and editing:
 
 1. Write the article first
 2. Derive a role-based visual plan from the finished article
 3. Generate cover/body/closing images directly with Codex's built-in image generation tool
 4. Package everything into a single editable HTML workbench
-5. Generate a matching publish manifest for optional WeChat draft-box import
+5. If you ask to import it into WeChat, create a draft through the official WeChat API
 
-Manual script flow:
+### Article Source
 
-```bash
-python3 wechat-article-pipeline/scripts/make_wechat_article_image_jobs.py \
-  examples/method-article.md \
-  output.image-jobs.json \
-  --debug-plan
-```
+The article can start in either of two ways:
 
-Then generate images directly with Codex's built-in image tool and save them as:
+1. Write or draft it elsewhere first, then ask Codex to use this skill for editing, image planning, and packaging.
+2. Give Codex only a topic, point of view, or direction, and let Codex draft the article with this skill.
 
-```text
-image/<article-slug>/cover.png
-image/<article-slug>/body-1.png
-image/<article-slug>/body-2.png
-image/<article-slug>/closing.png
-```
+If you already have a draft, paste the text and describe the target style, audience, and whether it should be shortened. If you do not have a draft, describe the topic directly.
 
-Finally package the editable HTML:
+### Images
 
-```bash
-python3 wechat-article-pipeline/scripts/package_wechat_article_bundle.py \
-  examples/method-article.md \
-  output.html \
-  --plan-json output.image-jobs.json \
-  --images-dir image/<article-slug>
-```
+Images can also come from either of two ways:
 
-The packager writes `output.publish-manifest.json` next to `output.html`, so every HTML output gets its own manifest instead of reusing a fixed `publish-manifest.json`.
+1. Generate images with another image model first, then give the files to Codex for packaging.
+2. Let Codex plan and generate the cover image, in-body images, and closing image from the article content.
 
-## Direct WeChat Draft Import
+By default, the skill writes the article first and plans images from the finished content, so the visuals match the article rather than forcing the article around pre-made images.
+
+### Review And Publishing
+
+There are two review paths:
+
+1. Output a single editable HTML workbench, open it in a browser, review the title/body/images/layout, then copy it manually into the WeChat editor.
+2. After binding Official Account credentials, ask Codex to create a WeChat draft through the official API, then review it in the WeChat draft box.
+
+The skill creates drafts and can optionally send previews. It does not automatically publish or mass-send.
+
+## 4. Direct WeChat Draft Import
 
 Run this stage only when the user explicitly asks to import/create/push a WeChat Official Account draft. This workflow uses only official WeChat APIs. It does not use private `mp.weixin.qq.com` backend APIs and never calls publish or mass-send APIs.
 
-Create a local `.env` from `.env.example` first. The real `.env` is ignored by Git and must not be uploaded to GitHub:
+### Bind An Official Account
 
-```dotenv
-WECHAT_APPID=
-WECHAT_APPSECRET=
-WECHAT_ACCOUNT_NAME=
-WECHAT_AUTHOR=
-WECHAT_PREVIEW_ACCOUNT=
+Open the WeChat developer platform:
+
+```text
+https://developers.weixin.qq.com/platform
 ```
 
-For multiple Official Accounts, use an ASCII alias in the environment variable suffix and store the account name in a separate `NAME` field:
+Find the Official Account settings and complete three steps:
 
-```dotenv
-WECHAT_ACCOUNT_JUZI_NAME=橘子
-WECHAT_ACCOUNT_JUZI_APPID=
-WECHAT_ACCOUNT_JUZI_APPSECRET=
-WECHAT_ACCOUNT_JUZI_AUTHOR=
-WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
-```
+1. Get the Official Account `AppID`
+2. Generate or view the `AppSecret`
+3. Add this computer's public IP address to the API whitelist
 
-`NAME` is the selector used by `--account`. `AUTHOR` is only the article byline and is not used to match credentials.
+You can find the public IP with any common "what is my IP" website. The whitelist needs the public outbound IP, not necessarily a local `192.168.x.x` or `10.x.x.x` address. If you switch networks, such as office, home, mobile hotspot, or VPN, the public IP may change and must be added again.
 
-If `.env` contains exactly one named account, it is selected automatically when `--account` is omitted. If multiple named accounts exist, ask the user which public account name to use before creating the draft.
+After you have the `AppID` and `AppSecret`, give them to Codex and include the Official Account name. Codex will create a local config file on this machine. Keep that file local; do not commit it to GitHub or paste it into public chats or documents.
 
-If `.env` is missing or lacks credentials for the selected account, ask the user for the account name, AppID, and AppSecret, then create the local `.env` with restrictive permissions.
+If only one Official Account is bound, future draft imports usually do not need an account name. If multiple accounts are bound, tell Codex which Official Account to use before importing a draft.
 
-Create a draft:
-
-```bash
-python3 wechat-article-pipeline/scripts/publish_wechat_api.py \
-  output.publish-manifest.json \
-  --env-file .env \
-  --account 橘子 \
-  --remember \
-  --check-draft-switch \
-  --verify-draft
-```
-
-Omit `--account` only when using the default `WECHAT_APPID` / `WECHAT_APPSECRET` pair or when `.env` contains exactly one named account.
-
-The script will:
+When importing a draft, Codex will:
 
 1. Read the selected account credentials from `.env`
 2. Fetch or reuse an account-specific stable access token
@@ -284,7 +252,7 @@ The script will:
 
 Preview sending requires a separate explicit request plus `--send-preview` and preview-account parameters. Final publishing and mass sending are out of scope by default.
 
-## Repository Layout
+## 5. Repository Layout
 
 ```text
 .
@@ -302,8 +270,14 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
     └── scripts/
 ```
 
-## Notes
+## 6. Notes
 
 - Codex's built-in image tool normally saves generated files under `$CODEX_HOME/generated_images`; copy accepted images into the project image directory before packaging.
 - The packager validates that generated HTML contains embedded images and no unresolved `{{visual:*}}` placeholders.
 - `.env`, token cache files, generated article packages, and generated images should not be committed to GitHub.
+
+## 7. Release Notes
+
+- `V 1.1.0`: Added support for connecting multiple WeChat Official Accounts.
+- `V 1.0.0`: Added official WeChat API import for creating Official Account drafts directly.
+- `V 0.5.0`: Supported packaging article text and images into editable HTML for manual copy-paste into WeChat.
