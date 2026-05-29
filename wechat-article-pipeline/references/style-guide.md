@@ -18,6 +18,9 @@ Writing rules:
 - when the article has clear internal turns, use `##` section headings before relying on visual emphasis
 - use `**...**` for a whole core sentence that deserves the green key-sentence treatment
 - keep the pink accent style available for future manual use, but do not add automatic pink keyword marks by default
+- for technical, tool, coding, workflow, system-building, or tutorial articles, format concrete technical terms with markdown inline code backticks: project/repo names, file and directory names, paths, commands, environment variables, API names, script names, config keys, and literal UI/control names
+- treat inline-code technical-term formatting as a required readability layer for technical articles; it is not keyword accent marking and not focus marking
+- do not wrap broad concepts or ordinary business terms in backticks just to create visual emphasis
 - use `> ...` only for a genuinely strong quote, and convert the original sentence instead of repeating it
 - keep the article compact: under 2000 Chinese characters by default, aim near 1000
 - optimize for completion rate: cut padding, keep information density high

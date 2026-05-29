@@ -27,6 +27,8 @@ Visual defaults:
 - after the user confirms the article copy, run `scripts/mark_wechat_article_focus.py article.md article.focused.md` before deriving image jobs
 - use the focus-marked markdown for image jobs, HTML packaging, publish manifest generation, and optional WeChat draft creation
 - while drafting, prefer clear `##` section headings whenever the structure naturally supports them
+- for technical, tool, coding, workflow, system-building, or tutorial articles, add inline-code technical-term formatting while drafting: use backticks for concrete project/repo names, files, directories, paths, commands, environment variables, APIs, scripts, config keys, and literal UI/control names
+- keep this technical-term formatting separate from focus marks: backticks render as inline code/terminology, `**...**` renders as green key sentences, and `==...==` remains the optional pink accent syntax with no automatic keyword marking by default
 - in roughly every 300 Chinese characters, mark one core sentence with `**...**` for the green key-sentence style
 - keep the pink accent style available in the template, but do not add automatic pink keyword marks by default
 - only convert a sentence to a markdown blockquote when it is genuinely quotable; move/mark the original sentence as `> ...` instead of repeating it below the paragraph
