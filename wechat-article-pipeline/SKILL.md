@@ -19,27 +19,30 @@ Build one coherent WeChat article package from a single user idea: topic -> arti
 5. Use Codex's built-in `image_gen` tool as the visual engine. Never start a nested Codex runtime from inside this skill.
 6. Save approved generated files under `<workspace>/image/<article-slug>/`, where `<workspace>` is the current Codex working directory unless the user specifies another output location.
 7. After the article is finished, always generate one cover image, one closing image, and in-body visuals at roughly one image per 200 Chinese characters of body copy. Treat the 200-character cadence as a density target, not a rigid quota.
-8. Before generating images, make an internal Image Plan: article summary -> slot roles -> local context -> per-slot prompt -> anti-repetition check.
-9. Write image prompts from the actual nearby paragraph content. Each image should support the local argument, not act as generic decoration.
-10. Keep prompt wording concrete, visually direct, and article-specific. Use the finished copy to drive scene, subject, and emphasis.
-11. Do not let every image summarize the full article. Cover and closing can read the whole article meaning; each `body-*` slot must mainly serve its own local context and role.
-12. Force variation across the image set: role, scene, composition, visual distance, emotional tone, abstraction level, and information density should not collapse into one repeated prompt shape.
-13. Self-check every generated visual before embedding it into the HTML. If a visual is noisy, generic, off-topic, or awkward, regenerate it once with a safer and simpler direction.
-14. Prefer a clean and conservative result over decorative complexity. Do not keep a technically valid image if it looks like filler.
-15. Default to single-shot execution. If the user gives a topic, rough idea, source fragments, or a short direction, infer the missing brief and proceed without making them repeat themselves.
-16. Only ask follow-up questions when the ambiguity would materially change the article's conclusion, audience, or risk profile. Otherwise, choose a reasonable default and keep moving.
-17. Determine the article type before visual generation and make the image language follow it.
-18. Avoid repetition by changing subject matter, framing, scene logic, and image mood first. Do not fake variation by swapping colors on the same idea.
-19. Before choosing image roles, classify the visual mode as `method_visual`, `emotional_illustration`, or `analysis_visual`.
-20. Use `method_visual` only when the article is truly teaching steps, tools, workflows, checklists, or procedures. It may use process nodes, arrows, numbered steps, checklist cards, comparison diagrams, and compact information graphics.
-21. Use `emotional_illustration` for stories, emotional essays, life principles, relationship pieces, ordinary-person reflections, and articles that primarily need resonance or atmosphere. It must use illustration logic: human moments, symbolic scenes, light, space, objects, tension, silence, and metaphor. Do not use numbered steps, arrows, process diagrams, checklist cards, information cards, UI panels, or icon matrices in body images for this mode.
-22. Use `analysis_visual` for industry, mechanism, evidence, and trend pieces. It may use evidence, contrast, mechanism, and restrained metaphor, but should avoid process graphics unless the local paragraph is actually procedural.
-23. After the user confirms the article copy, and before deriving image jobs, run the focus-marking step so the final article contains core sentence highlights and occasional pull quotes for reader attention.
-24. Apply reading-focus marks in this order: first make the structure clear with useful `##` section headings while drafting; then mark one core sentence in a zone with `**...**` so it renders green; finally, only when a sentence is genuinely quotable, turn that original sentence into a markdown blockquote. Never duplicate a sentence just to create a pull quote. Keep the pink accent style available in the template, but do not add automatic pink keyword marks by default.
-25. For technical, tool, coding, workflow, system-building, or tutorial articles, apply technical-term formatting during drafting: wrap concrete project names, repository names, file names, directory names, paths, commands, environment variables, API names, script names, config keys, and literal UI/control names in markdown inline code backticks. This is required terminology formatting, not automatic keyword accent marking and not key-sentence focus marking. Do not overuse it for ordinary conceptual words or broad business ideas.
-26. When the user asks to create a WeChat draft, read [publishing.md](references/publishing.md) and use only official WeChat APIs. Do not use private WeChat backend APIs or browser automation against `mp.weixin.qq.com`.
-27. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
-28. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward account, or collection set, because the public draft API does not expose those fields.
+8. Treat the article cover image and WeChat platform cover crops as separate assets. `cover.png` is the full original article hero image used in正文; do not overwrite it for API publishing. Packaging must derive WeChat cover crop previews such as `cover.wechat-235.png` and `cover.wechat-1x1.png`, and the publish manifest must carry the matching `pic_crop_235_1` and `pic_crop_1_1` values for the WeChat draft API.
+9. Before generating images, make an internal Image Plan: article summary -> slot roles -> local context -> per-slot prompt -> anti-repetition check.
+10. Write image prompts from the actual nearby paragraph content. Each image should support the local argument, not act as generic decoration.
+11. Keep prompt wording concrete, visually direct, and article-specific. Use the finished copy to drive scene, subject, and emphasis.
+12. Do not let every image summarize the full article. Cover and closing can read the whole article meaning; each `body-*` slot must mainly serve its own local context and role.
+13. Force variation across the image set: role, scene, composition, visual distance, emotional tone, abstraction level, and information density should not collapse into one repeated prompt shape.
+14. Self-check every generated visual before embedding it into the HTML. If a visual is noisy, generic, off-topic, or awkward, regenerate it once with a safer and simpler direction.
+15. Prefer a clean and conservative result over decorative complexity. Do not keep a technically valid image if it looks like filler.
+16. Default to single-shot execution. If the user gives a topic, rough idea, source fragments, or a short direction, infer the missing brief and proceed without making them repeat themselves.
+17. Only ask follow-up questions when the ambiguity would materially change the article's conclusion, audience, or risk profile. Otherwise, choose a reasonable default and keep moving.
+18. Determine the article type before visual generation and make the image language follow it.
+19. Avoid repetition by changing subject matter, framing, scene logic, and image mood first. Do not fake variation by swapping colors on the same idea.
+20. Before choosing image roles, classify the visual mode as `method_visual`, `emotional_illustration`, or `analysis_visual`.
+21. Use `method_visual` only when the article is truly teaching steps, tools, workflows, checklists, or procedures. It may use process nodes, arrows, numbered steps, checklist cards, comparison diagrams, and compact information graphics.
+22. Use `emotional_illustration` for stories, emotional essays, life principles, relationship pieces, ordinary-person reflections, and articles that primarily need resonance or atmosphere. It must use illustration logic: human moments, symbolic scenes, light, space, objects, tension, silence, and metaphor. Do not use numbered steps, arrows, process diagrams, checklist cards, information cards, UI panels, or icon matrices in body images for this mode.
+23. Use `analysis_visual` for industry, mechanism, evidence, and trend pieces. It may use evidence, contrast, mechanism, and restrained metaphor, but should avoid process graphics unless the local paragraph is actually procedural.
+24. After the user confirms the article copy, and before deriving image jobs, run the focus-marking step so the final article contains core sentence highlights and occasional pull quotes for reader attention.
+25. Apply reading-focus marks in this order: first make the structure clear with useful `##` section headings while drafting; then mark one core sentence in a zone with `**...**` so it renders green; finally, only when a sentence is genuinely quotable, turn that original sentence into a markdown blockquote. Never duplicate a sentence just to create a pull quote. Keep the pink accent style available in the template, but do not add automatic pink keyword marks by default.
+26. For technical, tool, coding, workflow, system-building, or tutorial articles, apply technical-term formatting during drafting: wrap concrete project names, repository names, file names, directory names, paths, commands, environment variables, API names, script names, config keys, and literal UI/control names in markdown inline code backticks. This is required terminology formatting, not automatic keyword accent marking and not key-sentence focus marking. Do not overuse it for ordinary conceptual words or broad business ideas.
+27. When the user asks to create a WeChat draft, read [publishing.md](references/publishing.md) and use only official WeChat APIs. Do not use private WeChat backend APIs or browser automation against `mp.weixin.qq.com`.
+28. Read the WeChat draft author from account config, not hardcoded defaults. For the default account use `WECHAT_AUTHOR`; for named accounts use `WECHAT_ACCOUNT_<ALIAS>_AUTHOR`. If the selected account has no author configured, ask the user for the author and store it in the corresponding local `.env` field before creating the draft.
+29. Open comments by default in WeChat draft payloads with `need_open_comment=1` and `only_fans_can_comment=0` so all readers can comment. Do not claim automatic selected-comments is enabled; the official selected-comment API requires a published article comment id and cannot be configured while creating a draft.
+30. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
+31. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward/赞赏, reward account, automatic selected-comments, or collection set, because the public draft API does not expose those fields.
 
 ## Default assumptions
 
@@ -205,6 +208,10 @@ This packager will:
 - discover matching local files such as `cover.png`, `body-1.png`, and `closing.png`
 - write a job JSON automatically
 - embed every matched image into the final HTML as a `data:image/...;base64,...` URI
+- keep the正文题图 as the original `cover.png`, then derive WeChat-specific cover crop previews from it:
+  - `cover.wechat-235.png` for the 2.35:1 platform cover crop
+  - `cover.wechat-1x1.png` for the 1:1 platform cover crop
+- write the corresponding `pic_crop_235_1` and `pic_crop_1_1` crop coordinates into the publish manifest so the API cover uses the crop regions while正文 still uses the original image
 - generate a content-fingerprinted storage key so a newly generated HTML does not load stale browser localStorage from an older file with the same title
 - fail if any visual placeholder remains unresolved or if the generated HTML still points to local image files
 - build the final editable single-file HTML workbench

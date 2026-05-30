@@ -363,7 +363,10 @@ def decode_data_image(data_uri: str, suffix_hint: str) -> LocalImage:
         with Image.open(tmp.name) as img:
             width, height = img.size
     except Exception:
-        pass
+        try:
+            width, height = image_size_with_sips(Path(tmp.name))
+        except Exception:
+            pass
     size = Path(tmp.name).stat().st_size
     return LocalImage(Path(tmp.name), mime, width, height, original_bytes=size, upload_bytes=size)
 
@@ -533,7 +536,7 @@ def upload_body_images(content_html: str, access_token: str) -> tuple[str, list[
 
 
 def upload_cover(manifest: dict[str, Any], access_token: str) -> dict[str, str]:
-    cover = manifest.get("cover") or {}
+    cover = manifest.get("wechat_cover") or manifest.get("cover") or {}
     src = str(cover.get("src") or "").strip()
     if not src.startswith("data:image/"):
         raise SystemExit("Manifest cover.src must be a data:image URI for API publishing.")
@@ -572,6 +575,17 @@ def crop_values_for_cover(width: int, height: int) -> dict[str, str]:
     }
 
 
+def manifest_cover_crop_values(manifest: dict[str, Any], width: int, height: int) -> dict[str, str]:
+    wechat_cover = manifest.get("wechat_cover") if isinstance(manifest.get("wechat_cover"), dict) else {}
+    values = wechat_cover.get("crop_values") if isinstance(wechat_cover.get("crop_values"), dict) else {}
+    result = crop_values_for_cover(width, height)
+    for key in ("pic_crop_235_1", "pic_crop_1_1"):
+        value = str(values.get(key, "")).strip()
+        if value:
+            result[key] = value
+    return result
+
+
 def build_draft_payload(
     manifest: dict[str, Any],
     content_html: str,
@@ -584,6 +598,9 @@ def build_draft_payload(
         raise SystemExit("Manifest title is empty.")
     author = str(manifest.get("author", "")).strip()
     digest = str(manifest.get("digest", "")).strip()[:120]
+    comment = manifest.get("comment") if isinstance(manifest.get("comment"), dict) else {}
+    need_open_comment = int(comment.get("need_open_comment", 1))
+    only_fans_can_comment = int(comment.get("only_fans_can_comment", 0))
     article: dict[str, Any] = {
         "article_type": "news",
         "title": title,
@@ -592,17 +609,32 @@ def build_draft_payload(
         "content": content_html,
         "content_source_url": content_source_url,
         "thumb_media_id": thumb_media_id,
-        "need_open_comment": 0,
-        "only_fans_can_comment": 0,
+        "need_open_comment": 1 if need_open_comment else 0,
+        "only_fans_can_comment": 1 if only_fans_can_comment else 0,
         **(crop_values or crop_values_for_cover(0, 0)),
     }
     return {"articles": [article]}
 
 
+def summarize_draft_payload(draft_payload: dict[str, Any]) -> dict[str, Any]:
+    article = draft_payload["articles"][0]
+    return {
+        "article_count": len(draft_payload["articles"]),
+        "title": article["title"],
+        "author": article.get("author", ""),
+        "digest": article["digest"],
+        "thumb_media_id": article["thumb_media_id"],
+        "need_open_comment": article.get("need_open_comment"),
+        "only_fans_can_comment": article.get("only_fans_can_comment"),
+        "pic_crop_235_1": article["pic_crop_235_1"],
+        "pic_crop_1_1": article["pic_crop_1_1"],
+    }
+
+
 def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, Any]:
     title = str(manifest.get("title", "")).strip()
     digest = str(manifest.get("digest", "")).strip()
-    cover_src = str((manifest.get("cover") or {}).get("src", "")).strip()
+    cover_src = str(((manifest.get("wechat_cover") or manifest.get("cover")) or {}).get("src", "")).strip()
     if not title:
         raise SystemExit("Manifest title is empty.")
     if not digest:
@@ -695,9 +727,9 @@ def main() -> None:
     draft_payload: dict[str, Any]
 
     if args.dry_run:
-        cover_src = str((manifest.get("cover") or {}).get("src", ""))
+        cover_src = str(((manifest.get("wechat_cover") or manifest.get("cover")) or {}).get("src", ""))
         cover_image = decode_data_image(cover_src, "png")
-        crop_values = crop_values_for_cover(cover_image.width, cover_image.height)
+        crop_values = manifest_cover_crop_values(manifest, cover_image.width, cover_image.height)
         draft_payload = build_draft_payload(
             manifest,
             content_html,
@@ -705,14 +737,7 @@ def main() -> None:
             args.content_source_url,
             crop_values,
         )
-        result["draft_payload_summary"] = {
-            "article_count": len(draft_payload["articles"]),
-            "title": draft_payload["articles"][0]["title"],
-            "digest": draft_payload["articles"][0]["digest"],
-            "thumb_media_id": draft_payload["articles"][0]["thumb_media_id"],
-            "pic_crop_235_1": draft_payload["articles"][0]["pic_crop_235_1"],
-            "pic_crop_1_1": draft_payload["articles"][0]["pic_crop_1_1"],
-        }
+        result["draft_payload_summary"] = summarize_draft_payload(draft_payload)
         if args.include_payload:
             result["draft_payload"] = draft_payload
     else:
@@ -721,7 +746,7 @@ def main() -> None:
             result["draft_switch"] = check_or_open_draft_switch(access_token, args.open_draft_switch)
         uploaded_content_html, body_uploads = upload_body_images(content_html, access_token)
         cover_upload = upload_cover(manifest, access_token)
-        crop_values = crop_values_for_cover(int(cover_upload["width"]), int(cover_upload["height"]))
+        crop_values = manifest_cover_crop_values(manifest, int(cover_upload["width"]), int(cover_upload["height"]))
         draft_payload = build_draft_payload(
             manifest,
             uploaded_content_html,
@@ -740,14 +765,7 @@ def main() -> None:
                     "width": cover_upload.get("width", ""),
                     "height": cover_upload.get("height", ""),
                 },
-                "draft_payload_summary": {
-                    "article_count": len(draft_payload["articles"]),
-                    "title": draft_payload["articles"][0]["title"],
-                    "digest": draft_payload["articles"][0]["digest"],
-                    "thumb_media_id": draft_payload["articles"][0]["thumb_media_id"],
-                    "pic_crop_235_1": draft_payload["articles"][0]["pic_crop_235_1"],
-                    "pic_crop_1_1": draft_payload["articles"][0]["pic_crop_1_1"],
-                },
+                "draft_payload_summary": summarize_draft_payload(draft_payload),
                 "draft_media_id": media_id,
             }
         )

@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -19,6 +20,20 @@ MAKE_PUBLISH_MANIFEST = Path(__file__).resolve().parent / "make_wechat_publish_m
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 WORKBENCH_STORAGE_VERSION = "v9"
+WECHAT_COVER_TARGETS = {
+    "pic_crop_235_1": {
+        "ratio": 2.35,
+        "filename": "cover.wechat-235.png",
+        "width": 900,
+        "height": 383,
+    },
+    "pic_crop_1_1": {
+        "ratio": 1.0,
+        "filename": "cover.wechat-1x1.png",
+        "width": 900,
+        "height": 900,
+    },
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -194,6 +209,93 @@ def find_image(images_dir: Path, name: str) -> Path:
     return matches[0].resolve()
 
 
+def image_size_with_sips(path: Path) -> tuple[int, int]:
+    proc = subprocess.run(
+        ["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    width = height = 0
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("pixelWidth:"):
+            width = int(line.split(":", 1)[1].strip())
+        elif line.startswith("pixelHeight:"):
+            height = int(line.split(":", 1)[1].strip())
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"Could not read image size for {path}")
+    return width, height
+
+
+def format_crop_value(values: tuple[float, float, float, float]) -> str:
+    return "_".join(f"{max(0.0, min(1.0, value)):.6f}".rstrip("0").rstrip(".") for value in values)
+
+
+def cover_crop_box(width: int, height: int, target_ratio: float) -> tuple[int, int, int, int]:
+    aspect = width / height
+    if aspect > target_ratio:
+        crop_width = max(1, int(round(height * target_ratio)))
+        left = max(0, (width - crop_width) // 2)
+        return left, 0, crop_width, height
+    crop_height = max(1, int(round(width / target_ratio)))
+    top = max(0, (height - crop_height) // 2)
+    return 0, top, width, crop_height
+
+
+def crop_value_from_box(box: tuple[int, int, int, int], width: int, height: int) -> str:
+    left, top, crop_width, crop_height = box
+    return format_crop_value(
+        (
+            left / width,
+            top / height,
+            (left + crop_width) / width,
+            (top + crop_height) / height,
+        )
+    )
+
+
+def write_center_crop_with_sips(source: Path, out: Path, box: tuple[int, int, int, int], target_width: int, target_height: int) -> None:
+    _left, _top, crop_width, crop_height = box
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix="wechat-cover-crop-", suffix=source.suffix or ".png", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        subprocess.run(
+            ["sips", "-c", str(crop_height), str(crop_width), str(source), "--out", str(tmp_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["sips", "-z", str(target_height), str(target_width), str(tmp_path), "--out", str(out)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def build_wechat_cover_crops(images_dir: Path, cover_path: Path) -> dict[str, dict[str, str]]:
+    width, height = image_size_with_sips(cover_path)
+    crops: dict[str, dict[str, str]] = {}
+    for name, spec in WECHAT_COVER_TARGETS.items():
+        box = cover_crop_box(width, height, float(spec["ratio"]))
+        out = images_dir / str(spec["filename"])
+        write_center_crop_with_sips(cover_path, out, box, int(spec["width"]), int(spec["height"]))
+        crops[name] = {
+            "path": str(out.resolve()),
+            "crop": crop_value_from_box(box, width, height),
+            "source_path": str(cover_path.resolve()),
+            "source_width": str(width),
+            "source_height": str(height),
+            "width": str(spec["width"]),
+            "height": str(spec["height"]),
+        }
+    return crops
+
+
 def read_plan(path: Path | None) -> dict | None:
     if not path:
         return None
@@ -237,6 +339,9 @@ def build_job(
         }
         for name in find_placeholders(markdown)
     }
+    wechat_cover_crops = {}
+    if "cover" in visuals:
+        wechat_cover_crops = build_wechat_cover_crops(images_dir, Path(visuals["cover"]["path"]))
     job = {
         "page_title": page_title,
         "storage_key": storage_key,
@@ -246,6 +351,11 @@ def build_job(
         "article_metadata": article_metadata or {},
         "article_markdown": markdown,
         "visuals": visuals,
+        "wechat_cover": {
+            "source_visual": "cover",
+            "source_path": visuals.get("cover", {}).get("path", ""),
+            "crops": wechat_cover_crops,
+        },
     }
     if plan:
         job["image_plan"] = plan.get("image_plan") or {

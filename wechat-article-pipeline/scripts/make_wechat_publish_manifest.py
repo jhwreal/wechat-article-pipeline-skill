@@ -155,6 +155,47 @@ def write_config(path: Path, config: dict[str, str]) -> None:
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def write_env_value(path: Path, key: str, value: str) -> None:
+    path = path.expanduser()
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    output: list[str] = []
+    replaced = False
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            output.append(f"{key}={value}")
+            replaced = True
+        else:
+            output.append(line)
+    if not replaced:
+        if output and output[-1].strip():
+            output.append("")
+        output.append(f"{key}={value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+
+def author_env_key(account: dict[str, str]) -> str:
+    alias = account.get("alias", "").strip()
+    return f"WECHAT_ACCOUNT_{alias}_AUTHOR" if alias else "WECHAT_AUTHOR"
+
+
+def resolve_author(args: argparse.Namespace, env_file: Path, account: dict[str, str]) -> str:
+    if args.author is not None:
+        author = args.author.strip()
+        if not author:
+            raise SystemExit("Author is empty. Provide a non-empty --author value.")
+        if args.remember:
+            write_env_value(env_file, author_env_key(account), author)
+        return author
+    if account.get("author"):
+        return account["author"].strip()
+    key = author_env_key(account)
+    selector = account.get("selector") or account.get("name") or account.get("alias") or "default account"
+    raise SystemExit(
+        f"Missing WeChat article author for {selector}. Ask the user for the author, then store it in {env_file} as {key}=<author>."
+    )
+
+
 def extract_title(markdown: str, fallback: str) -> str:
     match = TITLE_RE.search(markdown)
     return match.group(1).strip() if match else fallback
@@ -208,6 +249,39 @@ def image_candidates(markdown: str, visuals: dict[str, Any]) -> list[dict[str, s
         seen.add(key)
         candidates.append({"name": name, "alt": alt, "src": src})
     return candidates
+
+
+def build_wechat_cover_manifest(job: dict[str, Any], cover: dict[str, str], job_dir: Path) -> dict[str, Any]:
+    source = job.get("wechat_cover") if isinstance(job.get("wechat_cover"), dict) else {}
+    crops = source.get("crops") if isinstance(source.get("crops"), dict) else {}
+    crop_previews: dict[str, dict[str, str]] = {}
+    crop_values: dict[str, str] = {}
+    for name, spec in crops.items():
+        if not isinstance(spec, dict):
+            continue
+        crop = str(spec.get("crop", "")).strip()
+        if crop:
+            crop_values[str(name)] = crop
+        path = str(spec.get("path", "")).strip()
+        if path:
+            try:
+                asset_uri, _audit = builder.resolve_image_asset({"path": path}, job_dir)
+            except Exception:
+                asset_uri = ""
+            crop_previews[str(name)] = {
+                "src": asset_uri,
+                "path": path,
+                "width": str(spec.get("width", "")),
+                "height": str(spec.get("height", "")),
+                "crop": crop,
+            }
+    return {
+        "source_visual": str(source.get("source_visual", "cover")),
+        "src": cover.get("src", ""),
+        "alt": cover.get("alt", ""),
+        "crop_values": crop_values,
+        "crop_previews": crop_previews,
+    }
 
 
 def inline_format(text: str) -> str:
@@ -286,18 +360,16 @@ def main() -> None:
     config = read_config(args.config.expanduser())
     env = read_env_file(args.env_file)
     account = find_account_profile(env, args.account)
-    if account.get("author"):
-        config["author"] = account["author"]
     if account.get("preview_account"):
         config["preview_account"] = account["preview_account"]
 
     overrides = {
-        "author": args.author,
         "preview_account": args.preview_account,
     }
     for key, value in overrides.items():
         if value is not None:
             config[key] = value.strip()
+    author = resolve_author(args, args.env_file, account)
 
     if args.remember:
         write_config(args.config.expanduser(), config)
@@ -319,13 +391,14 @@ def main() -> None:
     visuals = job.get("visuals", {}) if isinstance(job.get("visuals"), dict) else {}
     candidates = image_candidates(markdown, visuals)
     cover = next((item for item in candidates if item["name"] == "cover"), candidates[0] if candidates else {})
+    wechat_cover = build_wechat_cover_manifest(job, cover, args.job.resolve().parent)
     article_slug = args.article_slug or str(job.get("article_slug", "")).strip() or args.job.stem
 
     manifest = {
         "schema_version": 1,
         "article_slug": article_slug,
         "title": title,
-        "author": config.get("author", ""),
+        "author": author,
         "digest": extract_digest(markdown, title),
         "content_html": markdown_to_wechat_html(markdown),
         "content_text": strip_markdown(markdown),
@@ -336,7 +409,20 @@ def main() -> None:
             "name": account.get("name", ""),
         },
         "cover": cover,
+        "wechat_cover": wechat_cover,
         "image_candidates": candidates,
+        "comment": {
+            "need_open_comment": 1,
+            "only_fans_can_comment": 0,
+            "scope": "all",
+            "auto_elect": False,
+            "auto_elect_note": "The draft/add API can open comments for everyone, but it does not expose an automatic selected-comments switch.",
+        },
+        "unsupported_by_draft_api": {
+            "original_declaration": "Not present in the official draft/add article fields.",
+            "reward": "Not present in the official draft/add article fields.",
+            "auto_selected_comments": "The official mark-elect comment API requires a published msg_data_id and a concrete user_comment_id, so it cannot be configured at draft creation.",
+        },
         "preview": {
             "method": "message/mass/preview",
             "account": config.get("preview_account", ""),

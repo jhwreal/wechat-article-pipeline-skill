@@ -21,7 +21,10 @@ Known coverage:
 - Body images must be uploaded through `cgi-bin/media/uploadimg`; WeChat filters external image links in article content.
 - Cover images should be uploaded as permanent material through `cgi-bin/material/add_material?type=image`.
 - Preview uses `cgi-bin/message/mass/preview` with `msgtype=mpnews` and the created draft `media_id`.
-- Original declaration, reward account, and collection selection are not available in the public draft API fields used here. Do not put them in the API manifest and do not claim they were set. The user handles those manually in the WeChat UI if needed.
+- Article author is account-scoped local config, not a hardcoded default. For the default account use `WECHAT_AUTHOR`; for named accounts use `WECHAT_ACCOUNT_<ALIAS>_AUTHOR`. If the selected account has no author configured, ask the user for it and store it in the corresponding `.env` field before creating a draft.
+- Draft creation opens comments by default with `need_open_comment=1` and `only_fans_can_comment=0`, which means all readers can comment.
+- Original declaration, reward/赞赏, automatic selected-comments, reward account, and collection selection are not available in the public draft API fields used here. Do not claim they were set. The user handles those manually in the WeChat UI if needed.
+- The official selected-comment API is a later moderation action, not a draft setting: it requires a published `msg_data_id` and a concrete `user_comment_id`.
 - Final publishing is not part of the default flow.
 
 ## Local config
@@ -69,6 +72,12 @@ Never commit `.env` or token cache files.
 ## Manifest
 
 `package_wechat_article_bundle.py` writes `<html-stem>.publish-manifest.json` by default, so each HTML output gets its own manifest instead of reusing a fixed filename. It contains title, author, digest, rendered HTML, text, cover image, image candidates, optional preview account, and safety flags. It must not contain original declaration, reward account, or collection fields.
+
+The manifest separates the article hero image from WeChat platform cover crops:
+
+- `cover.src` is the original article cover image and remains the image used in the body content.
+- `wechat_cover.crop_values.pic_crop_235_1` and `wechat_cover.crop_values.pic_crop_1_1` are the crop coordinates sent to the draft API.
+- `wechat_cover.crop_previews` points to generated preview assets such as `cover.wechat-235.png` and `cover.wechat-1x1.png`.
 
 If needed, regenerate it directly:
 
