@@ -38,7 +38,10 @@ Visual defaults:
 - always generate one cover image and one closing image
 - aim for about one in-body image per 200 Chinese characters for method articles, and about one stronger in-body illustration per 300-450 Chinese characters for emotional, story, or principle articles
 - classify visual mode before assigning roles: `method_visual`, `emotional_illustration`, or `analysis_visual`
+- use `inline_light_explainer` as the default middle lane for most body images: one concrete scene/object plus 2-3 useful annotations, relation lines, small nodes, icons, or visible consequences
+- keep light explainers useful but modest: no more than three information blocks and no more than one main arrow chain
 - for `emotional_illustration`, avoid numbered/process/checklist/information-card body images and prefer concrete human moments, symbolic scenes, atmosphere, light, tension, silence, and metaphor
+- emotional illustrations still need a local signal such as a situation, consequence, choice, pressure source, or key object; avoid generic mood-only images
 - save local image files under `<workspace>/image/<article-slug>/`
 - derive image jobs with `python3 scripts/make_wechat_article_image_jobs.py article.md output.image-jobs.json --debug-plan`
 - generate those files by directly calling Codex's built-in `image_gen` tool from the current Codex turn; do not start a nested Codex process
@@ -47,7 +50,7 @@ Visual defaults:
 - `closing`: concluding image tied to the article's final takeaway
 - do not default to semantic placeholder names inherited from old SVG layouts; use generic `body-*` beats and let the nearby paragraphs determine the prompt
 - `cover` and `closing` should read the full article meaning; each `body-*` image should read the text immediately before that placeholder at roughly the 200-character cadence
-- each slot still needs its own role, such as explanation / scene / contrast / detail / metaphor / extension / closing, instead of turning every image into the same theme summary
+- each slot still needs its own role, such as light explainer / explanation / scene / contrast / detail / metaphor / extension / closing, instead of turning every image into the same theme summary
 - rotate subject matter, framing, metaphor, and mood based on article type instead of repeating one stock combination
 
 Keep explanatory visuals close to the paragraph they support.

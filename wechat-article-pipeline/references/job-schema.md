@@ -66,6 +66,8 @@ Recommended policy:
 - always include one generated cover image and one generated closing image
 - place one in-body image beat roughly every 200 characters for method articles, and roughly every 300-450 characters for emotional, story, or principle articles
 - classify visual mode before role selection: `method_visual`, `emotional_illustration`, or `analysis_visual`
+- default most body beats to `inline_light_explainer`: one concrete scene/object plus 2-3 useful annotations, relation lines, small nodes, icons, or visible consequences
+- avoid both extremes in body visuals: dense PPT-style infographics and generic mood-only illustrations
 - never allow `emotional_illustration` body images to become numbered steps, process charts, checklist cards, information cards, UI panels, or icon matrices
 - name in-body beats as `body-1`, `body-2`, `body-3` instead of reviving old SVG-oriented placeholder names
 - generate images from the nearby paragraph content, but keep `cover` and `closing` aligned to the whole-article meaning

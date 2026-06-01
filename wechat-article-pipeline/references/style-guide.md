@@ -34,7 +34,11 @@ Visual rules:
 - do not start a nested Codex runtime, use `scripts/image_gen.py`, produce SVG placeholders, or add a custom image API runner in the default workflow
 - finish the article first, then generate one cover image and one closing image; method articles can use roughly one in-body image per 200 Chinese characters, while emotional, story, or principle articles should use fewer, stronger illustrations at roughly one per 300-450 Chinese characters
 - choose visual mode before body roles: `method_visual` for steps/tools/processes, `emotional_illustration` for stories/emotions/life principles, and `analysis_visual` for evidence/mechanism/trend pieces
+- default body visuals should sit in the middle lane: light explainer illustrations, not dense infographics and not mood-only art
+- a light explainer illustration uses one concrete scene or object plus 2-3 short annotations, relation lines, small nodes, icons, or visible consequences to explain exactly one local point
+- limit light explainers to three information blocks and one main arrow chain; if it needs more, split the idea or simplify the article beat
 - in `emotional_illustration`, body visuals must use illustration logic: human moments, symbolic scenes, light, space, objects, tension, silence, and metaphor; do not use numbered steps, arrows, process diagrams, checklist cards, information cards, UI panels, or icon matrices
+- emotional body visuals still need a useful local signal: a concrete situation, consequence, choice, pressure source, or key object; do not settle for generic atmosphere
 - before generating, build an internal image plan so each slot has a role, a local context, a content focus, and an anti-repetition rule
 - save generated files under `<workspace>/image/<article-slug>/` with placeholder-aligned basenames such as `cover`, `body-1`, and `closing`
 - write `cover` and `closing` from the full article meaning, and write each `body-*` prompt from the roughly 200 Chinese characters immediately before that placeholder instead of using generic article art
@@ -45,7 +49,7 @@ Visual rules:
 - default to the 200-character in-body rhythm unless the article structure clearly supports fewer, stronger images
 - keep cover and closing visuals compositionally conservative unless the user explicitly wants a bolder poster-like treatment
 - do not let decorative symbols or fake UI elements compete with the main title
-- if a visual looks crowded, generic, or off-topic, choose the simpler prompt instead of trying to save the fancy one
+- if a visual looks crowded, generic, off-topic, or purely atmospheric, choose a simpler light-explainer prompt instead of trying to save the fancy one
 - always run a post-generation visual check before embedding into the final HTML
 - preserve hidden markdown/job metadata for each slot role when packaging so a single bad image can be reworked later without re-guessing its intent
 

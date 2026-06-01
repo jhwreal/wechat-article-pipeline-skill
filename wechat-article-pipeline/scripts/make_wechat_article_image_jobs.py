@@ -36,6 +36,7 @@ COMMON_AVOIDS = [
     "不要用一张图总结全文；每张图只服务自己的位置和任务。",
     "不要复用上一张图的主体、构图、视觉隐喻或情绪。",
     "不要做 generic wallpaper、空洞科技背景、无意义光效、普通摆拍。",
+    "不要退化成只负责氛围的插图；画面必须提供一个机制、差异、后果、路径或判断。",
     "不要做假 UI 截图，不要出现不可读的小字墙。",
     "只有角色明确要求方法图、分析图或证据图时，才允许清晰、克制、可读的信息图；禁止低质量复杂信息图。",
 ]
@@ -53,6 +54,7 @@ EMOTIONAL_VISUAL_ROLES = {
 STRUCTURAL_VISUAL_ROLES = {
     "inline_steps",
     "inline_checklist",
+    "inline_light_explainer",
     "inline_data_card",
     "inline_evidence",
 }
@@ -64,6 +66,16 @@ EMOTIONAL_ILLUSTRATION_AVOIDS = [
 ]
 
 BODY_ROLE_LIBRARY: dict[str, dict[str, str]] = {
+    "inline_light_explainer": {
+        "role": "inline_light_explainer",
+        "image_type": "light_explainer_illustration",
+        "target_effect": "用一个具体场景加少量结构，把这一段的一个判断讲得有用但不拥挤",
+        "visual_distance": "中景 / 场景中带少量解释元素",
+        "composition": "一个主场景或主对象 + 2到3个短标注、关系线、图标或小节点；最多一条主箭头链",
+        "emotional_tone": "清楚、有用、有一点现场感",
+        "abstraction_level": "低到中等抽象",
+        "information_density": "中等偏轻",
+    },
     "inline_explanation": {
         "role": "inline_explanation",
         "image_type": "clean_visual_explanation",
@@ -594,9 +606,9 @@ def select_global_visual_style(article_type: str, visual_intent: str, visual_mod
         "mixed": "题图负责抓人，正文图按段落分别使用情绪、步骤、清单、对比、证据或机制图。",
     }
     mode_mapping = {
-        "method_visual": "当前采用方法图语法：可以使用步骤、箭头、清单、对比、信息卡，但必须服务具体方法。",
-        "emotional_illustration": "当前采用情绪插图语法：优先人物处境、空间氛围、光线、动作、物件隐喻和视觉冲击；禁止把正文图做成编号步骤图、流程图、清单卡或信息图。",
-        "analysis_visual": "当前采用分析图语法：优先证据、对比、机制和克制隐喻，少用流程图，避免装饰化。",
+        "method_visual": "当前采用轻量方法图语法：可以使用步骤、箭头、清单、对比、信息卡，但正文图默认优先用一个场景加少量结构解释一个点。",
+        "emotional_illustration": "当前采用有信息量的情绪插图语法：优先人物处境、空间氛围、光线、动作、物件隐喻和视觉冲击；禁止把正文图做成编号步骤图、流程图、清单卡或信息图，也不要变成纯氛围图。",
+        "analysis_visual": "当前采用轻量分析图语法：优先证据、对比、机制和克制隐喻，少用流程图；正文图默认一图只解释一个判断，避免装饰化。",
     }
     if visual_mode == "emotional_illustration":
         return (
@@ -626,25 +638,25 @@ def select_body_role_keys(count: int, article_type: str, visual_intent: str, vis
             base_sequence.extend(["inline_human_moment", "inline_symbolic_scene", "inline_silence", "inline_metaphor"])
         return base_sequence[:count]
     if visual_mode == "analysis_visual":
-        base_sequence = ["inline_explanation", "inline_contrast", "inline_evidence", "inline_detail", "inline_metaphor", "inline_scene", "inline_emotion"]
+        base_sequence = ["inline_light_explainer", "inline_contrast", "inline_evidence", "inline_explanation", "inline_detail", "inline_metaphor", "inline_scene"]
         while len(base_sequence) < count:
-            base_sequence.extend(["inline_explanation", "inline_contrast", "inline_detail", "inline_metaphor"])
+            base_sequence.extend(["inline_light_explainer", "inline_contrast", "inline_explanation", "inline_detail"])
         return base_sequence[:count]
 
     presets = {
-        "emotional_hook": ["inline_tension", "inline_data_card", "inline_contrast", "inline_checklist", "inline_detail", "inline_metaphor", "inline_emotion"],
-        "practical_path": ["inline_steps", "inline_detail", "inline_checklist", "inline_scene", "inline_contrast", "inline_data_card", "inline_emotion"],
-        "checklist_map": ["inline_checklist", "inline_data_card", "inline_contrast", "inline_explanation", "inline_steps", "inline_detail", "inline_emotion"],
-        "contrast": ["inline_contrast", "inline_data_card", "inline_tension", "inline_detail", "inline_checklist", "inline_metaphor", "inline_emotion"],
-        "evidence_led": ["inline_evidence", "inline_data_card", "inline_contrast", "inline_explanation", "inline_detail", "inline_checklist", "inline_emotion"],
-        "explanatory": ["inline_explanation", "inline_data_card", "inline_detail", "inline_contrast", "inline_checklist", "inline_metaphor", "inline_emotion"],
+        "emotional_hook": ["inline_tension", "inline_light_explainer", "inline_contrast", "inline_detail", "inline_symbolic_scene", "inline_metaphor", "inline_emotion"],
+        "practical_path": ["inline_light_explainer", "inline_steps", "inline_detail", "inline_checklist", "inline_contrast", "inline_data_card", "inline_scene"],
+        "checklist_map": ["inline_light_explainer", "inline_checklist", "inline_contrast", "inline_explanation", "inline_steps", "inline_detail", "inline_scene"],
+        "contrast": ["inline_contrast", "inline_light_explainer", "inline_tension", "inline_detail", "inline_checklist", "inline_metaphor", "inline_scene"],
+        "evidence_led": ["inline_light_explainer", "inline_evidence", "inline_contrast", "inline_explanation", "inline_detail", "inline_checklist", "inline_scene"],
+        "explanatory": ["inline_light_explainer", "inline_explanation", "inline_detail", "inline_contrast", "inline_checklist", "inline_metaphor", "inline_scene"],
         "story_scene": ["inline_scene", "inline_detail", "inline_tension", "inline_emotion", "inline_metaphor", "inline_extension", "inline_explanation"],
-        "mixed": ["inline_tension", "inline_data_card", "inline_checklist", "inline_contrast", "inline_steps", "inline_detail", "inline_emotion"],
+        "mixed": ["inline_light_explainer", "inline_tension", "inline_checklist", "inline_contrast", "inline_steps", "inline_detail", "inline_scene"],
     }
     base_sequence = list(presets.get(visual_intent, presets["mixed"]))
     if count <= len(base_sequence):
         return base_sequence[:count]
-    extras = ["inline_data_card", "inline_checklist", "inline_steps", "inline_evidence", "inline_detail", "inline_scene", "inline_metaphor", "inline_contrast", "inline_extension", "inline_emotion"]
+    extras = ["inline_light_explainer", "inline_data_card", "inline_checklist", "inline_steps", "inline_evidence", "inline_detail", "inline_scene", "inline_metaphor", "inline_contrast", "inline_extension"]
     while len(base_sequence) < count:
         base_sequence.append(extras[(len(base_sequence) - len(presets.get(visual_intent, presets["mixed"]))) % len(extras)])
     return base_sequence[:count]
@@ -653,6 +665,9 @@ def select_body_role_keys(count: int, article_type: str, visual_intent: str, vis
 def choose_body_role_key(local_context: str, fallback_role_key: str, visual_mode: str) -> str:
     """Route each body image by paragraph function, not by article topic."""
     text = local_context or ""
+    explicit_process = bool(re.search(r"第一|第二|第三|步骤|流程|然后|接着|最后|下一步|→|->", text))
+    process_count = signal_score(text, "process")
+    list_count = signal_score(text, "list")
     if visual_mode == "emotional_illustration":
         if SIGNAL_PATTERNS["story"].search(text):
             return "inline_human_moment"
@@ -672,24 +687,24 @@ def choose_body_role_key(local_context: str, fallback_role_key: str, visual_mode
         if SIGNAL_PATTERNS["problem"].search(text) or SIGNAL_PATTERNS["emotion"].search(text):
             return "inline_tension"
         if SIGNAL_PATTERNS["mechanism"].search(text):
-            return "inline_explanation"
-        return fallback_role_key if fallback_role_key not in {"inline_steps", "inline_checklist"} else "inline_explanation"
+            return "inline_light_explainer"
+        return fallback_role_key if fallback_role_key not in {"inline_steps", "inline_checklist"} else "inline_light_explainer"
 
-    if SIGNAL_PATTERNS["process"].search(text):
+    if SIGNAL_PATTERNS["process"].search(text) and (explicit_process or process_count >= 2):
         return "inline_steps"
     if SIGNAL_PATTERNS["compare"].search(text):
         return "inline_contrast"
-    if SIGNAL_PATTERNS["list"].search(text):
+    if SIGNAL_PATTERNS["list"].search(text) and list_count >= 2:
         return "inline_checklist"
     if SIGNAL_PATTERNS["evidence"].search(text):
         return "inline_evidence"
     if SIGNAL_PATTERNS["problem"].search(text) or SIGNAL_PATTERNS["emotion"].search(text):
         return "inline_tension"
     if SIGNAL_PATTERNS["mechanism"].search(text):
-        return "inline_data_card"
+        return "inline_light_explainer"
     if SIGNAL_PATTERNS["story"].search(text):
         return "inline_scene"
-    return fallback_role_key
+    return fallback_role_key if fallback_role_key not in {"inline_steps", "inline_checklist"} else "inline_light_explainer"
 
 
 def compact_segment(entries: list[dict[str, Any]], target_chars: int) -> tuple[str, int | None, int | None]:
@@ -769,6 +784,7 @@ def build_content_focus(role: str, local_context: str, article_summary: str) -> 
 
     mapping = {
         "hero_cover": f"只抓标题承诺里最有点击力的冲突、收益或悬念：{focus}",
+        "inline_light_explainer": f"用轻量解释型插图讲清这一段的一个具体判断：{focus}",
         "inline_explanation": f"把这一段最关键的机制讲清楚：{focus}",
         "inline_scene": f"把这一段的具体现场、人物处境或使用场景画出来：{focus}",
         "inline_tension": f"把这一段的压力、矛盾、风险或情绪冲突直接画出来：{focus}",
@@ -800,6 +816,11 @@ def build_role_avoids(role: str) -> list[str]:
         "inline_explanation": [
             "不要重复题图的大主题海报感。",
             "不要做空泛背景；必须解释一个具体机制。",
+        ],
+        "inline_light_explainer": [
+            "不要做成完整PPT信息图或复杂流程图。",
+            "不要只有人物、光影、办公桌或抽象空间；必须有一个可理解的判断、关系或后果。",
+            "不要超过3个信息块、3个短标注或1条主箭头链。",
         ],
         "inline_scene": [
             "不要退化成抽象概念图。",
@@ -912,6 +933,12 @@ def build_must_include(slot: dict[str, Any]) -> list[str]:
             "必须有清晰的新旧、前后、左右或选择对比关系。",
             "对比双方的差异必须一眼可见。",
         ])
+    elif role == "inline_light_explainer":
+        includes.extend([
+            "必须有一个主场景或主对象，不能只有抽象背景。",
+            "必须加入2到3个短标注、关系线、图标节点或可视化后果，让读者看懂这一段的一个具体判断。",
+            "必须控制复杂度：最多3个信息块，最多一条主箭头链。",
+        ])
     elif role == "inline_explanation":
         includes.append("必须画出因果、结构、机制或关系中的一个，不要只画装饰场景。")
     elif role == "inline_scene":
@@ -949,6 +976,7 @@ def build_quality_gate(slot: dict[str, Any]) -> list[str]:
         "inline_tension": "本图优先情绪强：主体、压力源和关系必须清楚。",
         "inline_steps": "本图优先过程强：步骤和箭头要清楚。",
         "inline_checklist": "本图优先信息强：类别和清单要清楚。",
+        "inline_light_explainer": "本图优先有用：用一个场景加少量结构解释一个点，不能只负责氛围，也不能做成复杂信息图。",
         "inline_data_card": "本图优先信息强：主结论和模块关系要清楚。",
         "inline_evidence": "本图优先可信：证据中心和趋势关系要清楚。",
         "inline_contrast": "本图优先差异强：对比关系要拉开。",
@@ -1017,20 +1045,22 @@ def build_cover_prompt(slot: dict[str, Any], article_summary: str, article_essen
 def build_body_prompt(slot: dict[str, Any], article_summary: str, target_body_chars: int) -> str:
     if slot.get("visual_mode") == "emotional_illustration":
         mode_instruction = (
-            "这篇文章当前走情绪插图逻辑。把抽象判断转成一个具体画面：谁在什么空间里，"
+            "这篇文章当前走有信息量的情绪插图逻辑。把抽象判断转成一个具体画面：谁在什么空间里，"
             "处于什么情绪，画面里有什么关键物件、光线、距离或冲突。"
-            "不要解释道理本身，要让读者先感受到这个道理。"
+            "不要解释道理本身，但必须让读者看出这段话的一个具体处境、后果或选择，不要只做氛围。"
             "严禁编号、一二三、箭头、流程图、清单卡、信息图、UI面板、图标矩阵和文字版式。"
         )
     elif slot.get("visual_mode") == "method_visual":
         mode_instruction = (
-            "这篇文章当前走方法图逻辑。如果这一段确实在讲方法、步骤、清单、证据或对比，"
-            "可以使用清晰克制的图解方式；不要因为追求氛围而牺牲可执行性。"
+            "这篇文章当前走轻量方法图逻辑。如果这一段确实在讲方法、步骤、清单、证据或对比，"
+            "可以使用清晰克制的图解方式；优先采用一个具体场景加2到3个短标注或关系线。"
+            "不要因为追求氛围而牺牲可执行性，也不要做成完整PPT信息图。"
         )
     else:
         mode_instruction = (
-            "这篇文章当前走分析图逻辑。优先表达机制、证据、对比或具体场景；少用流程图，"
-            "只有局部上下文真的在讲步骤时才使用步骤结构。"
+            "这篇文章当前走轻量分析图逻辑。优先表达机制、证据、对比或具体场景；"
+            "默认用一个主对象或主场景加少量标注、关系线、后果提示来解释一个判断。"
+            "少用流程图，只有局部上下文真的在讲步骤时才使用步骤结构。"
         )
     return (
         f"为中文公众号文章《{slot['article_title']}》生成第 {slot['index']} 张正文配图。\n"
@@ -1051,6 +1081,7 @@ def build_body_prompt(slot: dict[str, Any], article_summary: str, target_body_ch
         f"信息密度：{slot['information_density']}\n\n"
         "像导演分镜一样处理这张图：只表达当前位置的一个画面重点，帮助理解、停顿或推进阅读。"
         "不要把整篇文章再讲一遍。"
+        "画面必须让读者在3秒内看懂这一段的一个具体判断；不要只是营造情绪，也不要做成完整PPT信息图。"
         f"{mode_instruction}\n\n"
         "必须包含：\n"
         f"{format_bullets(slot.get('must_include', []))}\n\n"

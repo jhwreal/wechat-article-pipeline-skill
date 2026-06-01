@@ -26,7 +26,7 @@ Build one coherent WeChat article package from a single user idea: topic -> arti
 12. Do not let every image summarize the full article. Cover and closing can read the whole article meaning; each `body-*` slot must mainly serve its own local context and role.
 13. Force variation across the image set: role, scene, composition, visual distance, emotional tone, abstraction level, and information density should not collapse into one repeated prompt shape.
 14. Self-check every generated visual before embedding it into the HTML. If a visual is noisy, generic, off-topic, or awkward, regenerate it once with a safer and simpler direction.
-15. Prefer a clean and conservative result over decorative complexity. Do not keep a technically valid image if it looks like filler.
+15. Prefer light explainer illustrations for body images: one concrete scene or object plus 2-3 useful annotations, relation lines, small nodes, or visible consequences. Avoid both extremes: dense PPT-style infographics and empty mood-only illustrations.
 16. Default to single-shot execution. If the user gives a topic, rough idea, source fragments, or a short direction, infer the missing brief and proceed without making them repeat themselves.
 17. Only ask follow-up questions when the ambiguity would materially change the article's conclusion, audience, or risk profile. Otherwise, choose a reasonable default and keep moving.
 18. Determine the article type before visual generation and make the image language follow it.
@@ -133,9 +133,9 @@ First classify the article into one of these working types:
 Then divide the article into image beats.
 
 Choose the visual mode before assigning body roles:
-- `method_visual`: use `inline_steps`, `inline_checklist`, `inline_detail`, `inline_contrast`, `inline_data_card`, and related method-friendly roles when the article is teaching steps, tools, workflows, or checklists.
+- `method_visual`: use `inline_light_explainer`, `inline_steps`, `inline_checklist`, `inline_detail`, `inline_contrast`, `inline_data_card`, and related method-friendly roles when the article is teaching steps, tools, workflows, or checklists. Default to light explainers unless the local paragraph truly needs a full step or checklist structure.
 - `emotional_illustration`: use `inline_human_moment`, `inline_tension`, `inline_symbolic_scene`, `inline_silence`, `inline_scene`, `inline_metaphor`, and `inline_emotion` for stories, emotions, life principles, and "讲道理" pieces. Body images in this mode must not become numbered diagrams, process graphics, checklist cards, information cards, UI panels, or icon matrices.
-- `analysis_visual`: use `inline_explanation`, `inline_contrast`, `inline_evidence`, `inline_detail`, `inline_metaphor`, and occasional scenes for industry or mechanism analysis.
+- `analysis_visual`: use `inline_light_explainer`, `inline_explanation`, `inline_contrast`, `inline_evidence`, `inline_detail`, `inline_metaphor`, and occasional scenes for industry or mechanism analysis. Default to one-point explainer scenes instead of either pure atmosphere or dense diagrams.
 
 Use nearby paragraphs as the source of truth. For each beat:
 - assign a slot role such as `hero_cover`, `inline_explanation`, `inline_scene`, `inline_contrast`, `inline_detail`, `inline_metaphor`, `inline_extension`, or `closing_image`
@@ -144,6 +144,13 @@ Use nearby paragraphs as the source of truth. For each beat:
 - write one concrete image prompt that reflects that point
 - add anti-repetition guards so the new slot does not reuse the same scene/composition/metaphor as earlier slots
 - keep the placeholder aligned with that paragraph block
+
+For most body images, aim for the middle lane: `light_explainer_illustration`.
+- One image explains one local point.
+- Use one main scene/object plus 2-3 short labels, relation lines, small icons, or visible consequences.
+- No more than three information blocks and no more than one main arrow chain.
+- The image should let readers understand one mechanism, contrast, risk, path, or judgment in three seconds.
+- Do not make a full infographic, and do not make a mood-only illustration that could fit any article.
 
 Aim for one generated cover image and one generated closing image overall. For `method_visual`, use roughly one in-body image per 200 Chinese characters. For `emotional_illustration`, prefer fewer but stronger images, roughly one in-body image per 300-450 Chinese characters; a 1000-character article may only need two or three body illustrations.
 
@@ -224,8 +231,8 @@ Useful article-type to visual-direction mappings:
 - news explanation: sharper, evidence-led, cleaner newsroom or blueprint feel
 - viewpoint/commentary: stronger contrast, fewer cards, more poster-like cover
 - practical how-to: clearer procedural scenes, calmer palette, steps and checklists only when the local paragraph is actually procedural
-- emotional or feature writing: use cinematic illustration, concrete human moments, symbolic spaces, light, tension, silence, and metaphor; avoid all numbered/process/checklist/information-card body images
-- industry analysis: restrained palette, concrete metaphors, less decorative cover treatment
+- emotional or feature writing: use cinematic illustration, concrete human moments, symbolic spaces, light, tension, silence, and metaphor; avoid all numbered/process/checklist/information-card body images, but still make the picture reveal a concrete situation, consequence, or choice
+- industry analysis: restrained palette, concrete metaphors, less decorative cover treatment, and light explainer body images that explain one mechanism or contrast without becoming dense diagrams
 
 Do not default to named SVG-card patterns such as `compare`, `definition`, `steps`, or other layout-led placeholders. The sequence is now content-led: write the article, mark `body-*` beats, generate images from those paragraph blocks, and keep `cover` and `closing` as required special cases.
 
