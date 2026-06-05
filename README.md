@@ -98,6 +98,8 @@ https://developers.weixin.qq.com/platform
 
 如果只绑定一个公众号，后续导入草稿时通常不需要再指定公众号名称。如果绑定了多个公众号，导入草稿前需要告诉 Codex 要导入到哪一个公众号。
 
+正文题图下方的“某某的第 N 篇原创”使用独立字段：默认账号为 `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE`，命名账号为 `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE`。它和草稿箱 API 使用的 `WECHAT_AUTHOR` 不是同一个字段。
+
 导入草稿时，Codex 会完成：
 
 1. 从 `.env` 读取所选公众号的 AppID/AppSecret
@@ -239,6 +241,8 @@ You can find the public IP with any common "what is my IP" website. The whitelis
 After you have the `AppID` and `AppSecret`, give them to Codex and include the Official Account name. Codex will create a local config file on this machine. Keep that file local; do not commit it to GitHub or paste it into public chats or documents.
 
 If only one Official Account is bound, future draft imports usually do not need an account name. If multiple accounts are bound, tell Codex which Official Account to use before importing a draft.
+
+The visible "author's Nth original article" label below the cover image uses separate fields: `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. It is separate from `WECHAT_AUTHOR`, which is only for the draft API author field.
 
 When importing a draft, Codex will:
 

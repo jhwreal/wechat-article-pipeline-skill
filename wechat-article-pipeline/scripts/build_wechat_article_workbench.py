@@ -134,6 +134,16 @@ def replace_default_metadata(template: str, metadata: dict[str, Any]) -> str:
     )
 
 
+def replace_article_signature(template: str, signature: dict[str, Any]) -> str:
+    payload = json.dumps(signature, ensure_ascii=False)
+    return re.sub(
+        r"const ARTICLE_SIGNATURE = .*?;",
+        lambda _match: f"const ARTICLE_SIGNATURE = {payload};",
+        template,
+        flags=re.S,
+    )
+
+
 def replace_first(pattern: str, repl: str, text: str) -> str:
     return re.sub(pattern, repl, text, count=1, flags=re.S)
 
@@ -155,6 +165,7 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     html_text = replace_first(r"const STORAGE_KEY = .*?;", f"const STORAGE_KEY = {json.dumps(storage_key, ensure_ascii=False)};", html_text)
     html_text = replace_default_markdown(html_text, markdown)
     html_text = replace_default_metadata(html_text, article_metadata if isinstance(article_metadata, dict) else {})
+    html_text = replace_article_signature(html_text, job.get("article_signature") or {})
     return html_text
 
 

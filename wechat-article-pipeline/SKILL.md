@@ -39,10 +39,11 @@ Build one coherent WeChat article package from a single user idea: topic -> arti
 25. Apply reading-focus marks in this order: first make the structure clear with useful `##` section headings while drafting; then mark one core sentence in a zone with `**...**` so it renders green; finally, only when a sentence is genuinely quotable, turn that original sentence into a markdown blockquote. Never duplicate a sentence just to create a pull quote. Keep the pink accent style available in the template, but do not add automatic pink keyword marks by default.
 26. For technical, tool, coding, workflow, system-building, or tutorial articles, apply technical-term formatting during drafting: wrap concrete project names, repository names, file names, directory names, paths, commands, environment variables, API names, script names, config keys, and literal UI/control names in markdown inline code backticks. This is required terminology formatting, not automatic keyword accent marking and not key-sentence focus marking. Do not overuse it for ordinary conceptual words or broad business ideas.
 27. When the user asks to create a WeChat draft, read [publishing.md](references/publishing.md) and use only official WeChat APIs. Do not use private WeChat backend APIs or browser automation against `mp.weixin.qq.com`.
-28. Read the WeChat draft author from account config, not hardcoded defaults. For the default account use `WECHAT_AUTHOR`; for named accounts use `WECHAT_ACCOUNT_<ALIAS>_AUTHOR`. If the selected account has no author configured, ask the user for the author and store it in the corresponding local `.env` field before creating the draft.
-29. Open comments by default in WeChat draft payloads with `need_open_comment=1` and `only_fans_can_comment=0` so all readers can comment. Do not claim automatic selected-comments is enabled; the official selected-comment API requires a published article comment id and cannot be configured while creating a draft.
-30. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
-31. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward/赞赏, reward account, automatic selected-comments, or collection set, because the public draft API does not expose those fields.
+28. Read the WeChat draft author from account config, not hardcoded defaults. For the default account use `WECHAT_AUTHOR`; for named accounts use `WECHAT_ACCOUNT_<ALIAS>_AUTHOR`. This author is only for the official draft API payload. If the selected account has no API author configured, ask the user for the author and store it in the corresponding local `.env` field before creating the draft.
+29. Treat the visible article signature below the cover image as separate from the draft API author. For the default account use `WECHAT_SIGNATURE_AUTHOR` and `WECHAT_ORIGINAL_ISSUE`; for named accounts use `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE`. The rendered line is `<signature author>的第<issue>篇原创`, centered below the cover image as a theme-green label with 14px regular-weight white text. If the issue is missing, use `1`; after packaging an article without an explicit `--original-issue`, advance the selected account's issue value by one in the local `.env`.
+30. Open comments by default in WeChat draft payloads with `need_open_comment=1` and `only_fans_can_comment=0` so all readers can comment. Do not claim automatic selected-comments is enabled; the official selected-comment API requires a published article comment id and cannot be configured while creating a draft.
+31. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
+32. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward/赞赏, reward account, automatic selected-comments, or collection set, because the public draft API does not expose those fields.
 
 ## Default assumptions
 
@@ -281,6 +282,8 @@ WECHAT_APPID=
 WECHAT_APPSECRET=
 WECHAT_ACCOUNT_NAME=
 WECHAT_AUTHOR=
+WECHAT_SIGNATURE_AUTHOR=
+WECHAT_ORIGINAL_ISSUE=1
 WECHAT_PREVIEW_ACCOUNT=
 ```
 
@@ -291,10 +294,12 @@ WECHAT_ACCOUNT_JUZI_NAME=橘子
 WECHAT_ACCOUNT_JUZI_APPID=
 WECHAT_ACCOUNT_JUZI_APPSECRET=
 WECHAT_ACCOUNT_JUZI_AUTHOR=
+WECHAT_ACCOUNT_JUZI_SIGNATURE_AUTHOR=
+WECHAT_ACCOUNT_JUZI_ORIGINAL_ISSUE=1
 WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
 ```
 
-`NAME` is the account selector used by `--account`. `AUTHOR` is only the article byline and must not be used to identify credentials.
+`NAME` is the account selector used by `--account`. `AUTHOR` is only the official draft API author. `SIGNATURE_AUTHOR` and `ORIGINAL_ISSUE` control the visible article signature below the cover image and must not be confused with `AUTHOR`.
 
 When `.env` contains exactly one named account, use it by default if the user has not specified an account. When `.env` contains multiple named accounts and the user has not specified which one to use, ask the user to choose by public account name before creating the draft.
 

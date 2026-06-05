@@ -16,6 +16,7 @@ import build_wechat_article_workbench as builder
 
 WORKSPACE = Path.cwd()
 DEFAULT_IMAGE_ROOT = WORKSPACE / "image"
+DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 MAKE_PUBLISH_MANIFEST = Path(__file__).resolve().parent / "make_wechat_publish_manifest.py"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
@@ -99,7 +100,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--publisher-env-file",
         type=Path,
-        help="Local .env file with WECHAT_AUTHOR and WECHAT_PREVIEW_ACCOUNT defaults.",
+        help=(
+            "Local .env file with publisher defaults and display signature fields. "
+            "Defaults to the skill repo .env if present."
+        ),
     )
     parser.add_argument(
         "--publisher-account",
@@ -107,6 +111,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--author", help="Author override for the publish manifest.")
     parser.add_argument("--preview-account", help="Preview WeChat account override for the publish manifest.")
+    parser.add_argument("--signature-author", help="Visible article signature author shown below the cover image.")
+    parser.add_argument("--original-issue", type=int, help="Visible original article issue number shown below the cover image.")
+    parser.add_argument(
+        "--no-increment-original-issue",
+        action="store_true",
+        help="Do not advance the selected account's WECHAT_ORIGINAL_ISSUE after successful packaging.",
+    )
     parser.add_argument(
         "--remember-publisher-config",
         action="store_true",
@@ -302,6 +313,120 @@ def read_plan(path: Path | None) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def read_env_file(path: Path) -> dict[str, str]:
+    path = path.expanduser()
+    if not path.exists():
+        return {}
+    env: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        env[key.strip()] = value.strip().strip('"').strip("'")
+    return env
+
+
+def write_env_value(path: Path, key: str, value: str) -> None:
+    path = path.expanduser()
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    output: list[str] = []
+    replaced = False
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            output.append(f"{key}={value}")
+            replaced = True
+        else:
+            output.append(line)
+    if not replaced:
+        if output and output[-1].strip():
+            output.append("")
+        output.append(f"{key}={value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+
+def normalize_account_alias(alias: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", alias.strip()).strip("_").upper()
+
+
+def find_signature_account(env: dict[str, str], selector: str | None) -> dict[str, str]:
+    groups: dict[str, dict[str, str]] = {}
+    pattern = re.compile(
+        r"^WECHAT_ACCOUNT_([A-Z0-9_]+)_(NAME|SIGNATURE_AUTHOR|ORIGINAL_ISSUE|APPID|APPSECRET)$"
+    )
+    for key, value in env.items():
+        match = pattern.match(key)
+        if not match:
+            continue
+        alias, field = match.groups()
+        groups.setdefault(alias, {})[field.lower()] = value.strip()
+
+    if not selector:
+        configured = {
+            alias: profile
+            for alias, profile in groups.items()
+            if profile.get("signature_author") or profile.get("original_issue")
+        }
+        if len(configured) == 1:
+            alias, profile = next(iter(configured.items()))
+            return {"alias": alias, "name": profile.get("name", ""), **profile}
+        return {
+            "alias": "",
+            "name": env.get("WECHAT_ACCOUNT_NAME", "").strip(),
+            "signature_author": env.get("WECHAT_SIGNATURE_AUTHOR", "").strip(),
+            "original_issue": env.get("WECHAT_ORIGINAL_ISSUE", "").strip(),
+        }
+
+    selector = selector.strip()
+    selector_alias = normalize_account_alias(selector)
+    matches: list[tuple[str, dict[str, str]]] = []
+    for alias, profile in groups.items():
+        if profile.get("name") == selector or (selector_alias and alias == selector_alias):
+            matches.append((alias, profile))
+    if not matches:
+        available = sorted(f"{profile.get('name', '').strip() or alias} ({alias})" for alias, profile in groups.items())
+        suffix = f" Available accounts: {', '.join(available)}." if available else ""
+        raise SystemExit(f"Unknown WeChat account selector: {selector}. Set WECHAT_ACCOUNT_<ALIAS>_NAME in .env." + suffix)
+    if len(matches) > 1:
+        aliases = ", ".join(alias for alias, _ in matches)
+        raise SystemExit(f"WeChat account selector {selector} matches multiple aliases: {aliases}. Use the alias explicitly.")
+    alias, profile = matches[0]
+    return {"alias": alias, "name": profile.get("name", ""), **profile}
+
+
+def signature_issue_key(account: dict[str, str]) -> str:
+    alias = account.get("alias", "").strip()
+    return f"WECHAT_ACCOUNT_{alias}_ORIGINAL_ISSUE" if alias else "WECHAT_ORIGINAL_ISSUE"
+
+
+def resolve_signature_metadata(
+    env_file: Path,
+    account: dict[str, str],
+    signature_author: str | None,
+    original_issue: int | None,
+) -> dict[str, object]:
+    author = (signature_author or account.get("signature_author") or "").strip()
+    raw_issue = str(original_issue if original_issue is not None else account.get("original_issue", "")).strip()
+    try:
+        issue = int(raw_issue) if raw_issue else 1
+    except ValueError:
+        raise SystemExit(f"Invalid original issue value in {env_file}: {raw_issue!r}. Use a positive integer.")
+    if issue < 1:
+        raise SystemExit("Original issue must be a positive integer.")
+    return {
+        "author": author,
+        "issue": issue,
+        "label": f"{author}的第{issue}篇原创" if author else "",
+        "env_file": str(env_file.expanduser()),
+        "account": {
+            "alias": account.get("alias", ""),
+            "name": account.get("name", ""),
+        },
+        "issue_env_key": signature_issue_key(account),
+    }
+
+
 def plan_slot_map(plan: dict | None) -> dict[str, dict]:
     if not plan:
         return {}
@@ -326,6 +451,7 @@ def build_job(
     brand_title: str,
     brand_subtitle: str,
     theme_color: str,
+    article_signature: dict[str, object] | None,
 ) -> dict:
     slot_map = plan_slot_map(plan)
     visuals = {
@@ -348,6 +474,7 @@ def build_job(
         "brand_title": brand_title,
         "brand_subtitle": brand_subtitle,
         "theme_color": theme_color,
+        "article_signature": article_signature or {},
         "article_metadata": article_metadata or {},
         "article_markdown": markdown,
         "visuals": visuals,
@@ -470,6 +597,15 @@ def main() -> None:
     source_markdown = args.article.read_text(encoding="utf-8")
     markdown, article_metadata = builder.split_front_matter(source_markdown)
     plan = read_plan(args.plan_json.resolve() if args.plan_json else None)
+    env_file = (args.publisher_env_file or DEFAULT_ENV_FILE).expanduser()
+    publisher_env = read_env_file(env_file)
+    signature_account = find_signature_account(publisher_env, args.publisher_account)
+    article_signature = resolve_signature_metadata(
+        env_file=env_file,
+        account=signature_account,
+        signature_author=args.signature_author,
+        original_issue=args.original_issue,
+    )
 
     metadata_title = str(article_metadata.get("title", "")).strip()
     page_title = args.page_title or extract_title(markdown, metadata_title or args.article.stem)
@@ -492,6 +628,7 @@ def main() -> None:
         brand_title=brand_title,
         brand_subtitle=args.brand_subtitle,
         theme_color=args.theme_color,
+        article_signature=article_signature,
     )
     job["storage_key"] = args.storage_key or make_content_storage_key(page_title or slug_source, markdown, job["visuals"])
 
@@ -505,6 +642,13 @@ def main() -> None:
         template_path=args.template.resolve(),
         support_dir=args.support_dir.resolve() if args.support_dir else None,
     )
+
+    if (
+        article_signature.get("author")
+        and args.original_issue is None
+        and not args.no_increment_original_issue
+    ):
+        write_env_value(env_file, str(article_signature["issue_env_key"]), str(int(article_signature["issue"]) + 1))
 
     if not args.no_publish_manifest:
         manifest_out = (args.publish_manifest_out or default_publish_manifest_path(args.out)).resolve()

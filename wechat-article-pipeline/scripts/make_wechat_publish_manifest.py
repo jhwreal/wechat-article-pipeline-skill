@@ -22,6 +22,8 @@ STRONG_STYLE = "font-weight:700;color:#17b394"
 ACCENT_STYLE = "color:#d14d72;font-weight:700"
 LINK_STYLE = "color:#17b394;text-decoration:none;border-bottom:1px solid rgba(23,179,148,.35)"
 CODE_STYLE = "background:#f2f4f7;border:1px solid #eaecf0;border-radius:6px;padding:.12em .38em;font-size:.92em;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d14d72;font-weight:700"
+SIGNATURE_STYLE = "display:block;margin:21px 0;color:#fff;font-size:14px;line-height:1.45;font-weight:400;text-align:center"
+SIGNATURE_TEXT_STYLE = "display:inline;padding:1px 5px 2px;background:#17b394;color:#fff;font-size:14px;line-height:1.45;font-weight:400"
 
 
 def parse_args() -> argparse.Namespace:
@@ -354,6 +356,24 @@ def markdown_to_wechat_html(markdown: str) -> str:
     )
 
 
+def signature_label(job: dict[str, Any]) -> str:
+    signature = job.get("article_signature") if isinstance(job.get("article_signature"), dict) else {}
+    author = str(signature.get("author", "")).strip()
+    issue = str(signature.get("issue", "")).strip()
+    return f"{author}的第{issue}篇原创" if author and issue else ""
+
+
+def inject_signature_html(content_html: str, label: str) -> str:
+    if not label:
+        return content_html
+    signature_html = (
+        f'<section style="{SIGNATURE_STYLE}">'
+        f'<span style="{SIGNATURE_TEXT_STYLE}">{html.escape(label)}</span>'
+        "</section>"
+    )
+    return re.sub(r"(<p\b[^>]*>\s*<img\b[^>]*>\s*</p>)", r"\1" + signature_html, content_html, count=1, flags=re.I)
+
+
 def main() -> None:
     args = parse_args()
     job = read_json(args.job.resolve())
@@ -400,7 +420,7 @@ def main() -> None:
         "title": title,
         "author": author,
         "digest": extract_digest(markdown, title),
-        "content_html": markdown_to_wechat_html(markdown),
+        "content_html": inject_signature_html(markdown_to_wechat_html(markdown), signature_label(job)),
         "content_text": strip_markdown(markdown),
         "workbench_html": str(args.workbench_html.resolve()) if args.workbench_html else "",
         "account": {

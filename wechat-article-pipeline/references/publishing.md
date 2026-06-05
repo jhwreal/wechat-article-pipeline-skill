@@ -42,6 +42,8 @@ WECHAT_APPID=
 WECHAT_APPSECRET=
 WECHAT_ACCOUNT_NAME=
 WECHAT_AUTHOR=
+WECHAT_SIGNATURE_AUTHOR=
+WECHAT_ORIGINAL_ISSUE=1
 WECHAT_PREVIEW_ACCOUNT=
 ```
 
@@ -52,10 +54,14 @@ WECHAT_ACCOUNT_JUZI_NAME=橘子
 WECHAT_ACCOUNT_JUZI_APPID=
 WECHAT_ACCOUNT_JUZI_APPSECRET=
 WECHAT_ACCOUNT_JUZI_AUTHOR=
+WECHAT_ACCOUNT_JUZI_SIGNATURE_AUTHOR=
+WECHAT_ACCOUNT_JUZI_ORIGINAL_ISSUE=1
 WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
 ```
 
-`NAME` is the account selector. `AUTHOR` is only the article byline and must not be used to identify credentials.
+`WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; after packaging without an explicit issue override, it advances the selected account's issue value by one in local `.env`.
+
+`NAME` is the account selector. `AUTHOR` is only the official draft API author and must not be used to identify credentials or the visible article signature.
 
 When no `--account` is provided, a single named account is selected automatically. If multiple named accounts are configured, ask the user which public account name to use, then pass that value with `--account`.
 
