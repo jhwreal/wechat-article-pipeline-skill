@@ -114,7 +114,7 @@ Build outputs may also include:
   "title": "标题",
   "author": "",
   "digest": "摘要",
-  "content_html": "<section>...</section>",
+  "content_html": "<p>...</p><p>...</p>",
   "content_text": "纯文本正文",
   "workbench_html": "/absolute/path/output.html",
   "cover": {

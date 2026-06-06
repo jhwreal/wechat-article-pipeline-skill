@@ -79,7 +79,7 @@ Never commit `.env` or token cache files.
 
 `package_wechat_article_bundle.py` writes `<html-stem>.publish-manifest.json` by default, so each HTML output gets its own manifest instead of reusing a fixed filename. It contains title, author, digest, rendered HTML, text, cover image, image candidates, optional preview account, and safety flags. It must not contain original declaration, reward account, or collection fields.
 
-Inline black code blocks in `content_html` keep internal padding but no external top/bottom margin, because the WeChat draft editor can turn those margins into extra blank lines around the code block. Fenced code blocks may contain blank lines; keep the full fenced block together before converting it so the closing backticks never leak into draft-box body text.
+`content_html` is generated as a paragraph-only draft-safe stream. Do not wrap the article body in `section` / `div`, and do not use `blockquote`, `pre`, `ul`, or `ol` in the API manifest. The WeChat draft editor can normalize those tags into extra blank editable lines around badges and code blocks. Inline black code blocks keep their internal padding inside a styled `<p>`; fenced code blocks may contain blank lines, but the full fenced block must stay together before conversion so closing backticks never leak into draft-box body text.
 
 The manifest separates the article hero image from WeChat platform cover crops:
 

@@ -664,7 +664,7 @@
       if (!cover) return;
       const existing = root.querySelector('.article-signature');
       if (existing) existing.remove();
-      const signature = document.createElement('section');
+      const signature = document.createElement('p');
       signature.className = 'article-signature';
       const text = document.createElement('span');
       text.textContent = label;
@@ -691,29 +691,14 @@
       };
 
       const codeBlockStyle = [
-        'display:block',
         'width:100%',
         'max-width:100%',
         'box-sizing:border-box',
-        'margin:0',
+        'margin:16px 8px',
         'padding:14px 16px',
         'background:#111827',
         'color:#e5e7eb',
         'border-radius:10px',
-        'font-size:14px',
-        'line-height:1.7',
-        'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
-        'word-break:break-word',
-        'overflow-wrap:anywhere'
-      ].join(';');
-
-      const codeLineStyle = [
-        'display:block',
-        'min-height:1.7em',
-        'margin:0',
-        'padding:0',
-        'background:transparent',
-        'color:#e5e7eb',
         'font-size:14px',
         'line-height:1.7',
         'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
@@ -726,7 +711,8 @@
         const code = pre.querySelector('code');
         const codeText = code ? code.textContent : pre.textContent;
 
-        const block = document.createElement('section');
+        const block = document.createElement('p');
+        block.setAttribute('data-wx-code-block', '1');
         block.setAttribute('style', codeBlockStyle);
 
         const sourceLine = pre.getAttribute('data-source-line');
@@ -736,8 +722,8 @@
         const lines = codeText.replace(/\n$/, '').split('\n');
         block.innerHTML = lines.map(line => {
           const escaped = escapeHtml(line).replace(/ /g, '&nbsp;');
-          return `<span style="${codeLineStyle}">${escaped || '&nbsp;'}</span>`;
-        }).join('');
+          return escaped || '&nbsp;';
+        }).join('<br>');
 
         pre.replaceWith(block);
       });
@@ -746,7 +732,7 @@
       setStyle('h2', `width:fit-content; margin:30px auto 18px; font-size:19px; line-height:1.6; font-weight:700; color:#fff; background:${color}; padding:8px 20px; border-radius:7px; box-shadow:0 4px 10px rgba(15,23,42,.16); text-align:center;`);
       setStyle('h3', `width:fit-content; margin:24px 0 14px; font-size:17px; line-height:1.75; font-weight:700; color:#111827; padding:0 0 3px 10px; border-left:4px solid ${color}; border-bottom:1px dashed ${color};`);
       setStyle('h4', `margin:18px 0 10px; font-size:16px; line-height:1.75; font-weight:700; color:${color};`);
-      setStyle('p', `margin:16px 0; font-size:${size}px; line-height:1.75; color:#222;`);
+      setStyle('p', `font-family:${safeFont}; margin:16px 8px; font-size:${size}px; line-height:1.75; color:#222; word-break:break-word;`);
       setStyle('blockquote', `margin:18px 0; padding:14px 16px; background:#f7f8fa; border-left:4px solid ${color}; color:#3b4552; font-size:${size}px; line-height:1.75; border-radius:8px;`);
       setStyle('ul', `margin:16px 0; padding-left:1.5em; font-size:${size}px; line-height:1.75;`);
       setStyle('ol', `margin:16px 0; padding-left:1.5em; font-size:${size}px; line-height:1.75;`);
@@ -755,8 +741,14 @@
       setStyle('thead', 'background:#f8fafc;');
       setStyle('th', 'padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;');
       setStyle('td', 'padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;');
-      setStyle('img', 'max-width:100%; display:block; margin:22px auto; border-radius:8px;');
-      setStyle('.article-signature', 'display:block; margin:21px 0; color:#fff; font-size:14px; line-height:1.45; font-weight:400; text-align:center;');
+      setStyle('img', 'max-width:100%; display:block; margin:0 auto; border-radius:8px;');
+      root.querySelectorAll('p').forEach(p => {
+        if (p.children.length === 1 && p.children[0].tagName === 'IMG') {
+          p.setAttribute('style', `font-family:${safeFont}; margin:22px 8px; font-size:${size}px; line-height:1.75; color:#222; word-break:break-word; text-align:center;`);
+        }
+      });
+      setStyle('[data-wx-code-block]', codeBlockStyle);
+      setStyle('.article-signature', `font-family:${safeFont}; margin:21px 8px; color:#fff; font-size:14px; line-height:1.45; font-weight:400; text-align:center; word-break:break-word;`);
       setStyle('.article-signature span', `display:inline; padding:1px 5px 2px; background:${color}; color:#fff; font-size:14px; line-height:1.45; font-weight:400;`);
       setStyle('a', `color:${color}; text-decoration:none; border-bottom:1px solid rgba(23,179,148,.35);`);
       setStyle('strong', `font-weight:700; color:${color};`);
@@ -767,14 +759,42 @@
       // 剩下的 code 都是行内代码。
       setStyle('code', `background:#f2f4f7; border:1px solid #eaecf0; border-radius:6px; padding:.12em .38em; font-size:.92em; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:${accent}; font-weight:700;`);
 
-      return `
-<section style="font-family:${safeFont};font-size:${size}px;line-height:1.75;color:#222;word-break:break-word;">
-  <div style="width:100%; max-width:100%; padding-left:8px; padding-right:8px; box-sizing:border-box;">
-    <div class="wx" style="font-family:${safeFont};font-size:${size}px;line-height:1.75;color:#222;">
-      ${root.innerHTML}
-    </div>
-  </div>
-</section>`.trim();
+      root.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(heading => {
+        const p = document.createElement('p');
+        p.innerHTML = heading.innerHTML;
+        p.setAttribute('style', heading.getAttribute('style') || '');
+        heading.replaceWith(p);
+      });
+
+      root.querySelectorAll('blockquote').forEach(blockquote => {
+        const p = document.createElement('p');
+        p.innerHTML = blockquote.innerText.split('\n').map(line => escapeHtml(line.trim())).filter(Boolean).join('<br>');
+        p.setAttribute('style', `font-family:${safeFont}; margin:18px 8px; padding:14px 16px; background:#f7f8fa; border-left:4px solid ${color}; color:#3b4552; font-size:${size}px; line-height:1.75; border-radius:8px; word-break:break-word;`);
+        blockquote.replaceWith(p);
+      });
+
+      root.querySelectorAll('ul,ol').forEach(list => {
+        const p = document.createElement('p');
+        const ordered = list.tagName === 'OL';
+        const lines = Array.from(list.children).map((item, index) => `${ordered ? `${index + 1}.` : '•'} ${item.innerHTML}`);
+        p.innerHTML = lines.join('<br>');
+        p.setAttribute('style', `font-family:${safeFont}; margin:16px 8px; font-size:${size}px; line-height:1.75; color:#222; word-break:break-word;`);
+        list.replaceWith(p);
+      });
+
+      root.querySelectorAll('table').forEach(table => {
+        const p = document.createElement('p');
+        const rows = Array.from(table.querySelectorAll('tr')).map(row => Array.from(row.children).map(cell => cell.innerText.trim()).join(' | '));
+        p.innerHTML = rows.map(escapeHtml).join('<br>');
+        p.setAttribute('style', `font-family:${safeFont}; margin:16px 8px; font-size:${size}px; line-height:1.75; color:#222; word-break:break-word;`);
+        table.replaceWith(p);
+      });
+
+      root.querySelectorAll('section,div,blockquote,pre,ul,ol').forEach(node => {
+        node.replaceWith(...Array.from(node.childNodes));
+      });
+
+      return root.innerHTML.trim();
     }
 
     function getEditorLineHeight() {

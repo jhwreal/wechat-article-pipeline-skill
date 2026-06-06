@@ -100,7 +100,7 @@ https://developers.weixin.qq.com/platform
 
 正文题图下方的“某某的第 N 篇原创”使用独立字段：默认账号为 `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE`，命名账号为 `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE`。它和草稿箱 API 使用的 `WECHAT_AUTHOR` 不是同一个字段。
 
-导出草稿箱的黑色代码块不额外设置上下外边距，只保留代码块内部留白，避免微信编辑器在代码块前后生成多余空行。
+导出草稿箱的正文 HTML 使用 paragraph-only 结构：标题、署名条、图片、引用、列表和黑色代码块都落成连续 `<p>`，不再用 `section` / `div` / `blockquote` / `pre` / `ul` / `ol` 包裹，避免微信编辑器在这些块前后生成多余空行。黑色代码块只保留代码块内部留白。
 
 导入草稿时，Codex 会完成：
 
@@ -246,7 +246,7 @@ If only one Official Account is bound, future draft imports usually do not need 
 
 The visible "author's Nth original article" label below the cover image uses separate fields: `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. It is separate from `WECHAT_AUTHOR`, which is only for the draft API author field.
 
-Black code blocks exported to the draft box do not add external top/bottom margins. They keep only internal padding so the WeChat editor does not create extra blank lines around them.
+Draft-box HTML uses a paragraph-only structure: headings, the signature badge, images, quotes, lists, and black code blocks are emitted as consecutive `<p>` blocks instead of `section` / `div` / `blockquote` / `pre` / `ul` / `ol`, avoiding extra blank editable lines in the WeChat editor. Black code blocks keep only internal padding.
 
 When importing a draft, Codex will:
 

@@ -26,6 +26,7 @@ DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wech
 API_BASE = "https://api.weixin.qq.com"
 DATA_IMAGE_RE = re.compile(r'src=(["\'])(data:image/[^"\']+)\1', re.I)
 VISUAL_PLACEHOLDER_RE = re.compile(r"\{\{visual:[^}]+\}\}")
+WECHAT_DRAFT_UNSTABLE_TAG_RE = re.compile(r"</?(section|div|blockquote|pre|ul|ol)\b", re.I)
 MAX_BODY_IMAGE_BYTES = 1024 * 1024
 BODY_IMAGE_TARGET_BYTES = MAX_BODY_IMAGE_BYTES - 2048
 ERROR_HELP = {
@@ -641,6 +642,17 @@ def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, 
         raise SystemExit("Manifest digest is empty.")
     if not content_html.strip():
         raise SystemExit("Manifest content_html is empty.")
+    unstable_tags = sorted({match.group(1).lower() for match in WECHAT_DRAFT_UNSTABLE_TAG_RE.finditer(content_html)})
+    if unstable_tags:
+        raise SystemExit(
+            "Manifest content_html contains tags that can create extra blank editable lines in the WeChat draft box: "
+            + ", ".join(unstable_tags)
+            + ". Regenerate the manifest with the paragraph-only draft renderer."
+        )
+    if re.search(r'<p\b[^>]*>\s*</p>', content_html, flags=re.I):
+        raise SystemExit("Manifest content_html contains an empty paragraph that would appear as a blank line in the draft box.")
+    if "```" in content_html:
+        raise SystemExit("Manifest content_html still contains raw fenced-code backticks. Regenerate the manifest.")
     if VISUAL_PLACEHOLDER_RE.search(content_html):
         raise SystemExit("Manifest content_html still contains unresolved {{visual:*}} placeholders.")
     if not cover_src.startswith("data:image/"):
@@ -654,6 +666,7 @@ def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, 
         "content_html_length": len(content_html),
         "body_data_image_count": len(data_images),
         "cover_is_data_uri": True,
+        "draft_html_mode": "paragraph_only",
     }
 
 

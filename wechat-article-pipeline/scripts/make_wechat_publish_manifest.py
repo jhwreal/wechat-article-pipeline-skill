@@ -17,14 +17,16 @@ DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-token-cache.json"
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
-IMAGE_STYLE = "max-width:100%;display:block;margin:22px auto;border-radius:8px"
+BASE_TEXT_STYLE = "font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;font-size:16px;line-height:1.75;color:#222;word-break:break-word"
+PARAGRAPH_STYLE = BASE_TEXT_STYLE + ";margin:16px 8px"
+IMAGE_PARAGRAPH_STYLE = BASE_TEXT_STYLE + ";margin:22px 8px;text-align:center"
+IMAGE_STYLE = "max-width:100%;display:block;margin:0 auto;border-radius:8px"
 STRONG_STYLE = "font-weight:700;color:#17b394"
 ACCENT_STYLE = "color:#d14d72;font-weight:700"
 LINK_STYLE = "color:#17b394;text-decoration:none;border-bottom:1px solid rgba(23,179,148,.35)"
 CODE_STYLE = "background:#f2f4f7;border:1px solid #eaecf0;border-radius:6px;padding:.12em .38em;font-size:.92em;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d14d72;font-weight:700"
-CODE_BLOCK_STYLE = "display:block;width:100%;max-width:100%;box-sizing:border-box;margin:0;padding:14px 16px;background:#111827;color:#e5e7eb;border-radius:10px;font-size:14px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-word;overflow-wrap:anywhere"
-CODE_LINE_STYLE = "display:block;min-height:1.7em;margin:0;padding:0;background:transparent;color:#e5e7eb;font-size:14px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-word;overflow-wrap:anywhere"
-SIGNATURE_STYLE = "display:block;margin:21px 0;color:#fff;font-size:14px;line-height:1.45;font-weight:400;text-align:center"
+CODE_BLOCK_STYLE = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.7;color:#e5e7eb;background:#111827;border-radius:10px;margin:16px 8px;padding:14px 16px;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere"
+SIGNATURE_STYLE = BASE_TEXT_STYLE + ";margin:21px 8px;color:#fff;font-size:14px;line-height:1.45;font-weight:400;text-align:center"
 SIGNATURE_TEXT_STYLE = "display:inline;padding:1px 5px 2px;background:#17b394;color:#fff;font-size:14px;line-height:1.45;font-weight:400"
 
 
@@ -303,6 +305,18 @@ def inline_format(text: str) -> str:
     return escaped
 
 
+def image_paragraph(alt: str, src: str) -> str:
+    return f'<p style="{IMAGE_PARAGRAPH_STYLE}"><img alt="{html.escape(alt, quote=True)}" src="{html.escape(src, quote=True)}" style="{IMAGE_STYLE}" /></p>'
+
+
+def paragraph(content: str, style: str = PARAGRAPH_STYLE) -> str:
+    return f'<p style="{style}">{content}</p>'
+
+
+def format_text_lines(lines: list[str]) -> str:
+    return "<br>".join(inline_format(line.strip()) for line in lines)
+
+
 def split_markdown_blocks(markdown: str) -> list[str]:
     blocks: list[str] = []
     normal_lines: list[str] = []
@@ -348,55 +362,57 @@ def markdown_to_wechat_html(markdown: str) -> str:
     blocks = split_markdown_blocks(markdown)
     html_blocks: list[str] = []
     for block in blocks:
+        image_only = re.fullmatch(r"!\[([^\]]*)\]\(([^)]+)\)", block.strip())
+        if image_only:
+            html_blocks.append(image_paragraph(image_only.group(1).strip(), image_only.group(2).strip()))
+            continue
         if block.startswith("```"):
             code = re.sub(r"^```[^\n]*\n?", "", block)
             code = re.sub(r"\n?```\s*$", "", code)
             lines = [
-                f'<span style="{CODE_LINE_STYLE}">{html.escape(line).replace(" ", "&nbsp;") or "&nbsp;"}</span>'
+                html.escape(line).replace(" ", "&nbsp;") or "&nbsp;"
                 for line in code.rstrip("\n").split("\n")
             ]
-            html_blocks.append(
-                f'<section style="{CODE_BLOCK_STYLE}">'
-                + "".join(lines)
-                + "</section>"
-            )
+            html_blocks.append(paragraph("<br>".join(lines), CODE_BLOCK_STYLE))
             continue
         heading = re.match(r"^(#{1,4})\s+(.+)$", block)
         if heading:
             level = len(heading.group(1))
             text = inline_format(heading.group(2))
             if level == 1:
-                style = f"width:fit-content;margin:26px auto 16px;font-size:19px;line-height:1.75;font-weight:700;color:#111827;padding-bottom:8px;border-bottom:2px solid {color};text-align:center"
-                html_blocks.append(f'<h1 style="{style}">{text}</h1>')
+                style = BASE_TEXT_STYLE + f";margin:26px 8px 16px;font-size:19px;line-height:1.75;font-weight:700;color:#111827;padding-bottom:8px;border-bottom:2px solid {color};text-align:center"
             elif level == 2:
-                style = f"width:fit-content;margin:30px auto 18px;font-size:19px;line-height:1.6;font-weight:700;color:#fff;background:{color};padding:8px 20px;border-radius:7px;box-shadow:0 4px 10px rgba(15,23,42,.16);text-align:center"
-                html_blocks.append(f'<h2 style="{style}">{text}</h2>')
+                style = BASE_TEXT_STYLE + f";margin:30px 8px 18px;font-size:19px;line-height:1.6;font-weight:700;color:#fff;background:{color};padding:8px 20px;border-radius:7px;box-shadow:0 4px 10px rgba(15,23,42,.16);text-align:center"
             elif level == 3:
-                style = f"width:fit-content;margin:24px 0 14px;font-size:17px;line-height:1.75;font-weight:700;color:#111827;padding:0 0 3px 10px;border-left:4px solid {color};border-bottom:1px dashed {color}"
-                html_blocks.append(f'<h3 style="{style}">{text}</h3>')
+                style = BASE_TEXT_STYLE + f";margin:24px 8px 14px;font-size:17px;line-height:1.75;font-weight:700;color:#111827;padding:0 0 3px 10px;border-left:4px solid {color};border-bottom:1px dashed {color}"
             else:
-                style = f"margin:18px 0 10px;font-size:16px;line-height:1.75;font-weight:700;color:{color}"
-                html_blocks.append(f'<h4 style="{style}">{text}</h4>')
+                style = BASE_TEXT_STYLE + f";margin:18px 8px 10px;font-size:16px;line-height:1.75;font-weight:700;color:{color}"
+            html_blocks.append(paragraph(text, style))
             continue
         if block.startswith(">"):
             quote = "<br>".join(inline_format(line.lstrip("> ").strip()) for line in block.splitlines())
-            html_blocks.append(
-                f'<blockquote style="margin:18px 0;padding:14px 16px;background:#f7f8fa;border-left:4px solid {color};color:#3b4552;font-size:16px;line-height:1.75;border-radius:8px"><p style="margin:0;color:inherit">{quote}</p></blockquote>'
-            )
+            style = BASE_TEXT_STYLE + f";margin:18px 8px;padding:14px 16px;background:#f7f8fa;border-left:4px solid {color};color:#3b4552;font-size:16px;line-height:1.75;border-radius:8px"
+            html_blocks.append(paragraph(quote, style))
             continue
         if re.match(r"^[-*+]\s+", block):
-            items = "".join(f"<li>{inline_format(line[2:].strip())}</li>" for line in block.splitlines() if len(line) > 2)
-            html_blocks.append(f'<ul style="margin:16px 0;padding-left:1.5em;font-size:16px;line-height:1.75">{items}</ul>')
+            items = [
+                "• " + inline_format(re.sub(r"^[-*+]\s+", "", line).strip())
+                for line in block.splitlines()
+                if re.match(r"^[-*+]\s+", line)
+            ]
+            html_blocks.append(paragraph("<br>".join(items)))
             continue
-        paragraph = "<br>".join(inline_format(line.strip()) for line in block.splitlines())
-        html_blocks.append(f'<p style="margin:16px 0;font-size:16px;line-height:1.75;color:#222">{paragraph}</p>')
+        if re.match(r"^\d+\.\s+", block):
+            items = [
+                inline_format(line.strip())
+                for line in block.splitlines()
+                if re.match(r"^\d+\.\s+", line)
+            ]
+            html_blocks.append(paragraph("<br>".join(items)))
+            continue
+        html_blocks.append(paragraph(format_text_lines(block.splitlines())))
 
-    return (
-        '<section style="font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',\'Microsoft YaHei\',sans-serif;font-size:16px;line-height:1.75;color:#222;word-break:break-word">'
-        '<div style="width:100%;max-width:100%;padding-left:8px;padding-right:8px;box-sizing:border-box">'
-        + "".join(html_blocks)
-        + "</div></section>"
-    )
+    return "".join(html_blocks)
 
 
 def signature_label(job: dict[str, Any]) -> str:
@@ -410,9 +426,9 @@ def inject_signature_html(content_html: str, label: str) -> str:
     if not label:
         return content_html
     signature_html = (
-        f'<section style="{SIGNATURE_STYLE}">'
+        f'<p style="{SIGNATURE_STYLE}">'
         f'<span style="{SIGNATURE_TEXT_STYLE}">{html.escape(label)}</span>'
-        "</section>"
+        "</p>"
     )
     return re.sub(r"(<p\b[^>]*>\s*<img\b[^>]*>\s*</p>)", r"\1" + signature_html, content_html, count=1, flags=re.I)
 
