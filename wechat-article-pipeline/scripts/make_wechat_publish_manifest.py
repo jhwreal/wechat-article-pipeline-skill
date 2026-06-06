@@ -303,13 +303,54 @@ def inline_format(text: str) -> str:
     return escaped
 
 
+def split_markdown_blocks(markdown: str) -> list[str]:
+    blocks: list[str] = []
+    normal_lines: list[str] = []
+    code_lines: list[str] = []
+    in_code = False
+
+    def flush_normal() -> None:
+        if normal_lines:
+            block = "\n".join(normal_lines).strip()
+            if block:
+                blocks.append(block)
+            normal_lines.clear()
+
+    for line in markdown.splitlines():
+        if in_code:
+            code_lines.append(line)
+            if re.match(r"^```\s*$", line):
+                blocks.append("\n".join(code_lines))
+                code_lines.clear()
+                in_code = False
+            continue
+
+        if re.match(r"^```", line):
+            flush_normal()
+            code_lines = [line]
+            in_code = True
+            continue
+
+        if not line.strip():
+            flush_normal()
+            continue
+
+        normal_lines.append(line)
+
+    if in_code and code_lines:
+        blocks.append("\n".join(code_lines))
+    flush_normal()
+    return blocks
+
+
 def markdown_to_wechat_html(markdown: str) -> str:
     color = "#17b394"
-    blocks = [block.strip() for block in re.split(r"\n\s*\n", markdown) if block.strip()]
+    blocks = split_markdown_blocks(markdown)
     html_blocks: list[str] = []
     for block in blocks:
         if block.startswith("```"):
-            code = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", block).removesuffix("```")
+            code = re.sub(r"^```[^\n]*\n?", "", block)
+            code = re.sub(r"\n?```\s*$", "", code)
             lines = [
                 f'<span style="{CODE_LINE_STYLE}">{html.escape(line).replace(" ", "&nbsp;") or "&nbsp;"}</span>'
                 for line in code.rstrip("\n").split("\n")
