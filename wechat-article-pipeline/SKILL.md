@@ -224,6 +224,7 @@ This packager will:
 - fail if any visual placeholder remains unresolved or if the generated HTML still points to local image files
 - build the final editable single-file HTML workbench
 - write `<html-stem>.publish-manifest.json` next to the HTML by default for WeChat backend draft/preview automation
+- keep black code blocks in the draft manifest free of external top/bottom margin so WeChat draft import does not create extra blank lines around them
 - optionally emit support files and a quality report
 
 Before generating visuals, pick a visual direction explicitly. Keep the page/theme chrome on the existing green template unless the user asks otherwise; vary the image treatment, composition, and subject matter instead.

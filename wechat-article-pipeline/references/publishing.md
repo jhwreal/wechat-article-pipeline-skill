@@ -79,6 +79,8 @@ Never commit `.env` or token cache files.
 
 `package_wechat_article_bundle.py` writes `<html-stem>.publish-manifest.json` by default, so each HTML output gets its own manifest instead of reusing a fixed filename. It contains title, author, digest, rendered HTML, text, cover image, image candidates, optional preview account, and safety flags. It must not contain original declaration, reward account, or collection fields.
 
+Inline black code blocks in `content_html` keep internal padding but no external top/bottom margin, because the WeChat draft editor can turn those margins into extra blank lines around the code block.
+
 The manifest separates the article hero image from WeChat platform cover crops:
 
 - `cover.src` is the original article cover image and remains the image used in the body content.

@@ -100,6 +100,8 @@ https://developers.weixin.qq.com/platform
 
 正文题图下方的“某某的第 N 篇原创”使用独立字段：默认账号为 `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE`，命名账号为 `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE`。它和草稿箱 API 使用的 `WECHAT_AUTHOR` 不是同一个字段。
 
+导出草稿箱的黑色代码块不额外设置上下外边距，只保留代码块内部留白，避免微信编辑器在代码块前后生成多余空行。
+
 导入草稿时，Codex 会完成：
 
 1. 从 `.env` 读取所选公众号的 AppID/AppSecret
@@ -243,6 +245,8 @@ After you have the `AppID` and `AppSecret`, give them to Codex and include the O
 If only one Official Account is bound, future draft imports usually do not need an account name. If multiple accounts are bound, tell Codex which Official Account to use before importing a draft.
 
 The visible "author's Nth original article" label below the cover image uses separate fields: `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. It is separate from `WECHAT_AUTHOR`, which is only for the draft API author field.
+
+Black code blocks exported to the draft box do not add external top/bottom margins. They keep only internal padding so the WeChat editor does not create extra blank lines around them.
 
 When importing a draft, Codex will:
 

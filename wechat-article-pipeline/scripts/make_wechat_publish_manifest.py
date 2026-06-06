@@ -22,6 +22,8 @@ STRONG_STYLE = "font-weight:700;color:#17b394"
 ACCENT_STYLE = "color:#d14d72;font-weight:700"
 LINK_STYLE = "color:#17b394;text-decoration:none;border-bottom:1px solid rgba(23,179,148,.35)"
 CODE_STYLE = "background:#f2f4f7;border:1px solid #eaecf0;border-radius:6px;padding:.12em .38em;font-size:.92em;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d14d72;font-weight:700"
+CODE_BLOCK_STYLE = "display:block;width:100%;max-width:100%;box-sizing:border-box;margin:0;padding:14px 16px;background:#111827;color:#e5e7eb;border-radius:10px;font-size:14px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-word;overflow-wrap:anywhere"
+CODE_LINE_STYLE = "display:block;min-height:1.7em;margin:0;padding:0;background:transparent;color:#e5e7eb;font-size:14px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-word;overflow-wrap:anywhere"
 SIGNATURE_STYLE = "display:block;margin:21px 0;color:#fff;font-size:14px;line-height:1.45;font-weight:400;text-align:center"
 SIGNATURE_TEXT_STYLE = "display:inline;padding:1px 5px 2px;background:#17b394;color:#fff;font-size:14px;line-height:1.45;font-weight:400"
 
@@ -309,11 +311,11 @@ def markdown_to_wechat_html(markdown: str) -> str:
         if block.startswith("```"):
             code = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", block).removesuffix("```")
             lines = [
-                f'<span style="display:block;min-height:1.7em;margin:0;padding:0;background:transparent;color:#e5e7eb;font-size:14px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-word;overflow-wrap:anywhere">{html.escape(line).replace(" ", "&nbsp;") or "&nbsp;"}</span>'
+                f'<span style="{CODE_LINE_STYLE}">{html.escape(line).replace(" ", "&nbsp;") or "&nbsp;"}</span>'
                 for line in code.rstrip("\n").split("\n")
             ]
             html_blocks.append(
-                '<section style="display:block;width:100%;max-width:100%;box-sizing:border-box;margin:18px 0;padding:14px 16px;background:#111827;color:#e5e7eb;border-radius:10px;font-size:14px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-word;overflow-wrap:anywhere">'
+                f'<section style="{CODE_BLOCK_STYLE}">'
                 + "".join(lines)
                 + "</section>"
             )
