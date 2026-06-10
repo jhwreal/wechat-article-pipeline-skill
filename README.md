@@ -100,6 +100,8 @@ https://developers.weixin.qq.com/platform
 
 正文题图下方的“某某的第 N 篇原创”使用独立字段：默认账号为 `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE`，命名账号为 `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE`。它和草稿箱 API 使用的 `WECHAT_AUTHOR` 不是同一个字段。
 
+命名账号的 `<ALIAS>` 建议只使用大写英文、数字和下划线，并避免以 `_SIGNATURE`、`_ORIGINAL`、`_PREVIEW` 结尾；这些后缀和 `AUTHOR`、`ISSUE`、`ACCOUNT` 等字段组合后会形成保留字段名。公众号展示名请放在 `WECHAT_ACCOUNT_<ALIAS>_NAME`。
+
 导出草稿箱的正文 HTML 使用 paragraph-only 结构：标题、署名条、图片、引用、列表和黑色代码块都落成连续 `<p>`，不再用 `section` / `div` / `blockquote` / `pre` / `ul` / `ol` 包裹，避免微信编辑器在这些块前后生成多余空行。黑色代码块只保留代码块内部留白。
 
 导入草稿时，Codex 会完成：
@@ -136,6 +138,8 @@ https://developers.weixin.qq.com/platform
 
 - Codex 内置图片工具通常会把生成图片保存到 `$CODEX_HOME/generated_images`；打包前请将选中的图片复制到项目的图片目录。
 - 打包脚本会校验生成的 HTML 是否包含内嵌图片，并确认没有未解析的 `{{visual:*}}` 占位符。
+- 非 macOS 环境运行图片打包/发布流程前请安装 Pillow；macOS 对部分封面裁剪预览可使用系统 `sips`，但 Pillow 仍建议用于发布前正文图片压缩。
+- CI 目前只跑语法检查、单元测试和 skill zip 打包，不集成完整“文章 + 图片打包 + API dry-run” smoke test；修改图片或打包流程后，发布前应在本地手动跑一次完整 smoke test。
 - `.env`、token cache、生成的文章包和图片都不应提交到 GitHub。
 
 ## 七、版本说明
@@ -246,6 +250,8 @@ If only one Official Account is bound, future draft imports usually do not need 
 
 The visible "author's Nth original article" label below the cover image uses separate fields: `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. It is separate from `WECHAT_AUTHOR`, which is only for the draft API author field.
 
+For named accounts, keep `<ALIAS>` to uppercase ASCII letters, numbers, and underscores, and avoid aliases ending in `_SIGNATURE`, `_ORIGINAL`, or `_PREVIEW`; those suffixes combine with field names such as `AUTHOR`, `ISSUE`, and `ACCOUNT` into reserved keys. Store the public display name in `WECHAT_ACCOUNT_<ALIAS>_NAME`.
+
 Draft-box HTML uses a paragraph-only structure: headings, the signature badge, images, quotes, lists, and black code blocks are emitted as consecutive `<p>` blocks instead of `section` / `div` / `blockquote` / `pre` / `ul` / `ol`, avoiding extra blank editable lines in the WeChat editor. Black code blocks keep only internal padding.
 
 When importing a draft, Codex will:
@@ -282,6 +288,8 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 
 - Codex's built-in image tool normally saves generated files under `$CODEX_HOME/generated_images`; copy accepted images into the project image directory before packaging.
 - The packager validates that generated HTML contains embedded images and no unresolved `{{visual:*}}` placeholders.
+- Install Pillow before running image packaging/publishing workflows on non-macOS systems. macOS can use the built-in `sips` fallback for some cover-crop previews, but Pillow is still recommended for pre-upload body-image compression.
+- CI currently runs syntax checks, unit tests, and skill zip packaging only. It intentionally does not run the full article + image packaging + API dry-run smoke test; run that smoke test locally before releases that change image or packaging behavior.
 - `.env`, token cache files, generated article packages, and generated images should not be committed to GitHub.
 
 ## 7. Release Notes

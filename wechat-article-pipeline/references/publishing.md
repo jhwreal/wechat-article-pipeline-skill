@@ -59,6 +59,8 @@ WECHAT_ACCOUNT_JUZI_ORIGINAL_ISSUE=1
 WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
 ```
 
+Keep `<ALIAS>` to uppercase ASCII letters, numbers, and underscores. Avoid aliases ending in `_SIGNATURE`, `_ORIGINAL`, or `_PREVIEW`, because those suffixes combine with reserved fields such as `AUTHOR`, `ISSUE`, and `ACCOUNT`.
+
 `WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; after packaging without an explicit issue override, it advances the selected account's issue value by one in local `.env`.
 
 `NAME` is the account selector. `AUTHOR` is only the official draft API author and must not be used to identify credentials or the visible article signature.
@@ -146,6 +148,7 @@ The script performs:
 - `stable_token` can return `89503` when administrator confirmation is required. Stop and ask the user to confirm in WeChat.
 - Preview is available only for certified accounts according to the official doc.
 - `media/uploadimg` body images must be JPG or PNG and under 1 MB. The script attempts to compress with Pillow when available; otherwise it stops with a clear message.
+- Non-macOS image packaging and publishing workflows should have Pillow installed. macOS can use the system `sips` fallback for some cover-crop preview work, but Pillow is still recommended for pre-upload body-image compression.
 - Cover permanent material supports larger image files, but it counts toward the official account material quota.
 - Do not log AppSecret or access tokens in final answers.
 

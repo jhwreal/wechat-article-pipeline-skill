@@ -61,6 +61,29 @@ PROJECTS.md
                 '<section><p><img src="data:image/png;base64,abc"></p></section>',
             )
 
+    def test_inline_code_is_not_reparsed_as_markdown_emphasis(self) -> None:
+        html = manifest_builder.markdown_to_wechat_html("这里有 `**literal**` 和 `a*b`。")
+
+        self.assertNotIn("<strong", html)
+        self.assertNotIn("<em>", html)
+        self.assertIn("**literal**", html)
+        self.assertIn("a*b", html)
+
+    def test_inline_code_placeholder_text_is_preserved(self) -> None:
+        html = manifest_builder.markdown_to_wechat_html("保留 @@INLINE_CODE_0@@，同时 `code`。")
+
+        self.assertIn("@@INLINE_CODE_0@@", html)
+        self.assertEqual(html.count("<code "), 1)
+        self.assertIn(">code</code>", html)
+
+    def test_strip_markdown_preserves_leading_years_while_removing_list_markers(self) -> None:
+        self.assertEqual(
+            manifest_builder.strip_markdown("2026年，先看这个判断。"),
+            "2026年，先看这个判断。",
+        )
+        self.assertEqual(manifest_builder.strip_markdown("1. 第一项"), "第一项")
+        self.assertEqual(manifest_builder.strip_markdown("- 第一项"), "第一项")
+
 
 if __name__ == "__main__":
     unittest.main()

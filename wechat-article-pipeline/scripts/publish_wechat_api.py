@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
 import json
 import mimetypes
 import re
@@ -19,6 +18,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import wechat_account_config as account_config
 
 
 DEFAULT_API_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-api-config.json"
@@ -117,114 +118,6 @@ def find_env_file(manifest: Path, explicit: Path | None) -> Path | None:
         if candidate.exists():
             return candidate
     return None
-
-
-def read_env_file(path: Path | None) -> dict[str, str]:
-    if not path:
-        return {}
-    path = path.expanduser()
-    if not path.exists():
-        return {}
-    env: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key:
-            env[key] = value
-    return env
-
-
-def normalize_account_alias(alias: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9_]+", "_", alias.strip()).strip("_").upper()
-    return cleaned
-
-
-def find_account_profile(env: dict[str, str], selector: str | None) -> dict[str, str]:
-    groups: dict[str, dict[str, str]] = {}
-    pattern = re.compile(r"^WECHAT_ACCOUNT_([A-Z0-9_]+)_(NAME|APPID|APPSECRET|AUTHOR|PREVIEW_ACCOUNT)$")
-    for key, value in env.items():
-        match = pattern.match(key)
-        if not match:
-            continue
-        alias, field = match.groups()
-        groups.setdefault(alias, {})[field.lower()] = value.strip()
-
-    if not selector:
-        credential_groups = {
-            alias: profile for alias, profile in groups.items() if profile.get("appid") or profile.get("appsecret")
-        }
-        if len(credential_groups) == 1:
-            alias, profile = next(iter(credential_groups.items()))
-            return {
-                "selector": "",
-                "alias": alias,
-                "name": profile.get("name", "").strip(),
-                "appid": profile.get("appid", "").strip(),
-                "appsecret": profile.get("appsecret", "").strip(),
-                "author": profile.get("author", "").strip(),
-                "preview_account": profile.get("preview_account", "").strip(),
-            }
-        if len(credential_groups) > 1:
-            available = sorted(f"{profile.get('name', '').strip() or alias} ({alias})" for alias, profile in credential_groups.items())
-            raise SystemExit(
-                "Multiple WeChat accounts are configured. Ask the user which account to use, then pass --account. "
-                f"Available accounts: {', '.join(available)}."
-            )
-        return {
-            "selector": "",
-            "alias": "",
-            "name": env.get("WECHAT_ACCOUNT_NAME", "").strip(),
-            "appid": env.get("WECHAT_APPID", "").strip(),
-            "appsecret": env.get("WECHAT_APPSECRET", "").strip(),
-            "author": env.get("WECHAT_AUTHOR", "").strip(),
-            "preview_account": env.get("WECHAT_PREVIEW_ACCOUNT", "").strip(),
-        }
-
-    selector = selector.strip()
-    selector_alias = normalize_account_alias(selector)
-    matches: list[tuple[str, dict[str, str]]] = []
-    for alias, profile in groups.items():
-        if profile.get("name") == selector or (selector_alias and alias == selector_alias):
-            matches.append((alias, profile))
-
-    if not matches:
-        available = sorted(
-            f"{profile.get('name', '').strip() or alias} ({alias})"
-            for alias, profile in groups.items()
-            if profile.get("appid") or profile.get("appsecret")
-        )
-        suffix = f" Available accounts: {', '.join(available)}." if available else ""
-        raise SystemExit(
-            f"Unknown WeChat account selector: {selector}. "
-            "Set WECHAT_ACCOUNT_<ALIAS>_NAME plus APPID/APPSECRET in .env."
-            + suffix
-        )
-    if len(matches) > 1:
-        aliases = ", ".join(alias for alias, _ in matches)
-        raise SystemExit(f"WeChat account selector {selector} matches multiple aliases: {aliases}. Use the alias explicitly.")
-
-    alias, profile = matches[0]
-    return {
-        "selector": selector,
-        "alias": alias,
-        "name": profile.get("name", "").strip(),
-        "appid": profile.get("appid", "").strip(),
-        "appsecret": profile.get("appsecret", "").strip(),
-        "author": profile.get("author", "").strip(),
-        "preview_account": profile.get("preview_account", "").strip(),
-    }
-
-
-def account_token_cache_path(path: Path, profile: dict[str, str]) -> Path:
-    if not profile.get("alias") or path.expanduser() != DEFAULT_TOKEN_CACHE:
-        return path
-    label = profile.get("name") or profile["alias"]
-    digest = hashlib.sha1(label.encode("utf-8")).hexdigest()[:10]
-    return path.with_name(f"{path.stem}-{profile['alias'].lower()}-{digest}{path.suffix}")
 
 
 def save_config(path: Path, config: dict[str, Any]) -> None:
@@ -372,6 +265,15 @@ def decode_data_image(data_uri: str, suffix_hint: str) -> LocalImage:
     return LocalImage(Path(tmp.name), mime, width, height, original_bytes=size, upload_bytes=size)
 
 
+def cleanup_temp_image(image: LocalImage | None) -> None:
+    if not image:
+        return
+    try:
+        image.path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def normalize_body_image(image: LocalImage) -> LocalImage:
     allowed = {"image/jpeg", "image/png"}
     original_size = image.path.stat().st_size
@@ -384,26 +286,34 @@ def normalize_body_image(image: LocalImage) -> LocalImage:
     except Exception as exc:  # pragma: no cover - optional dependency
         return normalize_body_image_with_sips(image, exc)
 
-    def save_candidate(img: Any, quality: int) -> tuple[Path, int]:
+    def save_candidate(img: Any, quality: int, candidate_paths: list[Path]) -> tuple[Path, int]:
         out = tempfile.NamedTemporaryFile(prefix="wechat-body-", suffix=".jpg", delete=False)
         out.close()
         img.save(out.name, "JPEG", quality=quality, optimize=True, progressive=True)
         path = Path(out.name)
+        candidate_paths.append(path)
         return path, path.stat().st_size
 
     def best_quality_under_limit(img: Any) -> tuple[Path, int, int] | None:
+        candidate_paths: list[Path] = []
         best: tuple[Path, int, int] | None = None
         low, high = 40, 95
-        while low <= high:
-            quality = (low + high) // 2
-            path, size = save_candidate(img, quality)
-            if size <= BODY_IMAGE_TARGET_BYTES:
-                if best is None or size > best[1]:
-                    best = (path, size, quality)
-                low = quality + 1
-            else:
-                high = quality - 1
-        return best
+        try:
+            while low <= high:
+                quality = (low + high) // 2
+                path, size = save_candidate(img, quality, candidate_paths)
+                if size <= BODY_IMAGE_TARGET_BYTES:
+                    if best is None or size > best[1]:
+                        best = (path, size, quality)
+                    low = quality + 1
+                else:
+                    high = quality - 1
+            return best
+        finally:
+            keep = best[0] if best else None
+            for path in candidate_paths:
+                if path != keep:
+                    path.unlink(missing_ok=True)
 
     with Image.open(image.path) as img:
         if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
@@ -461,7 +371,7 @@ def normalize_body_image_with_sips(image: LocalImage, pillow_exc: Exception) -> 
             "Install Pillow or provide jpg/png body images under 1MB."
         ) from pillow_exc or exc
 
-    def save_candidate(quality: int, max_side: int | None) -> tuple[Path, int]:
+    def save_candidate(quality: int, max_side: int | None, candidate_paths: list[Path]) -> tuple[Path, int]:
         out = tempfile.NamedTemporaryFile(prefix="wechat-body-", suffix=".jpg", delete=False)
         out.close()
         cmd = ["sips"]
@@ -470,21 +380,29 @@ def normalize_body_image_with_sips(image: LocalImage, pillow_exc: Exception) -> 
         cmd.extend(["-s", "format", "jpeg", "-s", "formatOptions", str(quality), str(image.path), "--out", out.name])
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         path = Path(out.name)
+        candidate_paths.append(path)
         return path, path.stat().st_size
 
     def best_quality_under_limit(max_side: int | None) -> tuple[Path, int, int] | None:
+        candidate_paths: list[Path] = []
         best: tuple[Path, int, int] | None = None
         low, high = 40, 100
-        while low <= high:
-            quality = (low + high) // 2
-            path, size = save_candidate(quality, max_side)
-            if size <= BODY_IMAGE_TARGET_BYTES:
-                if best is None or size > best[1]:
-                    best = (path, size, quality)
-                low = quality + 1
-            else:
-                high = quality - 1
-        return best
+        try:
+            while low <= high:
+                quality = (low + high) // 2
+                path, size = save_candidate(quality, max_side, candidate_paths)
+                if size <= BODY_IMAGE_TARGET_BYTES:
+                    if best is None or size > best[1]:
+                        best = (path, size, quality)
+                    low = quality + 1
+                else:
+                    high = quality - 1
+            return best
+        finally:
+            keep = best[0] if best else None
+            for path in candidate_paths:
+                if path != keep:
+                    path.unlink(missing_ok=True)
 
     scale = 1.0
     max_side = max(width, height)
@@ -516,11 +434,13 @@ def upload_body_images(content_html: str, access_token: str) -> tuple[str, list[
         quote = match.group(1)
         data_uri = match.group(2)
         source_image = decode_data_image(data_uri, "png")
-        image = normalize_body_image(source_image)
-        resp = api_post_multipart("/cgi-bin/media/uploadimg", {}, {"media": image}, access_token)
-        url = str(resp["url"])
-        uploads.append(
-            {
+        image: LocalImage | None = None
+        upload: dict[str, str] | None = None
+        try:
+            image = normalize_body_image(source_image)
+            resp = api_post_multipart("/cgi-bin/media/uploadimg", {}, {"media": image}, access_token)
+            url = str(resp["url"])
+            upload = {
                 "kind": "body",
                 "local_path": str(image.path),
                 "url": url,
@@ -530,8 +450,14 @@ def upload_body_images(content_html: str, access_token: str) -> tuple[str, list[
                 "quality": str(image.quality),
                 "scale": f"{image.scale:.4f}",
             }
-        )
-        return f"src={quote}{url}{quote}"
+            uploads.append(upload)
+            return f"src={quote}{url}{quote}"
+        finally:
+            cleanup_temp_image(image)
+            if image is None or image.path != source_image.path:
+                cleanup_temp_image(source_image)
+            if upload is not None:
+                upload["local_path_removed"] = str(not Path(upload["local_path"]).exists()).lower()
 
     return DATA_IMAGE_RE.sub(replace, content_html), uploads
 
@@ -542,14 +468,21 @@ def upload_cover(manifest: dict[str, Any], access_token: str) -> dict[str, str]:
     if not src.startswith("data:image/"):
         raise SystemExit("Manifest cover.src must be a data:image URI for API publishing.")
     image = decode_data_image(src, "png")
-    resp = api_post_multipart("/cgi-bin/material/add_material?type=image", {}, {"media": image}, access_token)
-    return {
-        "thumb_media_id": str(resp["media_id"]),
-        "url": str(resp.get("url", "")),
-        "local_path": str(image.path),
-        "width": str(image.width),
-        "height": str(image.height),
-    }
+    result: dict[str, str] | None = None
+    try:
+        resp = api_post_multipart("/cgi-bin/material/add_material?type=image", {}, {"media": image}, access_token)
+        result = {
+            "thumb_media_id": str(resp["media_id"]),
+            "url": str(resp.get("url", "")),
+            "local_path": str(image.path),
+            "width": str(image.width),
+            "height": str(image.height),
+        }
+        return result
+    finally:
+        cleanup_temp_image(image)
+        if result is not None:
+            result["local_path_removed"] = str(not Path(result["local_path"]).exists()).lower()
 
 
 def format_crop_value(values: tuple[float, float, float, float]) -> str:
@@ -718,9 +651,12 @@ def main() -> None:
     manifest = read_json(args.manifest.resolve())
     config = read_config(args.config)
     env_file = find_env_file(args.manifest, args.env_file)
-    env = read_env_file(env_file)
-    account = find_account_profile(env, args.account)
-    args.token_cache = account_token_cache_path(args.token_cache.expanduser(), account)
+    env = account_config.read_env_file(env_file)
+    account = account_config.find_account_profile(env, args.account, include_credentials=True)
+    token_cache = args.token_cache.expanduser()
+    if token_cache == DEFAULT_TOKEN_CACHE:
+        token_cache = account_config.account_token_cache_path(DEFAULT_TOKEN_CACHE, account)
+    args.token_cache = token_cache
 
     content_html = str(manifest.get("content_html", ""))
     validation = validate_manifest(manifest, content_html)
@@ -742,7 +678,10 @@ def main() -> None:
     if args.dry_run:
         cover_src = str(((manifest.get("wechat_cover") or manifest.get("cover")) or {}).get("src", ""))
         cover_image = decode_data_image(cover_src, "png")
-        crop_values = manifest_cover_crop_values(manifest, cover_image.width, cover_image.height)
+        try:
+            crop_values = manifest_cover_crop_values(manifest, cover_image.width, cover_image.height)
+        finally:
+            cleanup_temp_image(cover_image)
         draft_payload = build_draft_payload(
             manifest,
             content_html,

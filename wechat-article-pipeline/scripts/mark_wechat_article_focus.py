@@ -302,12 +302,13 @@ def mark_article(markdown: str, target_chars: int, max_bold: int) -> str:
             continue
 
         stripped = part.strip()
-        if stripped.startswith("```"):
-            in_code_fence = not in_code_fence
-
-        block_chars = 0 if in_code_fence or is_skip_block(part) else chinese_len(part)
+        fence_count = len(re.findall(r"^```", part, flags=re.M))
+        block_is_code = in_code_fence or stripped.startswith("```")
+        block_chars = 0 if block_is_code or is_skip_block(part) else chinese_len(part)
         zone.append(part)
         zone_chars += block_chars
+        if fence_count % 2 == 1:
+            in_code_fence = not in_code_fence
 
         if zone_chars >= target_chars:
             flush_zone(output, zone, target_chars, max_bold)

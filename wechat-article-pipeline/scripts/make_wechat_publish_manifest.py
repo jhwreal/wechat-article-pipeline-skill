@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import html
 import json
 import re
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import build_wechat_article_workbench as builder
+import wechat_account_config as account_config
 
 
 DEFAULT_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "publisher-config.json"
@@ -66,118 +66,9 @@ def read_config(path: Path) -> dict[str, str]:
     }
 
 
-def read_env_file(path: Path) -> dict[str, str]:
-    path = path.expanduser()
-    if not path.exists():
-        return {}
-    env: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        env[key.strip()] = value.strip().strip('"').strip("'")
-    return env
-
-
-def normalize_account_alias(alias: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_]+", "_", alias.strip()).strip("_").upper()
-
-
-def find_account_profile(env: dict[str, str], selector: str | None) -> dict[str, str]:
-    groups: dict[str, dict[str, str]] = {}
-    pattern = re.compile(r"^WECHAT_ACCOUNT_([A-Z0-9_]+)_(NAME|APPID|APPSECRET|AUTHOR|PREVIEW_ACCOUNT)$")
-    for key, value in env.items():
-        match = pattern.match(key)
-        if not match:
-            continue
-        alias, field = match.groups()
-        groups.setdefault(alias, {})[field.lower()] = value.strip()
-
-    if not selector:
-        credential_groups = {
-            alias: profile for alias, profile in groups.items() if profile.get("appid") or profile.get("appsecret")
-        }
-        if len(credential_groups) == 1:
-            alias, profile = next(iter(credential_groups.items()))
-            return {
-                "selector": "",
-                "alias": alias,
-                "name": profile.get("name", "").strip(),
-                "author": profile.get("author", "").strip(),
-                "preview_account": profile.get("preview_account", "").strip(),
-            }
-        if len(credential_groups) > 1:
-            available = sorted(f"{profile.get('name', '').strip() or alias} ({alias})" for alias, profile in credential_groups.items())
-            raise SystemExit(
-                "Multiple WeChat accounts are configured. Ask the user which account to use, then pass --account. "
-                f"Available accounts: {', '.join(available)}."
-            )
-        return {
-            "selector": "",
-            "alias": "",
-            "name": env.get("WECHAT_ACCOUNT_NAME", "").strip(),
-            "author": env.get("WECHAT_AUTHOR", "").strip(),
-            "preview_account": env.get("WECHAT_PREVIEW_ACCOUNT", "").strip(),
-        }
-
-    selector = selector.strip()
-    selector_alias = normalize_account_alias(selector)
-    matches: list[tuple[str, dict[str, str]]] = []
-    for alias, profile in groups.items():
-        if profile.get("name") == selector or (selector_alias and alias == selector_alias):
-            matches.append((alias, profile))
-
-    if not matches:
-        available = sorted(f"{profile.get('name', '').strip() or alias} ({alias})" for alias, profile in groups.items())
-        suffix = f" Available accounts: {', '.join(available)}." if available else ""
-        raise SystemExit(
-            f"Unknown WeChat account selector: {selector}. Set WECHAT_ACCOUNT_<ALIAS>_NAME in .env." + suffix
-        )
-    if len(matches) > 1:
-        aliases = ", ".join(alias for alias, _ in matches)
-        raise SystemExit(f"WeChat account selector {selector} matches multiple aliases: {aliases}. Use the alias explicitly.")
-
-    alias, profile = matches[0]
-    return {
-        "selector": selector,
-        "alias": alias,
-        "name": profile.get("name", "").strip(),
-        "author": profile.get("author", "").strip(),
-        "preview_account": profile.get("preview_account", "").strip(),
-    }
-
-
-def account_token_cache_path(profile: dict[str, str]) -> Path:
-    if not profile.get("alias"):
-        return DEFAULT_TOKEN_CACHE
-    label = profile.get("name") or profile["alias"]
-    digest = hashlib.sha1(label.encode("utf-8")).hexdigest()[:10]
-    return DEFAULT_TOKEN_CACHE.with_name(f"{DEFAULT_TOKEN_CACHE.stem}-{profile['alias'].lower()}-{digest}{DEFAULT_TOKEN_CACHE.suffix}")
-
-
 def write_config(path: Path, config: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def write_env_value(path: Path, key: str, value: str) -> None:
-    path = path.expanduser()
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    output: list[str] = []
-    replaced = False
-    for line in lines:
-        if line.strip().startswith(f"{key}="):
-            output.append(f"{key}={value}")
-            replaced = True
-        else:
-            output.append(line)
-    if not replaced:
-        if output and output[-1].strip():
-            output.append("")
-        output.append(f"{key}={value}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(output) + "\n", encoding="utf-8")
 
 
 def author_env_key(account: dict[str, str]) -> str:
@@ -191,7 +82,7 @@ def resolve_author(args: argparse.Namespace, env_file: Path, account: dict[str, 
         if not author:
             raise SystemExit("Author is empty. Provide a non-empty --author value.")
         if args.remember:
-            write_env_value(env_file, author_env_key(account), author)
+            account_config.write_env_value(env_file, author_env_key(account), author)
         return author
     if account.get("author"):
         return account["author"].strip()
@@ -218,7 +109,10 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"\*([^*]+)\*", r"\1", text)
     text = re.sub(r"__([^_]+)__", r"\1", text)
     text = re.sub(r"_([^_]+)_", r"\1", text)
-    text = re.sub(r"^[#>\-\*\+\d\.\s]+", "", text, flags=re.M)
+    text = re.sub(r"^\s{0,3}#{1,6}\s+", "", text, flags=re.M)
+    text = re.sub(r"^\s{0,3}>\s?", "", text, flags=re.M)
+    text = re.sub(r"^\s{0,3}[-*+]\s+", "", text, flags=re.M)
+    text = re.sub(r"^\s{0,3}\d+[.)]\s+", "", text, flags=re.M)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -292,16 +186,27 @@ def build_wechat_cover_manifest(job: dict[str, Any], cover: dict[str, str], job_
 
 def inline_format(text: str) -> str:
     escaped = html.escape(text, quote=True)
+    code_spans: list[str] = []
+
+    def code_token(index: int) -> str:
+        return f"\x00INLINE_CODE_{index}\x00"
+
+    def protect_code(match: re.Match[str]) -> str:
+        code_spans.append(f'<code style="{CODE_STYLE}">{match.group(1)}</code>')
+        return code_token(len(code_spans) - 1)
+
+    escaped = re.sub(r"`([^`]+)`", protect_code, escaped)
     escaped = re.sub(
         r"!\[([^\]]*)\]\(([^)]+)\)",
         rf'<img alt="\1" src="\2" style="{IMAGE_STYLE}" />',
         escaped,
     )
     escaped = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", rf'<a href="\2" style="{LINK_STYLE}">\1</a>', escaped)
-    escaped = re.sub(r"`([^`]+)`", rf'<code style="{CODE_STYLE}">\1</code>', escaped)
     escaped = re.sub(r"\*\*([^*]+)\*\*", rf'<strong style="{STRONG_STYLE}">\1</strong>', escaped)
     escaped = re.sub(r"==([^=\n]+)==", rf'<span style="{ACCENT_STYLE}">\1</span>', escaped)
     escaped = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", escaped)
+    for index, value in enumerate(code_spans):
+        escaped = escaped.replace(code_token(index), value)
     return escaped
 
 
@@ -437,8 +342,8 @@ def main() -> None:
     args = parse_args()
     job = read_json(args.job.resolve())
     config = read_config(args.config.expanduser())
-    env = read_env_file(args.env_file)
-    account = find_account_profile(env, args.account)
+    env = account_config.read_env_file(args.env_file)
+    account = account_config.find_account_profile(env, args.account, include_credentials=True)
     if account.get("preview_account"):
         config["preview_account"] = account["preview_account"]
 
@@ -507,7 +412,7 @@ def main() -> None:
             "account": config.get("preview_account", ""),
         },
         "env_file": str(args.env_file.expanduser()),
-        "token_cache_path": str(account_token_cache_path(account)),
+        "token_cache_path": str(account_config.account_token_cache_path(DEFAULT_TOKEN_CACHE, account)),
         "safety": {
             "use_official_api_only": True,
             "avoid_computer_use_on_mp_backend": True,

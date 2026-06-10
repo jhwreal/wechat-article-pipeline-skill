@@ -23,6 +23,16 @@ jobs:
           test -f wechat-article-pipeline/SKILL.md
           test -d wechat-article-pipeline/scripts
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run tests
+        run: |
+          python -m py_compile wechat-article-pipeline/scripts/*.py tests/*.py
+          python -m unittest discover -s tests -v
+
       - name: Build skill zip
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then

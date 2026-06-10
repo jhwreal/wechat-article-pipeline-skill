@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,7 @@ import unicodedata
 from pathlib import Path
 
 import build_wechat_article_workbench as builder
+import wechat_account_config as account_config
 
 
 WORKSPACE = Path.cwd()
@@ -220,6 +222,56 @@ def find_image(images_dir: Path, name: str) -> Path:
     return matches[0].resolve()
 
 
+def image_size_from_header(path: Path) -> tuple[int, int]:
+    data = path.read_bytes()
+    if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
+        return struct.unpack(">II", data[16:24])
+    if data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 10:
+        return struct.unpack("<HH", data[6:10])
+    if data.startswith(b"\xff\xd8"):
+        index = 2
+        while index + 9 < len(data):
+            if data[index] != 0xFF:
+                index += 1
+                continue
+            marker = data[index + 1]
+            index += 2
+            if marker in (0xD8, 0xD9):
+                continue
+            if index + 2 > len(data):
+                break
+            segment_length = int.from_bytes(data[index : index + 2], "big")
+            if segment_length < 2:
+                break
+            if marker in {
+                0xC0,
+                0xC1,
+                0xC2,
+                0xC3,
+                0xC5,
+                0xC6,
+                0xC7,
+                0xC9,
+                0xCA,
+                0xCB,
+                0xCD,
+                0xCE,
+                0xCF,
+            } and index + 7 <= len(data):
+                height = int.from_bytes(data[index + 3 : index + 5], "big")
+                width = int.from_bytes(data[index + 5 : index + 7], "big")
+                return width, height
+            index += segment_length
+    raise RuntimeError(f"Could not read image size from file header for {path}")
+
+
+def image_size_with_pillow(path: Path) -> tuple[int, int]:
+    from PIL import Image
+
+    with Image.open(path) as img:
+        return img.size
+
+
 def image_size_with_sips(path: Path) -> tuple[int, int]:
     proc = subprocess.run(
         ["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(path)],
@@ -237,6 +289,17 @@ def image_size_with_sips(path: Path) -> tuple[int, int]:
     if width <= 0 or height <= 0:
         raise RuntimeError(f"Could not read image size for {path}")
     return width, height
+
+
+def image_size(path: Path) -> tuple[int, int]:
+    try:
+        return image_size_from_header(path)
+    except Exception:
+        pass
+    try:
+        return image_size_with_pillow(path)
+    except Exception:
+        return image_size_with_sips(path)
 
 
 def format_crop_value(values: tuple[float, float, float, float]) -> str:
@@ -266,6 +329,17 @@ def crop_value_from_box(box: tuple[int, int, int, int], width: int, height: int)
     )
 
 
+def write_center_crop_with_pillow(source: Path, out: Path, box: tuple[int, int, int, int], target_width: int, target_height: int) -> None:
+    from PIL import Image
+
+    left, top, crop_width, crop_height = box
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with Image.open(source) as img:
+        resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+        cropped = img.crop((left, top, left + crop_width, top + crop_height))
+        cropped.resize((target_width, target_height), resampling).save(out)
+
+
 def write_center_crop_with_sips(source: Path, out: Path, box: tuple[int, int, int, int], target_width: int, target_height: int) -> None:
     _left, _top, crop_width, crop_height = box
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -288,13 +362,20 @@ def write_center_crop_with_sips(source: Path, out: Path, box: tuple[int, int, in
         tmp_path.unlink(missing_ok=True)
 
 
+def write_center_crop(source: Path, out: Path, box: tuple[int, int, int, int], target_width: int, target_height: int) -> None:
+    try:
+        write_center_crop_with_pillow(source, out, box, target_width, target_height)
+    except Exception:
+        write_center_crop_with_sips(source, out, box, target_width, target_height)
+
+
 def build_wechat_cover_crops(images_dir: Path, cover_path: Path) -> dict[str, dict[str, str]]:
-    width, height = image_size_with_sips(cover_path)
+    width, height = image_size(cover_path)
     crops: dict[str, dict[str, str]] = {}
     for name, spec in WECHAT_COVER_TARGETS.items():
         box = cover_crop_box(width, height, float(spec["ratio"]))
         out = images_dir / str(spec["filename"])
-        write_center_crop_with_sips(cover_path, out, box, int(spec["width"]), int(spec["height"]))
+        write_center_crop(cover_path, out, box, int(spec["width"]), int(spec["height"]))
         crops[name] = {
             "path": str(out.resolve()),
             "crop": crop_value_from_box(box, width, height),
@@ -311,88 +392,6 @@ def read_plan(path: Path | None) -> dict | None:
     if not path:
         return None
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def read_env_file(path: Path) -> dict[str, str]:
-    path = path.expanduser()
-    if not path.exists():
-        return {}
-    env: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        env[key.strip()] = value.strip().strip('"').strip("'")
-    return env
-
-
-def write_env_value(path: Path, key: str, value: str) -> None:
-    path = path.expanduser()
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    output: list[str] = []
-    replaced = False
-    for line in lines:
-        if line.strip().startswith(f"{key}="):
-            output.append(f"{key}={value}")
-            replaced = True
-        else:
-            output.append(line)
-    if not replaced:
-        if output and output[-1].strip():
-            output.append("")
-        output.append(f"{key}={value}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(output) + "\n", encoding="utf-8")
-
-
-def normalize_account_alias(alias: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_]+", "_", alias.strip()).strip("_").upper()
-
-
-def find_signature_account(env: dict[str, str], selector: str | None) -> dict[str, str]:
-    groups: dict[str, dict[str, str]] = {}
-    pattern = re.compile(
-        r"^WECHAT_ACCOUNT_([A-Z0-9_]+)_(NAME|SIGNATURE_AUTHOR|ORIGINAL_ISSUE|APPID|APPSECRET)$"
-    )
-    for key, value in env.items():
-        match = pattern.match(key)
-        if not match:
-            continue
-        alias, field = match.groups()
-        groups.setdefault(alias, {})[field.lower()] = value.strip()
-
-    if not selector:
-        configured = {
-            alias: profile
-            for alias, profile in groups.items()
-            if profile.get("signature_author") or profile.get("original_issue")
-        }
-        if len(configured) == 1:
-            alias, profile = next(iter(configured.items()))
-            return {"alias": alias, "name": profile.get("name", ""), **profile}
-        return {
-            "alias": "",
-            "name": env.get("WECHAT_ACCOUNT_NAME", "").strip(),
-            "signature_author": env.get("WECHAT_SIGNATURE_AUTHOR", "").strip(),
-            "original_issue": env.get("WECHAT_ORIGINAL_ISSUE", "").strip(),
-        }
-
-    selector = selector.strip()
-    selector_alias = normalize_account_alias(selector)
-    matches: list[tuple[str, dict[str, str]]] = []
-    for alias, profile in groups.items():
-        if profile.get("name") == selector or (selector_alias and alias == selector_alias):
-            matches.append((alias, profile))
-    if not matches:
-        available = sorted(f"{profile.get('name', '').strip() or alias} ({alias})" for alias, profile in groups.items())
-        suffix = f" Available accounts: {', '.join(available)}." if available else ""
-        raise SystemExit(f"Unknown WeChat account selector: {selector}. Set WECHAT_ACCOUNT_<ALIAS>_NAME in .env." + suffix)
-    if len(matches) > 1:
-        aliases = ", ".join(alias for alias, _ in matches)
-        raise SystemExit(f"WeChat account selector {selector} matches multiple aliases: {aliases}. Use the alias explicitly.")
-    alias, profile = matches[0]
-    return {"alias": alias, "name": profile.get("name", ""), **profile}
 
 
 def signature_issue_key(account: dict[str, str]) -> str:
@@ -598,8 +597,12 @@ def main() -> None:
     markdown, article_metadata = builder.split_front_matter(source_markdown)
     plan = read_plan(args.plan_json.resolve() if args.plan_json else None)
     env_file = (args.publisher_env_file or DEFAULT_ENV_FILE).expanduser()
-    publisher_env = read_env_file(env_file)
-    signature_account = find_signature_account(publisher_env, args.publisher_account)
+    publisher_env = account_config.read_env_file(env_file)
+    signature_account = account_config.find_account_profile(
+        publisher_env,
+        args.publisher_account,
+        include_signature=True,
+    )
     article_signature = resolve_signature_metadata(
         env_file=env_file,
         account=signature_account,
@@ -648,7 +651,7 @@ def main() -> None:
         and args.original_issue is None
         and not args.no_increment_original_issue
     ):
-        write_env_value(env_file, str(article_signature["issue_env_key"]), str(int(article_signature["issue"]) + 1))
+        account_config.write_env_value(env_file, str(article_signature["issue_env_key"]), str(int(article_signature["issue"]) + 1))
 
     if not args.no_publish_manifest:
         manifest_out = (args.publish_manifest_out or default_publish_manifest_path(args.out)).resolve()
