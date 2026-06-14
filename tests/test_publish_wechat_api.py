@@ -18,6 +18,11 @@ PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
 
 
 class PublishWechatApiTest(unittest.TestCase):
+    def test_body_image_compression_targets_900kb_upload_margin(self) -> None:
+        self.assertEqual(publisher.MAX_BODY_IMAGE_BYTES, 1024 * 1024)
+        self.assertEqual(publisher.BODY_IMAGE_TARGET_BYTES, 900 * 1024)
+        self.assertLess(publisher.BODY_IMAGE_TARGET_BYTES, publisher.MAX_BODY_IMAGE_BYTES)
+
     def test_upload_body_images_removes_temporary_decoded_file(self) -> None:
         uploaded_paths: list[Path] = []
         original_api_post_multipart = publisher.api_post_multipart

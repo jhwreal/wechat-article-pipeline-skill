@@ -147,7 +147,7 @@ The script performs:
 - `stable_token` can return `40164` when the current IP is not in the official account IP whitelist. Ask the user to add the machine's outbound IP in WeChat public platform developer settings, then retry.
 - `stable_token` can return `89503` when administrator confirmation is required. Stop and ask the user to confirm in WeChat.
 - Preview is available only for certified accounts according to the official doc.
-- `media/uploadimg` body images must be JPG or PNG and under 1 MB. The script attempts to compress with Pillow when available; otherwise it stops with a clear message.
+- `media/uploadimg` body images must be JPG or PNG and under 1 MB. The script targets 900 KiB when compression is needed, attempts to keep the best quality under that margin with Pillow when available, and otherwise stops with a clear message.
 - Non-macOS image packaging and publishing workflows should have Pillow installed. macOS can use the system `sips` fallback for some cover-crop preview work, but Pillow is still recommended for pre-upload body-image compression.
 - Cover permanent material supports larger image files, but it counts toward the official account material quota.
 - Do not log AppSecret or access tokens in final answers.

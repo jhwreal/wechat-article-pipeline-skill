@@ -29,7 +29,9 @@ DATA_IMAGE_RE = re.compile(r'src=(["\'])(data:image/[^"\']+)\1', re.I)
 VISUAL_PLACEHOLDER_RE = re.compile(r"\{\{visual:[^}]+\}\}")
 WECHAT_DRAFT_UNSTABLE_TAG_RE = re.compile(r"</?(section|div|blockquote|pre|ul|ol)\b", re.I)
 MAX_BODY_IMAGE_BYTES = 1024 * 1024
-BODY_IMAGE_TARGET_BYTES = MAX_BODY_IMAGE_BYTES - 2048
+# WeChat uploadimg requires body images under 1 MB; target 900 KiB for a
+# practical margin while keeping generated article images readable.
+BODY_IMAGE_TARGET_BYTES = 900 * 1024
 ERROR_HELP = {
     40164: "当前调用 IP 不在公众号接口 IP 白名单。把这台机器的出口 IP 加到公众平台开发配置后重试。",
     48001: "公众号没有开通或没有获得该接口权限。",
