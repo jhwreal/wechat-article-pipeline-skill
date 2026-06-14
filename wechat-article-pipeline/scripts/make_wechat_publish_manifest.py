@@ -151,6 +151,31 @@ def image_candidates(markdown: str, visuals: dict[str, Any]) -> list[dict[str, s
     return candidates
 
 
+def visual_candidate(name: str, spec: Any, job_dir: Path, alt: str) -> dict[str, str]:
+    if not isinstance(spec, dict):
+        return {}
+    src, _audit = builder.resolve_image_asset(spec, job_dir)
+    return {"name": name, "alt": alt, "src": src}
+
+
+def select_cover_candidate(
+    markdown: str,
+    visuals: dict[str, Any],
+    job_dir: Path,
+) -> tuple[dict[str, str], list[dict[str, str]]]:
+    candidates = image_candidates(markdown, visuals)
+    cover = next((item for item in candidates if item["name"] == "cover"), {})
+    if cover:
+        return cover, candidates
+
+    explicit_cover = visual_candidate("cover", visuals.get("cover"), job_dir, "题图")
+    if explicit_cover:
+        candidates.insert(0, explicit_cover)
+        return explicit_cover, candidates
+
+    return (candidates[0] if candidates else {}), candidates
+
+
 def build_wechat_cover_manifest(job: dict[str, Any], cover: dict[str, str], job_dir: Path) -> dict[str, Any]:
     source = job.get("wechat_cover") if isinstance(job.get("wechat_cover"), dict) else {}
     crops = source.get("crops") if isinstance(source.get("crops"), dict) else {}
@@ -373,8 +398,7 @@ def main() -> None:
 
     title = extract_title(markdown, str(job.get("page_title", args.job.stem)))
     visuals = job.get("visuals", {}) if isinstance(job.get("visuals"), dict) else {}
-    candidates = image_candidates(markdown, visuals)
-    cover = next((item for item in candidates if item["name"] == "cover"), candidates[0] if candidates else {})
+    cover, candidates = select_cover_candidate(markdown, visuals, args.job.resolve().parent)
     wechat_cover = build_wechat_cover_manifest(job, cover, args.job.resolve().parent)
     article_slug = args.article_slug or str(job.get("article_slug", "")).strip() or args.job.stem
 
@@ -387,6 +411,7 @@ def main() -> None:
         "content_html": inject_signature_html(markdown_to_wechat_html(markdown), signature_label(job)),
         "content_text": strip_markdown(markdown),
         "workbench_html": str(args.workbench_html.resolve()) if args.workbench_html else "",
+        "article_signature": job.get("article_signature", {}) if isinstance(job.get("article_signature"), dict) else {},
         "account": {
             "selector": account.get("selector", ""),
             "alias": account.get("alias", ""),

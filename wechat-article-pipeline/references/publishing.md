@@ -61,7 +61,7 @@ WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
 
 Keep `<ALIAS>` to uppercase ASCII letters, numbers, and underscores. Avoid aliases ending in `_SIGNATURE`, `_ORIGINAL`, or `_PREVIEW`, because those suffixes combine with reserved fields such as `AUTHOR`, `ISSUE`, and `ACCOUNT`.
 
-`WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; after packaging without an explicit issue override, it advances the selected account's issue value by one in local `.env`.
+`WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; packaging does not advance `.env` by default. Prefer `publish_wechat_api.py --create-draft --increment-original-issue` after a successful draft creation, or use the package script's explicit `--increment-original-issue` only when that is really intended.
 
 `NAME` is the account selector. `AUTHOR` is only the official draft API author and must not be used to identify credentials or the visible article signature.
 
@@ -89,6 +89,8 @@ The manifest separates the article hero image from WeChat platform cover crops:
 - `wechat_cover.crop_values.pic_crop_235_1` and `wechat_cover.crop_values.pic_crop_1_1` are the crop coordinates sent to the draft API.
 - `wechat_cover.crop_previews` points to generated preview assets such as `cover.wechat-235.png` and `cover.wechat-1x1.png`.
 
+For no-body-image draft delivery, WeChat still requires a cover `thumb_media_id`. Use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>` so the cover is uploaded for the draft payload but not inserted into `content_html`. In this mode `content_html` may contain zero body images; that is valid as long as `cover.src` is a data image.
+
 If needed, regenerate it directly:
 
 ```bash
@@ -98,16 +100,17 @@ python3 scripts/make_wechat_publish_manifest.py output.job.json output.publish-m
 
 ## API flow
 
-Dry-run first:
+Local dry-run first; this is the default and makes no network calls:
 
 ```bash
-python3 scripts/publish_wechat_api.py output.publish-manifest.json --dry-run
+python3 scripts/publish_wechat_api.py output.publish-manifest.json
 ```
 
 Create a draft:
 
 ```bash
 python3 scripts/publish_wechat_api.py output.publish-manifest.json \
+  --create-draft \
   --env-file /path/to/.env \
   --account 橘子 \
   --remember \
@@ -121,6 +124,7 @@ Send a preview only when explicitly requested:
 
 ```bash
 python3 scripts/publish_wechat_api.py output.publish-manifest.json \
+  --create-draft \
   --env-file /path/to/.env \
   --remember \
   --check-draft-switch \

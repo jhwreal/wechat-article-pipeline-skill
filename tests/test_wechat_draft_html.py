@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,6 +14,9 @@ sys.path.insert(0, str(SCRIPTS))
 
 import make_wechat_publish_manifest as manifest_builder  # noqa: E402
 import publish_wechat_api as publisher  # noqa: E402
+
+
+PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lpI1GQAAAABJRU5ErkJggg=="
 
 
 class WeChatDraftHtmlTest(unittest.TestCase):
@@ -60,6 +65,36 @@ PROJECTS.md
                 manifest,
                 '<section><p><img src="data:image/png;base64,abc"></p></section>',
             )
+
+    def test_publisher_allows_article_without_body_images_when_cover_exists(self) -> None:
+        validation = publisher.validate_manifest(
+            {
+                "title": "标题",
+                "digest": "摘要",
+                "cover": {"src": PNG_1X1},
+            },
+            "<p>正文第一段。</p>",
+        )
+
+        self.assertEqual(validation["body_data_image_count"], 0)
+        self.assertTrue(validation["cover_is_data_uri"])
+
+    def test_publish_manifest_can_use_cover_visual_outside_article_body(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            cover = root / "cover.png"
+            cover.write_bytes(base64.b64decode(PNG_1X1.split(",", 1)[1]))
+
+            selected, candidates = manifest_builder.select_cover_candidate(
+                "# 标题\n\n正文第一段。\n",
+                {"cover": {"path": str(cover)}},
+                root,
+            )
+
+        self.assertEqual(selected["name"], "cover")
+        self.assertEqual(selected["alt"], "题图")
+        self.assertTrue(selected["src"].startswith("data:image/png;base64,"))
+        self.assertEqual(candidates[0], selected)
 
     def test_inline_code_is_not_reparsed_as_markdown_emphasis(self) -> None:
         html = manifest_builder.markdown_to_wechat_html("这里有 `**literal**` 和 `a*b`。")

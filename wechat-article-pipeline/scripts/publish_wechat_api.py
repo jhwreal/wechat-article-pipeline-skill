@@ -81,6 +81,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preview-openid", help="Preview target OpenID. Takes precedence over WeChat ID.")
     parser.add_argument("--content-source-url", default="", help="Optional original/source URL for the article.")
     parser.add_argument("--dry-run", action="store_true", help="Validate and write the draft request payload without API calls.")
+    parser.add_argument(
+        "--create-draft",
+        action="store_true",
+        help="Create the WeChat draft through network APIs. Omit this flag for the default local dry-run.",
+    )
+    parser.add_argument(
+        "--increment-original-issue",
+        action="store_true",
+        help="After a successful draft creation, advance the manifest article_signature issue value in .env.",
+    )
     parser.add_argument("--include-payload", action="store_true", help="Include full draft payload in result JSON. This can be very large.")
     parser.add_argument(
         "--out",
@@ -593,8 +603,6 @@ def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, 
     if not cover_src.startswith("data:image/"):
         raise SystemExit("Manifest cover.src must be a data:image URI for API publishing.")
     data_images = DATA_IMAGE_RE.findall(content_html)
-    if not data_images:
-        raise SystemExit("Manifest content_html has no embedded data:image assets to upload.")
     return {
         "title": title,
         "digest_length": len(digest),
@@ -603,6 +611,45 @@ def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, 
         "cover_is_data_uri": True,
         "draft_html_mode": "paragraph_only",
     }
+
+
+def validate_execution_mode(args: argparse.Namespace) -> bool:
+    if args.dry_run and args.create_draft:
+        raise SystemExit("--dry-run and --create-draft cannot be used together.")
+    network_flags = []
+    for flag in (
+        "check_draft_switch",
+        "open_draft_switch",
+        "verify_draft",
+        "send_preview",
+        "increment_original_issue",
+        "force_refresh_token",
+    ):
+        if getattr(args, flag):
+            network_flags.append("--" + flag.replace("_", "-"))
+    if network_flags and not args.create_draft:
+        raise SystemExit(
+            "Network API flags require --create-draft: "
+            + ", ".join(network_flags)
+            + ". Omit them for local dry-run validation."
+        )
+    return not args.create_draft
+
+
+def increment_original_issue(manifest: dict[str, Any], env_file: Path | None) -> dict[str, str]:
+    if not env_file:
+        raise SystemExit("Cannot increment original issue without an env file.")
+    signature = manifest.get("article_signature") if isinstance(manifest.get("article_signature"), dict) else {}
+    key = str(signature.get("issue_env_key", "")).strip()
+    raw_issue = str(signature.get("issue", "")).strip()
+    if not key or not raw_issue:
+        raise SystemExit("Manifest article_signature lacks issue_env_key/issue; regenerate the manifest before incrementing.")
+    try:
+        next_issue = int(raw_issue) + 1
+    except ValueError as exc:
+        raise SystemExit(f"Manifest article_signature.issue is not an integer: {raw_issue!r}") from exc
+    account_config.write_env_value(env_file, key, str(next_issue))
+    return {"env_file": str(env_file.expanduser()), "issue_env_key": key, "next_issue": str(next_issue)}
 
 
 def check_or_open_draft_switch(access_token: str, open_switch: bool) -> dict[str, Any]:
@@ -650,11 +697,12 @@ def send_preview(
 
 def main() -> None:
     args = parse_args()
+    dry_run = validate_execution_mode(args)
     manifest = read_json(args.manifest.resolve())
     config = read_config(args.config)
     env_file = find_env_file(args.manifest, args.env_file)
     env = account_config.read_env_file(env_file)
-    account = account_config.find_account_profile(env, args.account, include_credentials=True)
+    account = account_config.find_account_profile(env, args.account, include_credentials=not dry_run)
     token_cache = args.token_cache.expanduser()
     if token_cache == DEFAULT_TOKEN_CACHE:
         token_cache = account_config.account_token_cache_path(DEFAULT_TOKEN_CACHE, account)
@@ -665,7 +713,7 @@ def main() -> None:
 
     result: dict[str, Any] = {
         "manifest": str(args.manifest.resolve()),
-        "dry_run": args.dry_run,
+        "dry_run": dry_run,
         "env_file": str(env_file.resolve()) if env_file and env_file.exists() else "",
         "account": {
             "selector": account.get("selector", ""),
@@ -677,7 +725,7 @@ def main() -> None:
     }
     draft_payload: dict[str, Any]
 
-    if args.dry_run:
+    if dry_run:
         cover_src = str(((manifest.get("wechat_cover") or manifest.get("cover")) or {}).get("src", ""))
         cover_image = decode_data_image(cover_src, "png")
         try:
@@ -729,6 +777,8 @@ def main() -> None:
             result["draft_verification"] = verify_draft(media_id, validation["title"], access_token)
         if args.send_preview:
             result["preview"] = send_preview(media_id, args, manifest, account, access_token)
+        if args.increment_original_issue:
+            result["original_issue_increment"] = increment_original_issue(manifest, env_file)
 
     out = (args.out or args.manifest.with_suffix(".wechat-api-result.json")).resolve()
     write_json(out, result)

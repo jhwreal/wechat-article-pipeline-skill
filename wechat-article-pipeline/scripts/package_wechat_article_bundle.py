@@ -56,6 +56,19 @@ def parse_args() -> argparse.Namespace:
         help="Optional image-plan JSON from make_wechat_article_image_jobs.py so packaging can preserve role metadata.",
     )
     parser.add_argument(
+        "--no-images",
+        action="store_true",
+        help="Allow packaging markdown without {{visual:*}} placeholders or local image files.",
+    )
+    parser.add_argument(
+        "--cover-image",
+        type=Path,
+        help=(
+            "Explicit cover image for WeChat draft manifests when --no-images is used. "
+            "The cover is uploaded as thumb_media_id but is not inserted into the article body."
+        ),
+    )
+    parser.add_argument(
         "--job-out",
         type=Path,
         help="Optional path to save the generated job JSON. Defaults to <output>.job.json.",
@@ -118,7 +131,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-increment-original-issue",
         action="store_true",
-        help="Do not advance the selected account's WECHAT_ORIGINAL_ISSUE after successful packaging.",
+        help="Deprecated compatibility flag. Packaging no longer increments original issue by default.",
+    )
+    parser.add_argument(
+        "--increment-original-issue",
+        action="store_true",
+        help="Explicitly advance the selected account's WECHAT_ORIGINAL_ISSUE after packaging.",
     )
     parser.add_argument(
         "--remember-publisher-config",
@@ -220,6 +238,16 @@ def find_image(images_dir: Path, name: str) -> Path:
         joined = ", ".join(str(path) for path in matches)
         raise SystemExit(f"Multiple image files match placeholder '{name}': {joined}")
     return matches[0].resolve()
+
+
+def resolve_cover_image(path: Path) -> Path:
+    cover = path.expanduser().resolve()
+    if not cover.exists() or not cover.is_file():
+        raise SystemExit(f"Cover image does not exist: {cover}")
+    if cover.suffix.lower() not in IMAGE_SUFFIXES:
+        supported = ", ".join(sorted(IMAGE_SUFFIXES))
+        raise SystemExit(f"Cover image must be one of: {supported}")
+    return cover
 
 
 def image_size_from_header(path: Path) -> tuple[int, int]:
@@ -451,19 +479,34 @@ def build_job(
     brand_subtitle: str,
     theme_color: str,
     article_signature: dict[str, object] | None,
+    allow_no_images: bool = False,
+    cover_image: Path | None = None,
 ) -> dict:
     slot_map = plan_slot_map(plan)
-    visuals = {
-        name: {
-            "path": str(find_image(images_dir, name)),
-            **{
-                key: slot_map[name][key]
-                for key in ("role", "image_type", "source_context", "target_effect", "content_focus")
-                if name in slot_map and key in slot_map[name]
-            },
+    placeholder_names = sorted({match.group(1) for match in builder.PLACEHOLDER_RE.finditer(markdown)})
+    if not placeholder_names and allow_no_images:
+        visuals = {}
+        if cover_image:
+            visuals["cover"] = {
+                "path": str(resolve_cover_image(cover_image)),
+                "role": "api_cover",
+                "image_type": "cover_asset",
+                "source_context": "Explicit cover for WeChat draft delivery; not inserted into the article body.",
+            }
+    else:
+        if not placeholder_names:
+            raise SystemExit("Article markdown does not contain any {{visual:name}} placeholders")
+        visuals = {
+            name: {
+                "path": str(find_image(images_dir, name)),
+                **{
+                    key: slot_map[name][key]
+                    for key in ("role", "image_type", "source_context", "target_effect", "content_focus")
+                    if name in slot_map and key in slot_map[name]
+                },
+            }
+            for name in placeholder_names
         }
-        for name in find_placeholders(markdown)
-    }
     wechat_cover_crops = {}
     if "cover" in visuals:
         wechat_cover_crops = build_wechat_cover_crops(images_dir, Path(visuals["cover"]["path"]))
@@ -501,6 +544,7 @@ def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, 
     job_dir = job_path.parent.resolve()
 
     markdown = job["article_markdown"]
+    expected_embedded_visual_count = len({match.group(1) for match in builder.PLACEHOLDER_RE.finditer(markdown)})
     rendered_visuals: dict[str, str] = {}
     quality_report: dict[str, object] = {"visuals": {}}
 
@@ -515,7 +559,7 @@ def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, 
         raise SystemExit(f"Missing visual assets for placeholders: {names}")
 
     html = builder.apply_template(job, template, markdown)
-    validate_embedded_html(html, len(rendered_visuals))
+    validate_embedded_html(html, expected_embedded_visual_count)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
@@ -593,6 +637,12 @@ def validate_embedded_html(html: str, expected_visual_count: int) -> None:
 
 def main() -> None:
     args = parse_args()
+    if args.no_images and not args.no_publish_manifest and not args.cover_image:
+        raise SystemExit(
+            "WeChat draft publishing requires a cover image even when --no-images is used. "
+            "Pass --cover-image <path> or add --no-publish-manifest for local formatting only."
+        )
+
     source_markdown = args.article.read_text(encoding="utf-8")
     markdown, article_metadata = builder.split_front_matter(source_markdown)
     plan = read_plan(args.plan_json.resolve() if args.plan_json else None)
@@ -615,7 +665,8 @@ def main() -> None:
     image_dir_name = infer_article_slug(args.article.resolve(), plan, article_metadata)
     slug_source = image_dir_name or args.article.stem or page_title
     images_dir = (args.images_dir or (DEFAULT_IMAGE_ROOT / image_dir_name)).resolve()
-    if not images_dir.exists() or not images_dir.is_dir():
+    has_visual_placeholders = bool(builder.PLACEHOLDER_RE.search(markdown))
+    if (has_visual_placeholders or not args.no_images) and (not images_dir.exists() or not images_dir.is_dir()):
         raise SystemExit(f"Images directory does not exist: {images_dir}")
 
     brand_title = args.brand_title or f"{page_title}工作台"
@@ -632,6 +683,8 @@ def main() -> None:
         brand_subtitle=args.brand_subtitle,
         theme_color=args.theme_color,
         article_signature=article_signature,
+        allow_no_images=args.no_images,
+        cover_image=args.cover_image,
     )
     job["storage_key"] = args.storage_key or make_content_storage_key(page_title or slug_source, markdown, job["visuals"])
 
@@ -649,6 +702,7 @@ def main() -> None:
     if (
         article_signature.get("author")
         and args.original_issue is None
+        and args.increment_original_issue
         and not args.no_increment_original_issue
     ):
         account_config.write_env_value(env_file, str(article_signature["issue_env_key"]), str(int(article_signature["issue"]) + 1))

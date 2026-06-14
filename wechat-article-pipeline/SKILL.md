@@ -1,363 +1,134 @@
 ---
 name: wechat-article-pipeline
-description: "Create a full WeChat/公众号 article package from a topic or direction, including article structure, self-media-style markdown content, built-in Codex image generation for supporting visuals, a single-file editable HTML workbench, and an optional official WeChat API workflow that uploads images and creates a WeChat draft. Use when the user wants a publish-ready long-form WeChat article or explicitly asks to push the article package into the WeChat draft box."
+description: Use when a user wants a publish-ready Chinese WeChat/公众号 article package, editable article HTML workbench, article formatting, image-job planning, missing visual jobs, or official WeChat draft-box delivery.
 ---
 
 # WeChat Article Pipeline
 
-Build one coherent WeChat article package from a single user idea: topic -> article -> derive image jobs from the article content -> directly generate images with Codex's built-in image tool -> editable single-file HTML -> publish manifest. This skill has two stages:
+Produce a usable WeChat article package from the user's topic, draft, source notes, or existing markdown. Default to one complete local package in the current Codex workspace; call the WeChat API stage only when the user explicitly asks for draft-box delivery or preview.
 
-1. Generate the article HTML package. This is the default stage and must be the only stage unless the user explicitly asks for API draft delivery.
-2. Push the generated package to the WeChat draft box through official WeChat server APIs. Run this only when the user explicitly asks to push/create/save a WeChat draft. Sending preview is a separate explicit request.
+## Core Decisions
 
-## Core rules
+- If the user asks to write, make, package, format, or polish a WeChat/公众号 article, proceed with this skill.
+- If the user gives only a rough idea, infer the brief and write. Ask only when ambiguity would change the article conclusion, audience, legal risk, account selection, or delivery target.
+- If the user asks for "不配图", "只排版", "直接格式化", or similar, use the no-image path.
+- If the user asks to补图, continue, or fix missing assets, use the missing-image path and do not rebuild finished images.
+- If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.
 
-1. Write the article first. Do not generate visuals before the argument is clear.
-2. Use self-media explanatory writing, not stiff report prose.
-3. Keep the final delivery centered on a single editable HTML workbench file, with every generated image embedded inside the HTML as a `data:image/...;base64,...` URI.
-4. Keep the existing workbench/template green as the default page theme. Do not rotate the whole article theme color just to avoid repetition unless the user explicitly asks for a different palette.
-5. Use Codex's built-in `image_gen` tool as the visual engine. Never start a nested Codex runtime from inside this skill.
-6. Save approved generated files under `<workspace>/image/<article-slug>/`, where `<workspace>` is the current Codex working directory unless the user specifies another output location.
-7. After the article is finished, always generate one cover image, one closing image, and in-body visuals at roughly one image per 200 Chinese characters of body copy. Treat the 200-character cadence as a density target, not a rigid quota.
-8. Treat the article cover image and WeChat platform cover crops as separate assets. `cover.png` is the full original article hero image used in正文; do not overwrite it for API publishing. Packaging must derive WeChat cover crop previews such as `cover.wechat-235.png` and `cover.wechat-1x1.png`, and the publish manifest must carry the matching `pic_crop_235_1` and `pic_crop_1_1` values for the WeChat draft API.
-9. Before generating images, make an internal Image Plan: article summary -> slot roles -> local context -> per-slot prompt -> anti-repetition check.
-10. Write image prompts from the actual nearby paragraph content. Each image should support the local argument, not act as generic decoration.
-11. Keep prompt wording concrete, visually direct, and article-specific. Use the finished copy to drive scene, subject, and emphasis.
-12. Do not let every image summarize the full article. Cover and closing can read the whole article meaning; each `body-*` slot must mainly serve its own local context and role.
-13. Force variation across the image set: role, scene, composition, visual distance, emotional tone, abstraction level, and information density should not collapse into one repeated prompt shape.
-14. Self-check every generated visual before embedding it into the HTML. If a visual is noisy, generic, off-topic, or awkward, regenerate it once with a safer and simpler direction.
-15. Prefer light explainer illustrations for body images: one concrete scene or object plus 2-3 useful annotations, relation lines, small nodes, or visible consequences. Avoid both extremes: dense PPT-style infographics and empty mood-only illustrations.
-16. Default to single-shot execution. If the user gives a topic, rough idea, source fragments, or a short direction, infer the missing brief and proceed without making them repeat themselves.
-17. Only ask follow-up questions when the ambiguity would materially change the article's conclusion, audience, or risk profile. Otherwise, choose a reasonable default and keep moving.
-18. Determine the article type before visual generation and make the image language follow it.
-19. Avoid repetition by changing subject matter, framing, scene logic, and image mood first. Do not fake variation by swapping colors on the same idea.
-20. Before choosing image roles, classify the visual mode as `method_visual`, `emotional_illustration`, or `analysis_visual`.
-21. Use `method_visual` only when the article is truly teaching steps, tools, workflows, checklists, or procedures. It may use process nodes, arrows, numbered steps, checklist cards, comparison diagrams, and compact information graphics.
-22. Use `emotional_illustration` for stories, emotional essays, life principles, relationship pieces, ordinary-person reflections, and articles that primarily need resonance or atmosphere. It must use illustration logic: human moments, symbolic scenes, light, space, objects, tension, silence, and metaphor. Do not use numbered steps, arrows, process diagrams, checklist cards, information cards, UI panels, or icon matrices in body images for this mode.
-23. Use `analysis_visual` for industry, mechanism, evidence, and trend pieces. It may use evidence, contrast, mechanism, and restrained metaphor, but should avoid process graphics unless the local paragraph is actually procedural.
-24. After the user confirms the article copy, and before deriving image jobs, run the focus-marking step so the final article contains core sentence highlights and occasional pull quotes for reader attention.
-25. Apply reading-focus marks in this order: first make the structure clear with useful `##` section headings while drafting; then mark one core sentence in a zone with `**...**` so it renders green; finally, only when a sentence is genuinely quotable, turn that original sentence into a markdown blockquote. Never duplicate a sentence just to create a pull quote. Keep the pink accent style available in the template, but do not add automatic pink keyword marks by default.
-26. For technical, tool, coding, workflow, system-building, or tutorial articles, apply technical-term formatting during drafting: wrap concrete project names, repository names, file names, directory names, paths, commands, environment variables, API names, script names, config keys, and literal UI/control names in markdown inline code backticks. This is required terminology formatting, not automatic keyword accent marking and not key-sentence focus marking. Do not overuse it for ordinary conceptual words or broad business ideas.
-27. When the user asks to create a WeChat draft, read [publishing.md](references/publishing.md) and use only official WeChat APIs. Do not use private WeChat backend APIs or browser automation against `mp.weixin.qq.com`.
-28. Read the WeChat draft author from account config, not hardcoded defaults. For the default account use `WECHAT_AUTHOR`; for named accounts use `WECHAT_ACCOUNT_<ALIAS>_AUTHOR`. This author is only for the official draft API payload. If the selected account has no API author configured, ask the user for the author and store it in the corresponding local `.env` field before creating the draft.
-29. Treat the visible article signature below the cover image as separate from the draft API author. For the default account use `WECHAT_SIGNATURE_AUTHOR` and `WECHAT_ORIGINAL_ISSUE`; for named accounts use `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE`. The rendered line is `<signature author>的第<issue>篇原创`, centered below the cover image as a theme-green label with 14px regular-weight white text. If the issue is missing, use `1`; after packaging an article without an explicit `--original-issue`, advance the selected account's issue value by one in the local `.env`.
-30. Open comments by default in WeChat draft payloads with `need_open_comment=1` and `only_fans_can_comment=0` so all readers can comment. Do not claim automatic selected-comments is enabled; the official selected-comment API requires a published article comment id and cannot be configured while creating a draft.
-31. Store AppID/AppSecret only in a local `.env` copied from `.env.example`; `.env` must be ignored by Git and never written into final article bundles or logs. If the file is missing or lacks credentials, ask the user for AppID/AppSecret, then generate the local `.env`.
-32. Never call final publishing/group-send APIs by default. Stop after creating the draft unless the user separately asks to send a preview. Never imply API-created drafts have original declaration, reward/赞赏, reward account, automatic selected-comments, or collection set, because the public draft API does not expose those fields.
+## Workspace Contract
 
-## Default assumptions
+Run commands from the user's current article workspace unless the user names another output location. The scripts live in this skill folder, but final artifacts belong in the workspace:
 
-Unless the user explicitly overrides them, use these defaults:
+- markdown: `<workspace>/files/<slug>.md`
+- focused markdown: `<workspace>/files/<slug>.focused.md`
+- image jobs: `<workspace>/files/<slug>.image-jobs.json`
+- HTML workbench: `<workspace>/files/<slug>.html`
+- builder job: `<workspace>/files/<slug>.job.json`
+- publish manifest: `<workspace>/files/<slug>.publish-manifest.json`
+- images: `<workspace>/image/<slug>/cover.png`, `body-*.png`, `closing.png`
+- support files: `<workspace>/files/wechat-article-pipeline/<slug>/`
 
-- target reader: Chinese users on WeChat official accounts or Toutiao
-- stance: rational, thoughtful, aimed at helping ordinary readers build cognition and practical ability
-- length: under 2000 Chinese characters, aim for about 1000 with high information density
-- tone: like a capable friend explaining something clearly
-- visual density: one generated cover image, one generated closing image, and roughly one in-body image per 200 Chinese characters for method articles; for emotional, story, or principle articles, use fewer and stronger in-body images at roughly 300-450 Chinese characters per image
-- output mode: single editable HTML file first, with images embedded directly in the HTML; local image assets and job/support files are only supporting files
-- theme color: keep the existing template green unless the user explicitly asks to change it
-- backend delivery: do not run by default; when explicitly requested, use the HTML-matched `<html-stem>.publish-manifest.json`, publisher defaults from the local `.env`, and official API credentials from either default `WECHAT_APPID` / `WECHAT_APPSECRET` or a selected named account group in that `.env`
+Do not leave final assets only in `$CODEX_HOME/generated_images` or a temp directory. Do not write finished article packages inside the skill repository unless the user explicitly asks.
 
-If the user only provides a rough idea, internally infer:
-- topic
-- target reader
-- core claim
-- length target
-- tone
-- visual density and the image jobs that Codex will execute directly with the built-in image tool after writing
+## Default Article Path
 
-## Workflow
-
-### 1. Draft the article brief
-
-Infer or define:
-- topic
-- target reader
-- core claim
-- length target
-- tone
-- visual plan
-
-Use [workflow.md](references/workflow.md) for the default structure.
-
-Do not stop to confirm the brief unless the user explicitly asks for planning first or the direction is too ambiguous to produce a defensible draft.
-
-### 2. Draft the markdown article
-
-Write the article in markdown first.
-
-Use:
-- [style-guide.md](references/style-guide.md)
-- [workflow.md](references/workflow.md)
-
-Reserve the visual slots after the article is written. Default to one generated cover image and one generated closing image. For method articles, use about one in-body image per 200 Chinese characters. For emotional, story, or principle articles, use a slower rhythm, roughly one stronger in-body illustration per 300-450 Chinese characters, then trim or merge if adjacent paragraphs are better served by one stronger image.
-
-Typical placeholder choices should use markdown image syntax:
-
-```markdown
-![题图]({{visual:cover}})
-![配图1]({{visual:body-1}})
-![配图2]({{visual:body-2}})
-![配图3]({{visual:body-3}})
-![尾图]({{visual:closing}})
-```
-
-The packager also tolerates bare `{{visual:name}}` placeholders and converts them into markdown images, but the markdown-image form above is preferred.
-
-### 3. Derive image jobs from the written article
-
-After the article copy is approved, create a focus-marked markdown copy before generating image jobs:
+1. Inspect existing `files/` and `image/` before choosing a slug, so old packages are not overwritten.
+2. Draft or revise the article in markdown first. Use [workflow.md](references/workflow.md) for structure and [style-guide.md](references/style-guide.md) for voice, focus marks, technical inline-code rules, and visual grammar.
+3. Place visual placeholders in the markdown only when images are desired: `cover`, `body-1`, `body-2`, ..., `closing`.
+4. Run the orchestration script once for planning:
 
 ```bash
-python3 scripts/mark_wechat_article_focus.py article.md article.focused.md
+python3 <skill>/scripts/postprocess_wechat_article.py \
+  <workspace>/files/<slug>.md \
+  <workspace>/files/<slug>.html \
+  --workspace <workspace> \
+  --article-slug <slug> \
+  --jobs-out <workspace>/files/<slug>.image-jobs.json \
+  --focused-article-out <workspace>/files/<slug>.focused.md \
+  --support-dir <workspace>/files/wechat-article-pipeline/<slug> \
+  --plan-only
 ```
 
-This command must:
-- keep the prose unchanged except for markdown marking
-- prefer clear `##` section structure from the article draft itself
-- add `**...**` to the most useful core sentence in a focus zone so it renders as the green key sentence
-- convert an existing memorable sentence to `> ...` only when it is strong enough; do not append a repeated quote after the paragraph
-- skip headings, image placeholders, code fences, inline code, and command/list-heavy blocks
-- avoid visual noise by keeping the default to one green sentence and zero or one strong pull quote per zone
+5. Read [image-production.md](references/image-production.md), print the generated `image_rules_markdown` in the conversation, then use `generation_queue[]` to generate two candidates per slot, show numbered candidates, select, and save final files as `jobs[].output`.
+6. Run the same script again without `--plan-only` to build the HTML, job JSON, crop previews, support files, and publish manifest.
+7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html` and fix any failures before delivery.
 
-Use `article.focused.md` as the source for image-job derivation, packaging, and optional WeChat API draft delivery.
+## Fast Paths
 
-Generate an internal Image Plan before any actual image call.
-
-First classify the article into one of these working types:
-- news explanation
-- viewpoint/commentary
-- practical how-to
-- feature/story
-- industry analysis
-
-Then divide the article into image beats.
-
-Choose the visual mode before assigning body roles:
-- `method_visual`: use `inline_light_explainer`, `inline_steps`, `inline_checklist`, `inline_detail`, `inline_contrast`, `inline_data_card`, and related method-friendly roles when the article is teaching steps, tools, workflows, or checklists. Default to light explainers unless the local paragraph truly needs a full step or checklist structure.
-- `emotional_illustration`: use `inline_human_moment`, `inline_tension`, `inline_symbolic_scene`, `inline_silence`, `inline_scene`, `inline_metaphor`, and `inline_emotion` for stories, emotions, life principles, and "讲道理" pieces. Body images in this mode must not become numbered diagrams, process graphics, checklist cards, information cards, UI panels, or icon matrices.
-- `analysis_visual`: use `inline_light_explainer`, `inline_explanation`, `inline_contrast`, `inline_evidence`, `inline_detail`, `inline_metaphor`, and occasional scenes for industry or mechanism analysis. Default to one-point explainer scenes instead of either pure atmosphere or dense diagrams.
-
-Use nearby paragraphs as the source of truth. For each beat:
-- assign a slot role such as `hero_cover`, `inline_explanation`, `inline_scene`, `inline_contrast`, `inline_detail`, `inline_metaphor`, `inline_extension`, or `closing_image`
-- identify the paragraph range it supports
-- summarize the local point in one sentence
-- write one concrete image prompt that reflects that point
-- add anti-repetition guards so the new slot does not reuse the same scene/composition/metaphor as earlier slots
-- keep the placeholder aligned with that paragraph block
-
-For most body images, aim for the middle lane: `light_explainer_illustration`.
-- One image explains one local point.
-- Use one main scene/object plus 2-3 short labels, relation lines, small icons, or visible consequences.
-- No more than three information blocks and no more than one main arrow chain.
-- The image should let readers understand one mechanism, contrast, risk, path, or judgment in three seconds.
-- Do not make a full infographic, and do not make a mood-only illustration that could fit any article.
-
-Aim for one generated cover image and one generated closing image overall. For `method_visual`, use roughly one in-body image per 200 Chinese characters. For `emotional_illustration`, prefer fewer but stronger images, roughly one in-body image per 300-450 Chinese characters; a 1000-character article may only need two or three body illustrations.
-
-Default placeholder naming:
-- `cover`
-- `body-1`, `body-2`, `body-3` ...
-- `closing`
-
-Prefer:
-- one generated cover image
-- one generated closing image tied to the article's final takeaway
-- content-driven in-body visuals placed at roughly 200-character intervals
-- fewer but stronger in-body images when several adjacent paragraphs support the same visual idea
-
-Normal execution path after the article exists:
+No-image formatting:
 
 ```bash
-python3 scripts/mark_wechat_article_focus.py article.md article.focused.md
-python3 scripts/make_wechat_article_image_jobs.py article.focused.md output.image-jobs.json --debug-plan
+python3 <skill>/scripts/postprocess_wechat_article.py \
+  <workspace>/files/<slug>.md \
+  <workspace>/files/<slug>.html \
+  --no-images \
+  --support-dir <workspace>/files/wechat-article-pipeline/<slug>
 ```
 
-This command must:
-- read the focus-marked finished article markdown
-- derive an internal Image Plan plus the final `cover`, `closing`, and `body-*` image jobs from the article content itself
-- generate planning metadata for `cover` and `closing` from the full-article meaning, while each `body-*` image uses its local role plus the nearby paragraphs instead of reusing the cover/closing logic
-- preserve per-image role metadata in the generated markdown/job artifacts so one slot can be regenerated later without guessing what it was for
+Use this when the user wants a formatted article without generated visuals. This path skips publish-manifest creation by default; add `--publish-manifest` only when a later API handoff is intentional. Official WeChat draft creation may still need a cover asset, depending on the account/API requirement; state that clearly instead of silently inventing one.
 
-### 4. Directly Generate Images With Codex
-
-After `output.image-jobs.json` is written, read its `jobs` array. For each job:
-
-- use the system `imagegen` skill / built-in `image_gen` tool directly from the current Codex turn
-- use `job.prompt` as the main prompt, preserving `must_include`, `must_avoid`, `composition`, `visual_mode`, and `content_focus`
-- generate exactly one bitmap image for that slot
-- copy the selected generated image from `$CODEX_HOME/generated_images/...` into the workspace image directory using the placeholder basename: `cover.png`, `body-1.png`, `closing.png`, etc.
-- never leave a final article asset only under `$CODEX_HOME/generated_images`
-- inspect the generated image before accepting it; if it fails the role, regenerate once with a simpler, stricter prompt
-
-Default image directory:
+No body images, but draft-box delivery:
 
 ```bash
-mkdir -p ./image/<article-slug>
+python3 <skill>/scripts/postprocess_wechat_article.py \
+  <workspace>/files/<slug>.md \
+  <workspace>/files/<slug>.html \
+  --no-images \
+  --publish-manifest \
+  --cover-image <workspace>/image/<slug>/cover.png
 ```
 
-Use the job's `output` field to choose the filename. If the field is relative, resolve it under the image directory.
+Use this when the user says no配图 but still wants 草稿箱. WeChat `draft/add` requires a cover `thumb_media_id`; here `--no-images` means no body/closing images, not no cover. Generate or reuse exactly one cover asset and do not insert it into the article body.
 
-Do not use `scripts/image_gen.py` or any custom image API runner unless the user explicitly asks for the imagegen CLI/API fallback. This skill's default path is the current Codex turn's built-in image generation capability.
-
-### 5. Build the editable HTML workbench
-
-After all image files exist:
+Missing-image jobs only:
 
 ```bash
-python3 scripts/package_wechat_article_bundle.py article.md output.html \
-  --plan-json output.image-jobs.json \
-  --images-dir ./image/<article-slug> \
-  --support-dir ./files/wechat-article-pipeline/<article-slug>
+python3 <skill>/scripts/postprocess_wechat_article.py \
+  <workspace>/files/<slug>.md \
+  <workspace>/files/<slug>.html \
+  --workspace <workspace> \
+  --article-slug <slug> \
+  --jobs-out <workspace>/files/<slug>.image-jobs.json \
+  --missing-only \
+  --plan-only
 ```
 
-This packager will:
-- read markdown with `{{visual:name}}` placeholders
-- discover matching local files such as `cover.png`, `body-1.png`, and `closing.png`
-- write a job JSON automatically
-- embed every matched image into the final HTML as a `data:image/...;base64,...` URI
-- keep the正文题图 as the original `cover.png`, then derive WeChat-specific cover crop previews from it:
-  - `cover.wechat-235.png` for the 2.35:1 platform cover crop
-  - `cover.wechat-1x1.png` for the 1:1 platform cover crop
-- write the corresponding `pic_crop_235_1` and `pic_crop_1_1` crop coordinates into the publish manifest so the API cover uses the crop regions while正文 still uses the original image
-- generate a content-fingerprinted storage key so a newly generated HTML does not load stale browser localStorage from an older file with the same title
-- fail if any visual placeholder remains unresolved or if the generated HTML still points to local image files
-- build the final editable single-file HTML workbench
-- write `<html-stem>.publish-manifest.json` next to the HTML by default for WeChat backend draft/preview automation
-- keep black code blocks in the draft manifest free of external top/bottom margin so WeChat draft import does not create extra blank lines around them
-- optionally emit support files and a quality report
+Generate only those listed images, then rerun the default packaging command without `--missing-only`.
 
-Before generating visuals, pick a visual direction explicitly. Keep the page/theme chrome on the existing green template unless the user asks otherwise; vary the image treatment, composition, and subject matter instead.
+## Publishing Path
 
-Useful article-type to visual-direction mappings:
-- news explanation: sharper, evidence-led, cleaner newsroom or blueprint feel
-- viewpoint/commentary: stronger contrast, fewer cards, more poster-like cover
-- practical how-to: clearer procedural scenes, calmer palette, steps and checklists only when the local paragraph is actually procedural
-- emotional or feature writing: use cinematic illustration, concrete human moments, symbolic spaces, light, tension, silence, and metaphor; avoid all numbered/process/checklist/information-card body images, but still make the picture reveal a concrete situation, consequence, or choice
-- industry analysis: restrained palette, concrete metaphors, less decorative cover treatment, and light explainer body images that explain one mechanism or contrast without becoming dense diagrams
+Read [publishing.md](references/publishing.md) before any draft-box API call. Use the HTML-matched `<slug>.publish-manifest.json` as the handoff file. Run `scripts/publish_wechat_api.py <manifest>` first for local dry-run validation; add `--create-draft` only when the user explicitly asks to导入草稿箱. Send preview only when separately requested. Never call final publish/group-send APIs by default.
 
-Do not default to named SVG-card patterns such as `compare`, `definition`, `steps`, or other layout-led placeholders. The sequence is now content-led: write the article, mark `body-*` beats, generate images from those paragraph blocks, and keep `cover` and `closing` as required special cases.
+Account credentials and publisher defaults live in local `.env` values, never in article bundles or logs. If multiple accounts are configured and the user did not name one, ask which public account to use before API delivery. If credentials or author fields are missing, ask for the missing values instead of guessing.
 
-Within one article, vary the visual mix. Across unrelated articles, actively avoid repeating the same cover framing, same middle-image rhythm, or same symbolic metaphor.
+## Safety Rules
 
-Before locking the plan, do a quick anti-repetition check:
-- does this look too similar to the last unrelated article package
-- is the chosen cover treatment appropriate for this article type
-- are image content, composition, and scene treatment genuinely different, rather than just the palette
-- if this still looks like the last article in another color, rewrite the prompt and regenerate instead of forcing it through
+- Do not overwrite an existing package unless the user asked for that exact slug or file.
+- Do not delete old markdown, images, jobs, manifests, or support files without explicit permission.
+- Do not install dependencies, modify Codex config, switch accounts, or edit `.env` credentials unless the user explicitly approves that action.
+- Do not start nested Codex runtimes or custom image API runners for normal image work.
+- Keep `cover.png` as the article hero image. Packaging may derive WeChat crop previews such as `cover.wechat-235.png` and `cover.wechat-1x1.png`; do not replace the original hero with a crop.
 
-Before packaging, inspect each visual against these minimum checks:
-- no crowded center area in the cover
-- no visual element that competes with the headline
-- no generic “AI wallpaper” that ignores the paragraph it is supposed to support
-- no obviously awkward spacing, text rendering, or off-topic symbolism
+## Acceptance Checklist
 
-If a visual fails this bar, retry once with a safer prompt or a different visual direction and use that version in the final package.
+Before delivery, confirm:
 
-### 6. Optional second stage: push to WeChat draft box by official API
+- final HTML is under `<workspace>/files/`
+- markdown, job JSON, manifest, and image directory use the same slug
+- every requested visual is present or intentionally skipped by `--no-images`
+- no unresolved `{{visual:*}}` remains in the HTML
+- embedded HTML does not point to local image files
+- `verify_wechat_article_package.py` reports `status: ok`
+- optional WeChat API result file is reported if draft delivery was run
+- final response gives the HTML path first, then markdown/image/manifest paths when relevant
 
-Only do this when the user explicitly asks for draft creation, draft-box upload, API publishing assistance, or similar delivery. Do not run this stage for ordinary article-generation requests.
+## References
 
-Read [publishing.md](references/publishing.md), then:
-
-1. Use the generated `<html-stem>.publish-manifest.json` as the source of truth for only the fields the official draft API can set: title, author, digest, body HTML, cover image, body images, and optional preview account.
-2. Use `scripts/publish_wechat_api.py` to:
-   - fetch or reuse `access_token` through `cgi-bin/stable_token`;
-   - upload body images through `cgi-bin/media/uploadimg`;
-   - upload the cover through `cgi-bin/material/add_material?type=image`;
-   - create the draft through `cgi-bin/draft/add`;
-   - send preview through `cgi-bin/message/mass/preview` only when the user explicitly asks for preview sending.
-3. If WeChat returns IP whitelist, administrator confirmation, credential, or permission errors, report the exact official error and stop for the user to resolve it.
-4. Stop after the draft is created. Do not call publish/group-send APIs unless separately requested and confirmed.
-
-Publisher defaults and API credentials live in a local `.env` file copied from `.env.example`. This file is excluded from Git and must never be uploaded to GitHub.
-
-```text
-.env
-```
-
-Shape:
-
-```dotenv
-WECHAT_APPID=
-WECHAT_APPSECRET=
-WECHAT_ACCOUNT_NAME=
-WECHAT_AUTHOR=
-WECHAT_SIGNATURE_AUTHOR=
-WECHAT_ORIGINAL_ISSUE=1
-WECHAT_PREVIEW_ACCOUNT=
-```
-
-For multiple public accounts, use ASCII aliases for environment variable names and a separate account-name field for matching:
-
-```dotenv
-WECHAT_ACCOUNT_JUZI_NAME=橘子
-WECHAT_ACCOUNT_JUZI_APPID=
-WECHAT_ACCOUNT_JUZI_APPSECRET=
-WECHAT_ACCOUNT_JUZI_AUTHOR=
-WECHAT_ACCOUNT_JUZI_SIGNATURE_AUTHOR=
-WECHAT_ACCOUNT_JUZI_ORIGINAL_ISSUE=1
-WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
-```
-
-`NAME` is the account selector used by `--account`. `AUTHOR` is only the official draft API author. `SIGNATURE_AUTHOR` and `ORIGINAL_ISSUE` control the visible article signature below the cover image and must not be confused with `AUTHOR`.
-
-When `.env` contains exactly one named account, use it by default if the user has not specified an account. When `.env` contains multiple named accounts and the user has not specified which one to use, ask the user to choose by public account name before creating the draft.
-
-If `.env` does not exist or lacks credentials for the selected account, ask the user for the account name, AppID, and AppSecret, then create the file locally with restrictive permissions. The GitHub version must include `.env.example` and setup instructions, but never `.env`.
-
-Create a draft:
-
-```bash
-python3 scripts/publish_wechat_api.py output.publish-manifest.json \
-  --env-file /path/to/.env \
-  --account 橘子 \
-  --remember \
-  --check-draft-switch \
-  --verify-draft
-```
-
-Omit `--account` only when using the default `WECHAT_APPID` / `WECHAT_APPSECRET` pair or when `.env` contains exactly one named account.
-
-Add `--send-preview` only when the user explicitly asks to send a preview.
-
-Use `--dry-run` first when validating a package without calling WeChat.
-
-Low-level fallback when a job JSON already exists:
-
-```bash
-python3 scripts/build_wechat_article_workbench.py job.json output.html
-```
-
-This will:
-- read image assets from local files, embedded payloads, or URLs
-- embed them into markdown as data URIs when given base64 or local file paths
-- inject the markdown into the workbench template
-- output a single HTML file
-- optionally save raw markdown, resolved asset references, and a quality report
-
-## Output policy
-
-Default deliverables:
-- single-file editable HTML workbench with generated images embedded as data URIs
-- `<html-stem>.publish-manifest.json` for optional WeChat API draft/preview automation
-- source markdown
-- local image assets or asset references
-- job JSON
-- quality report for resolved visuals
-
-Default interaction policy:
-- take one input from the user and produce the package
-- avoid multi-round brief collection unless necessary
-- optimize for a usable first draft instead of a “fully confirmed” plan
-
-Save the final HTML under `<workspace>/files/` unless the user asks otherwise.
-Default image output directory: `<workspace>/image/<article-slug>/`.
-
-## Resources
-
-- [workflow.md](references/workflow.md) — article workflow and section expectations
-- [style-guide.md](references/style-guide.md) — tone, pacing, and visual defaults
-- [job-schema.md](references/job-schema.md) — JSON contract for the build script
-- [publishing.md](references/publishing.md) — official API workflow for WeChat drafts and previews
-- [wechat-md-workbench.template.v3.html](assets/templates/wechat-md-workbench.template.v3.html) — editable HTML workbench template used by the build scripts
+- [workflow.md](references/workflow.md): article structure, interaction defaults, and focus marking.
+- [image-production.md](references/image-production.md): candidate execution, conversation rule display, and selection workflow.
+- [image-rules.json](references/image-rules.json): the single source for image generation, avoid, selection, and image-influence rules.
+- [style-guide.md](references/style-guide.md): writing style, focus marks, and technical inline-code rules.
+- [job-schema.md](references/job-schema.md): image-job and workbench JSON contracts.
+- [publishing.md](references/publishing.md): official WeChat draft/preview API procedure.
+- [assets/templates/wechat-md-workbench.template.v3.html](assets/templates/wechat-md-workbench.template.v3.html): template asset used by scripts; do not read it unless debugging template behavior.
+- `README.md`, `examples/`, and `.env.example` are install/demo assets; do not read them during normal article execution.

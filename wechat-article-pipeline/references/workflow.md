@@ -1,82 +1,62 @@
 # Workflow
 
-Default article structure for explanatory WeChat or Toutiao-style posts aimed at ordinary Chinese readers:
+Use this file for article structure and interaction choices. Use `style-guide.md` for prose style and visual language. Use `publishing.md` only for official WeChat API delivery.
 
-1. Hook the reader with a concrete gap or confusion.
-2. Explain the core concept in plain language.
-3. Show why the concept matters in real life.
-4. Give a simple model, process, or comparison.
-5. End with one memorable takeaway.
+## Default Structure
 
-Default working assumptions:
+For ordinary WeChat or Toutiao-style explanatory posts:
 
-- audience: general Chinese readers, not specialists
-- stance: rational, thoughtful, practical
-- length: aim for about 1000 Chinese characters and stay under 2000
-- tone: concise, high-density, friend-like explanation
-- goal: increase cognition and practical capability, not just “popular science”
+1. Open with the reader's concrete confusion, pressure, or gap.
+2. State the core claim in plain Chinese.
+3. Explain the concept or mechanism with familiar examples.
+4. Show why it matters in daily work, life, or decision-making.
+5. Give one usable model, comparison, or next action.
+6. End with a memorable takeaway, not a slogan.
 
-Interaction rule:
+Default assumptions:
 
-- If the user provides only a topic or rough idea, infer the rest and write.
-- Do not require a separate brief-confirmation round by default.
+- reader: general Chinese readers, not specialists
+- length: about 1000 Chinese characters, under 2000 unless requested
+- tone: clear, direct, thoughtful, friend-like
+- stance: practical cognition gain, not report prose or empty attitude
 
-Visual defaults:
+## Interaction Rules
 
-- finish the article first, then decide image placement
-- after the user confirms the article copy, run `scripts/mark_wechat_article_focus.py article.md article.focused.md` before deriving image jobs
-- use the focus-marked markdown for image jobs, HTML packaging, publish manifest generation, and optional WeChat draft creation
-- while drafting, prefer clear `##` section headings whenever the structure naturally supports them
-- for technical, tool, coding, workflow, system-building, or tutorial articles, add inline-code technical-term formatting while drafting: use backticks for concrete project/repo names, files, directories, paths, commands, environment variables, APIs, scripts, config keys, and literal UI/control names
-- keep this technical-term formatting separate from focus marks: backticks render as inline code/terminology, `**...**` renders as green key sentences, and `==...==` remains the optional pink accent syntax with no automatic keyword marking by default
-- in roughly every 300 Chinese characters, mark one core sentence with `**...**` for the green key-sentence style
-- keep the pink accent style available in the template, but do not add automatic pink keyword marks by default
-- only convert a sentence to a markdown blockquote when it is genuinely quotable; move/mark the original sentence as `> ...` instead of repeating it below the paragraph
-- treat focus marks as reading aids, not decoration; too many marks dilute attention and should be avoided
-- do not mark headings, image placeholders, code blocks, inline code, commands, or dense list-only sections
-- before any actual image generation, make an internal Image Plan for all slots: article summary -> slot role -> local context -> prompt -> anti-repetition check
-- always generate one cover image and one closing image
-- aim for about one in-body image per 200 Chinese characters for method articles, and about one stronger in-body illustration per 300-450 Chinese characters for emotional, story, or principle articles
-- classify visual mode before assigning roles: `method_visual`, `emotional_illustration`, or `analysis_visual`
-- use `inline_light_explainer` as the default middle lane for most body images: one concrete scene/object plus 2-3 useful annotations, relation lines, small nodes, icons, or visible consequences
-- keep light explainers useful but modest: no more than three information blocks and no more than one main arrow chain
-- for `emotional_illustration`, avoid numbered/process/checklist/information-card body images and prefer concrete human moments, symbolic scenes, atmosphere, light, tension, silence, and metaphor
-- emotional illustrations still need a local signal such as a situation, consequence, choice, pressure source, or key object; avoid generic mood-only images
-- save local image files under `<workspace>/image/<article-slug>/`
-- derive image jobs with `python3 scripts/make_wechat_article_image_jobs.py article.md output.image-jobs.json --debug-plan`
-- generate those files by directly calling Codex's built-in `image_gen` tool from the current Codex turn; do not start a nested Codex process
-- `cover`: opening anchor image for the title area
-- `body-1`, `body-2`, `body-3` ...: in-body images tied to nearby paragraph clusters
-- `closing`: concluding image tied to the article's final takeaway
-- do not default to semantic placeholder names inherited from old SVG layouts; use generic `body-*` beats and let the nearby paragraphs determine the prompt
-- `cover` and `closing` should read the full article meaning; each `body-*` image should read the text immediately before that placeholder at roughly the 200-character cadence
-- each slot still needs its own role, such as light explainer / explanation / scene / contrast / detail / metaphor / extension / closing, instead of turning every image into the same theme summary
-- rotate subject matter, framing, metaphor, and mood based on article type instead of repeating one stock combination
+- If the user gives only a topic, infer the brief and write.
+- Do not ask for a brief-confirmation round by default.
+- Ask before continuing only when the missing answer changes the thesis, target reader, risk level, account choice, or delivery destination.
+- When editing an existing article package, preserve the existing slug and asset relationship unless the user asks for a new package.
+- When the task is title/body/image/package-only, handle only that layer instead of rerunning the whole path.
 
-Keep explanatory visuals close to the paragraph they support.
+## Markdown Rules
 
-Visual packaging rule:
+- Use one `#` title.
+- Use `##` headings when the article has real internal turns.
+- Use short paragraphs.
+- Add visual placeholders only when images are wanted: `cover`, `body-1`, `body-2`, ..., `closing`.
+- For technical, tool, coding, workflow, or tutorial articles, wrap concrete names in backticks: project names, repositories, paths, commands, environment variables, API names, scripts, config keys, and literal UI/control names.
+- Keep inline-code formatting separate from reading-focus marks.
 
-1. Confirm the article copy.
-2. Run focus marking on the confirmed markdown.
-3. Generate the draft image after the nearby paragraphs are written and marked.
-4. Check that the slot role is correct for that position instead of defaulting to another generic theme image.
-5. Check whether it matches the paragraph point, feels generic, or competes with the headline.
-6. If it fails, regenerate once with a safer and simpler prompt or a different visual direction.
-7. Save the approved file with the matching placeholder basename such as `body-2.png`.
-8. Package the focus-marked markdown plus local image directory into the final HTML with `scripts/package_wechat_article_bundle.py`, keeping role metadata in the markdown/job artifacts.
-9. Keep the generated `<html-stem>.publish-manifest.json` next to the HTML. It is the handoff file for the optional WeChat API draft-box stage.
+## Focus Marking
 
-For cover and closing visuals, bias toward quieter composition:
-- fewer competing elements
-- clearer whitespace around the headline
-- no noisy fake UI clutter or text-heavy overlays
+The orchestration script runs `mark_wechat_article_focus.py` unless disabled. It should preserve prose and add only reading aids:
 
-Draft-box API stage rule:
+- `**...**` for a core sentence in a focus zone
+- `> ...` only when an existing sentence is genuinely quotable
+- no duplicated quote sentence
+- no automatic pink keyword marking by default
+- no focus marks in headings, image placeholders, code fences, inline code, commands, or dense list-only sections
 
-- Only run the WeChat API delivery stage when the user explicitly asks for draft-box creation, draft saving, or API publishing assistance.
-- Use official WeChat server APIs through `scripts/publish_wechat_api.py`; never use private WeChat backend APIs.
-- Read `references/publishing.md` before creating the draft or sending preview.
-- Use `<html-stem>.publish-manifest.json` for title, digest, author, cover, body HTML, and optional preview account.
-- If WeChat returns IP whitelist, administrator confirmation, credential, permission, or risk-control errors, stop and ask the user to resolve them.
-- Create the draft only. Send preview only if the user explicitly asks for preview. Do not call final publish/group-send APIs by default.
+## Execution Choices
+
+- Full package with images: use the default `postprocess_wechat_article.py --plan-only`, generate listed images, then rerun without `--plan-only`.
+- Image production: use `image-production.md`; generate two numbered candidates per slot from `generation_queue[].generation_prompt`, then select final files with `review_contract`.
+- No generated images: use `postprocess_wechat_article.py --no-images`.
+- No body images + API draft delivery: still provide one cover image and use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>`.
+- Missing images only: use `postprocess_wechat_article.py --missing-only --plan-only`, generate only listed files, then rerun the normal package command.
+- Verification: run `verify_wechat_article_package.py <html>` before delivery.
+- API draft delivery: run publish dry-run first; add `--create-draft` only after the user explicitly asks for草稿箱. Do not use browser automation.
+
+## Completion
+
+Deliver the local HTML first. Mention markdown, image directory, image jobs, manifest, and API result only when relevant. State any skipped images, missing account fields, API limitations, or unresolved risks plainly.

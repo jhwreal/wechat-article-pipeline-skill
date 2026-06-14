@@ -59,42 +59,39 @@ Each `visuals` entry supports one of these source forms:
 - `base64` plus `mime_type` - raw image bytes returned by the generator
 - `url` - external image URL; this is allowed but will not be embedded into the final single-file HTML
 
-Recommended policy:
-- write the article first
-- generate an internal image plan before any actual image call
-- count the approximate Chinese characters
-- always include one generated cover image and one generated closing image
-- place one in-body image beat roughly every 200 characters for method articles, and roughly every 300-450 characters for emotional, story, or principle articles
-- classify visual mode before role selection: `method_visual`, `emotional_illustration`, or `analysis_visual`
-- default most body beats to `inline_light_explainer`: one concrete scene/object plus 2-3 useful annotations, relation lines, small nodes, icons, or visible consequences
-- avoid both extremes in body visuals: dense PPT-style infographics and generic mood-only illustrations
-- never allow `emotional_illustration` body images to become numbered steps, process charts, checklist cards, information cards, UI panels, or icon matrices
-- name in-body beats as `body-1`, `body-2`, `body-3` instead of reviving old SVG-oriented placeholder names
-- generate images from the nearby paragraph content, but keep `cover` and `closing` aligned to the whole-article meaning
-- assign each slot a role and anti-repetition guard so the image set has rhythm instead of five variants of the same theme prompt
-- keep local generated files under `<workspace>/image/<article-slug>/` using the same placeholder basenames
-- pass the resolved image assets into `visuals`
+Recommended contract:
+- image meaning comes from the finished article, not from a preselected layout name
+- visual style and role choices follow `style-guide.md`
+- in-body placeholders use `body-1`, `body-2`, `body-3` ...
+- local generated files live under `<workspace>/image/<article-slug>/` using placeholder-aligned basenames
+- resolved image assets are passed into `visuals`
 
 Generation policy:
 - when the user gives only a rough idea, infer missing brief fields from the defaults above
 - keep the package single-shot by default
 - prefer local assets, `data_uri`, or base64 so the final HTML stays self-contained
 
-Default planning path:
+Default orchestration path:
 
 ```bash
-python3 scripts/make_wechat_article_image_jobs.py article.md output.image-jobs.json --debug-plan
+python3 <skill>/scripts/postprocess_wechat_article.py \
+  <workspace>/files/<slug>.md \
+  <workspace>/files/<slug>.html \
+  --workspace <workspace> \
+  --article-slug <slug> \
+  --jobs-out <workspace>/files/<slug>.image-jobs.json \
+  --plan-only
 ```
 
-Then call Codex's built-in `image_gen` tool directly once per `jobs[]` entry, save the accepted bitmap files under `./image/<article-slug>/`, and package:
+Then call Codex's built-in `image_gen` tool directly once per needed `jobs[]` entry, save accepted bitmap files under `<workspace>/image/<slug>/`, and rerun the same command without `--plan-only` to package.
 
-```bash
-python3 scripts/package_wechat_article_bundle.py article.md output.html \
-  --plan-json output.image-jobs.json \
-  --images-dir ./image/<article-slug>
-```
+For missing-image repair, use `postprocess_wechat_article.py --missing-only --plan-only`. For no-image formatting, use `postprocess_wechat_article.py --no-images`. Nested Codex runtimes are not part of this path.
 
-For image generation, use the current Codex turn's built-in `image_gen` tool. Nested Codex runtimes are not part of this workflow.
+For no-body-image draft delivery, use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>`. The job may contain `visuals.cover` even when `article_markdown` has no image placeholder; that cover is for WeChat `thumb_media_id` only and is not inserted into the body.
+
+`make_wechat_article_image_jobs.py` also supports direct lightweight planning flags: `--mode no-image|fast|full`, `--max-body-images N`, and `--missing-only --images-dir <dir>`. Prefer `postprocess_wechat_article.py` for the normal workflow, but use these flags when diagnosing or regenerating the image plan directly.
+
+Each `jobs[]` slot includes a short `generation_prompt` for image generation and a separate `review_contract` for selection checks. The legacy `prompt` field mirrors `generation_prompt` for compatibility; do not append `review_contract` into it. Each slot also includes `variants[]` with two numbered creative-route candidates, and the top-level `generation_queue[]` flattens those candidates for parallel or queued generation. Candidate files use `candidate_output` names under `image/<slug>/candidates/`; only the selected candidate is copied to the slot's final `output`. Image generation rules come from `references/image-rules.json`; generated payloads include `image_rules` and `image_rules_markdown` so Codex can print the current rules before generation.
 
 Build outputs may also include:
 - `quality-report.json` — records how each visual asset was resolved
