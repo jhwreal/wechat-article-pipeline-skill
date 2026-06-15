@@ -18,7 +18,7 @@ import wechat_account_config as account_config
 
 WORKSPACE = Path.cwd()
 DEFAULT_IMAGE_ROOT = WORKSPACE / "image"
-DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+DEFAULT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 MAKE_PUBLISH_MANIFEST = Path(__file__).resolve().parent / "make_wechat_publish_manifest.py"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)

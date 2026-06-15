@@ -20,6 +20,24 @@ PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
 
 
 class WeChatDraftHtmlTest(unittest.TestCase):
+    def test_draft_body_omits_leading_title_before_cover_and_signature(self) -> None:
+        markdown = """# 标题
+
+![题图](data:image/png;base64,abc)
+
+正文第一段。
+"""
+        title = manifest_builder.extract_title(markdown, "fallback")
+        body_markdown = manifest_builder.markdown_for_draft_body(markdown, title)
+        html = manifest_builder.inject_signature_html(
+            manifest_builder.markdown_to_wechat_html(body_markdown),
+            "树懒的第209篇原创",
+        )
+
+        self.assertNotIn(">标题</p>", html)
+        self.assertLess(html.index("<img "), html.index("树懒的第209篇原创"))
+        self.assertLess(html.index("树懒的第209篇原创"), html.index("正文第一段"))
+
     def test_manifest_html_is_paragraph_only_and_keeps_fenced_code_together(self) -> None:
         markdown = """# 标题
 

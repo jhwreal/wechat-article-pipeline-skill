@@ -16,12 +16,19 @@ SCRIPTS = ROOT / "wechat-article-pipeline" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import package_wechat_article_bundle as packager  # noqa: E402
+import make_wechat_publish_manifest as manifest_builder  # noqa: E402
 
 
 PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lpI1GQAAAABJRU5ErkJggg=="
 
 
 class PackageWechatArticleBundleTest(unittest.TestCase):
+    def test_default_env_file_lives_in_skill_directory(self) -> None:
+        expected = ROOT / "wechat-article-pipeline" / ".env"
+
+        self.assertEqual(packager.DEFAULT_ENV_FILE, expected)
+        self.assertEqual(manifest_builder.DEFAULT_ENV_FILE, expected)
+
     def test_image_size_reads_png_without_sips(self) -> None:
         original_run = packager.subprocess.run
 

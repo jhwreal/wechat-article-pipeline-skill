@@ -13,7 +13,7 @@ import wechat_account_config as account_config
 
 
 DEFAULT_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "publisher-config.json"
-DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+DEFAULT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-token-cache.json"
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
@@ -123,6 +123,15 @@ def extract_digest(markdown: str, title: str, limit: int = 120) -> str:
         if block and block != title:
             return block[:limit]
     return ""
+
+
+def markdown_for_draft_body(markdown: str, title: str) -> str:
+    match = re.match(r"^\s*#\s+([^\n]+)\s*(?:\n+|$)", markdown)
+    if not match:
+        return markdown
+    if strip_markdown(match.group(1)) != title.strip():
+        return markdown
+    return markdown[match.end() :].lstrip("\n")
 
 
 def image_candidates(markdown: str, visuals: dict[str, Any]) -> list[dict[str, str]]:
@@ -397,6 +406,7 @@ def main() -> None:
             raise SystemExit(f"Missing visual assets for publish manifest placeholders: {names}")
 
     title = extract_title(markdown, str(job.get("page_title", args.job.stem)))
+    draft_markdown = markdown_for_draft_body(markdown, title)
     visuals = job.get("visuals", {}) if isinstance(job.get("visuals"), dict) else {}
     cover, candidates = select_cover_candidate(markdown, visuals, args.job.resolve().parent)
     wechat_cover = build_wechat_cover_manifest(job, cover, args.job.resolve().parent)
@@ -408,8 +418,8 @@ def main() -> None:
         "title": title,
         "author": author,
         "digest": extract_digest(markdown, title),
-        "content_html": inject_signature_html(markdown_to_wechat_html(markdown), signature_label(job)),
-        "content_text": strip_markdown(markdown),
+        "content_html": inject_signature_html(markdown_to_wechat_html(draft_markdown), signature_label(job)),
+        "content_text": strip_markdown(draft_markdown),
         "workbench_html": str(args.workbench_html.resolve()) if args.workbench_html else "",
         "article_signature": job.get("article_signature", {}) if isinstance(job.get("article_signature"), dict) else {},
         "account": {
