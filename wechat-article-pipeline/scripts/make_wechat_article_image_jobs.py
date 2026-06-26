@@ -13,7 +13,13 @@ import build_wechat_article_workbench as builder
 
 PLACEHOLDER_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
-REFERENCE_HEADING_RE = re.compile(r"^\s*#{1,6}\s*(参考来源|参考资料|参考|references?)\s*$", re.I | re.M)
+REFERENCE_HEADING_RE = re.compile(
+    r"^\s*#{1,6}\s*(资料参考|参考来源|参考资料|参考信息|信息来源|官方链接|参考|references?)\s*$",
+    re.I | re.M,
+)
+REFERENCE_INTRO_RE = re.compile(
+    r"(?m)^(?:\s*-{3,}\s*\n+)?\s*(?:参考信息|参考资料|资料参考|信息来源|官方链接|参考链接|以下信息).*$"
+)
 CHINESE_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
 RULES_PATH = Path(__file__).resolve().parents[1] / "references" / "image-rules.json"
 _IMAGE_RULES_CACHE: dict[str, Any] | None = None
@@ -124,10 +130,10 @@ BODY_ROLE_LIBRARY: dict[str, dict[str, str]] = {
     },
     "inline_data_card": {
         "role": "inline_data_card",
-        "image_type": "compact_editorial_infographic",
-        "target_effect": "用高信息密度但克制的方式，把这一段的结构、判断和结论压缩成一张可读图",
-        "visual_distance": "信息卡片视角 / 轻量图解",
-        "composition": "一个主结论 + 2到4个信息模块 + 简洁箭头、图标或关系线",
+        "image_type": "compact_concept_explainer",
+        "target_effect": "用克制的概念图，把这一段的结构、判断和关系讲清楚",
+        "visual_distance": "概念图 / 轻量解释视角",
+        "composition": "一个主对象或主场景 + 2到3个关系模块 + 简洁箭头、图标或关系线",
         "emotional_tone": "理性、有洞察、信息量强",
         "abstraction_level": "中等抽象",
         "information_density": "高但可读",
@@ -290,6 +296,8 @@ def image_rules_markdown(rules: dict[str, Any] | None = None) -> str:
     lines: list[str] = []
     lines.extend(section("当前生图规则", list(rules.get("generation_rules", []))))
     lines.extend(section("当前避免规则", list(rules.get("avoid_rules", []))))
+    lines.extend(section("当前文字预算", list(rules.get("text_budget_rules", {}).values())))
+    lines.extend(section("当前视觉类型", list(rules.get("visual_type_rules", {}).values())))
     lines.extend(section("影响生成图片的规则", list(rules.get("influencing_rules", []))))
     return "\n".join(lines).strip()
 
@@ -441,8 +449,12 @@ def body_placeholder_key(name: str) -> tuple[int, str]:
 
 
 def trim_reference_section(markdown: str) -> str:
-    match = REFERENCE_HEADING_RE.search(markdown)
-    return markdown[: match.start()].rstrip() if match else markdown
+    starts: list[int] = []
+    for pattern in (REFERENCE_HEADING_RE, REFERENCE_INTRO_RE):
+        match = pattern.search(markdown)
+        if match:
+            starts.append(match.start())
+    return markdown[: min(starts)].rstrip() if starts else markdown
 
 
 def parse_article_entries(markdown: str) -> list[dict[str, Any]]:
@@ -642,7 +654,7 @@ def select_global_visual_style(article_type: str, visual_intent: str, visual_mod
         "mixed": "题图负责抓人，正文图按段落分别使用情绪、步骤、清单、对比、证据或机制图。",
     }
     mode_mapping = {
-        "method_visual": "当前采用轻量方法图语法：可以使用步骤、箭头、清单、对比、信息卡，但正文图默认优先用一个场景加少量结构解释一个点。",
+        "method_visual": "当前采用轻量方法图语法：可以使用步骤、箭头、清单、对比和短标签，但正文图默认优先用一个场景加少量结构解释一个点。",
         "emotional_illustration": "当前采用有信息量的情绪插图语法：优先人物处境、空间氛围、光线、动作、物件隐喻和视觉冲击。",
         "analysis_visual": "当前采用轻量分析图语法：优先证据、对比、机制和克制隐喻；正文图默认一图只解释一个判断。",
     }
@@ -807,7 +819,7 @@ def build_cover_focus(title: str, local_context: str, article_summary: str, visu
         "story_scene": "画面优先呈现人物处境、现场感和故事张力",
         "mixed": "画面优先抓住标题承诺中最有传播力的冲突、收益或悬念",
     }
-    return f"标题优先：{title}。{intent_wording.get(visual_intent, intent_wording['mixed'])}；结合导语线索：{local_focus}"
+    return f"标题承诺优先：{intent_wording.get(visual_intent, intent_wording['mixed'])}；结合导语线索：{local_focus}"
 
 
 def build_content_focus(role: str, local_context: str, article_summary: str) -> str:
@@ -827,7 +839,7 @@ def build_content_focus(role: str, local_context: str, article_summary: str) -> 
         "inline_contrast": f"把这一段里的差异拉开，画出对比关系：{focus}",
         "inline_steps": f"把这一段拆成清晰步骤、路径或流程：{focus}",
         "inline_checklist": f"把这一段归纳成清晰类别、清单、场景或环节：{focus}",
-        "inline_data_card": f"把这一段压缩成高信息密度但可读的结构化信息卡：{focus}",
+        "inline_data_card": f"把这一段转成克制的概念解释图：{focus}",
         "inline_evidence": f"把这一段的数据、案例、证据或趋势画得可信清楚：{focus}",
         "inline_detail": f"放大这一段里最具体的一个动作、对象或局部：{focus}",
         "inline_metaphor": f"用一个克制但明确的隐喻表达这一段判断：{focus}",
@@ -836,7 +848,7 @@ def build_content_focus(role: str, local_context: str, article_summary: str) -> 
         "inline_silence": f"把这一段没有直接说出口的情绪、停顿或余味变成安静画面：{focus}",
         "inline_symbolic_scene": f"把这一段的抽象道理转成一个有冲击力的象征性场景：{focus}",
         "inline_human_moment": f"把这一段落到一个具体人的瞬间，先让读者代入：{focus}",
-        "closing_image": f"收束全文：可做余韵画面，也可把方法或判断整理成可收藏图示：{focus}",
+        "closing_image": f"收束全文：做余韵画面或象征画面，不做总结卡：{focus}",
     }
     return mapping.get(role, focus)
 
@@ -845,12 +857,85 @@ def build_role_avoids(role: str) -> list[str]:
     return list(load_image_rules().get("avoid_rules", []))
 
 
+def visual_type_key_for_slot(slot: dict[str, Any]) -> str:
+    role = str(slot.get("role", ""))
+    if role == "closing_image":
+        return "poetic_closing"
+    if role in {"inline_steps", "inline_checklist"}:
+        return "operation_map"
+    if role in {"inline_light_explainer", "inline_explanation", "inline_contrast", "inline_data_card", "inline_evidence"}:
+        return "concept_explainer"
+    return "editorial_scene"
+
+
+def text_budget_key_for_slot(slot: dict[str, Any]) -> str:
+    role = str(slot.get("role", ""))
+    if role in {"hero_cover", "closing_image"}:
+        return "no_text"
+    if role in EMOTIONAL_VISUAL_ROLES or role in {"inline_scene", "inline_detail", "inline_metaphor", "inline_extension"}:
+        return "no_text"
+    if role in {"inline_steps", "inline_checklist"}:
+        return "compact_explainer"
+    return "micro_labels"
+
+
+def rule_text(section: str, key: str) -> str:
+    value = load_image_rules().get(section, {}).get(key, "")
+    return str(value).strip()
+
+
+def build_prompt_constraints(slot: dict[str, Any]) -> list[str]:
+    rules = load_image_rules()
+    visual_type = rule_text("visual_type_rules", str(slot.get("visual_type", "")))
+    text_budget = rule_text("text_budget_rules", str(slot.get("text_budget", "")))
+    guardrails = list(rules.get("prompt_guardrails", []))
+    hard_avoids = list(slot.get("must_avoid", []))
+    lines = [
+        f"视觉类型：{visual_type}" if visual_type else "",
+        f"文字预算：{text_budget}" if text_budget else "",
+        "硬性限制：" + "；".join([*guardrails, *hard_avoids]) if guardrails or hard_avoids else "",
+    ]
+    return [line for line in lines if line]
+
+
 def build_must_include(slot: dict[str, Any]) -> list[str]:
-    return []
+    role = str(slot.get("role", ""))
+    includes = [
+        f"必须采用视觉类型：{rule_text('visual_type_rules', str(slot.get('visual_type', '')))}",
+        f"必须遵守文字预算：{rule_text('text_budget_rules', str(slot.get('text_budget', '')))}",
+    ]
+    if role == "hero_cover":
+        includes.extend([
+            "必须有一个清晰主视觉，不能平均铺满多个信息块。",
+            "必须让标题承诺通过人物、物件、空间关系或冲突被感受到，而不是写进图里。",
+        ])
+    elif role == "closing_image":
+        includes.extend([
+            "必须收束成一个有余味的画面，不做总结卡、步骤卡或收藏卡。",
+            "必须通过留白、远景、物件或空间隐喻表达结论。",
+        ])
+    elif role in {"inline_steps", "inline_checklist"}:
+        includes.extend([
+            "必须只表达当前位置的流程或分类，不总结全文。",
+            "必须控制在 3 到 4 个节点内，标签极短。",
+        ])
+    elif role in {"inline_light_explainer", "inline_explanation", "inline_contrast", "inline_data_card", "inline_evidence"}:
+        includes.extend([
+            "必须用一个主场景或主物件承载判断，少量结构只做辅助。",
+            "必须让关系、差异或后果一眼能看出，不能靠长文字解释。",
+        ])
+    else:
+        includes.append("必须用具体人物、动作、物件、光线或空间关系表达局部上下文。")
+    return [line for line in includes if line.strip()]
 
 
 def build_quality_gate(slot: dict[str, Any]) -> list[str]:
-    return []
+    return [
+        "按手机公众号正文宽度自检：缩小后仍要有质感，不能像 PPT 截图。",
+        "如果画面主要靠标题、长句、按钮或清单传达信息，应改成更图像化的表达。",
+        "如果信息超过文字预算，应删减文字或改用物件、箭头、距离、光线表达。",
+        "如果看起来像营销海报、课件页、深色卡片堆叠或假 UI，应重新生成。",
+    ]
 
 
 def build_variation_note(previous_slots: list[dict[str, Any]], slot: dict[str, Any]) -> str:
@@ -903,6 +988,8 @@ def build_review_contract(slot: dict[str, Any]) -> dict[str, Any]:
         "purpose": slot.get("purpose", ""),
         "local_context": slot.get("local_context", ""),
         "content_focus": slot.get("content_focus", ""),
+        "visual_type": slot.get("visual_type", ""),
+        "text_budget": slot.get("text_budget", ""),
         "selection_criteria": build_selection_criteria(slot),
         "must_include": slot.get("must_include", []),
         "quality_gate": slot.get("quality_gate", []),
@@ -929,6 +1016,7 @@ def build_cover_prompt(slot: dict[str, Any], article_summary: str, article_essen
         prompt_line("标题线索", article_summary or article_essence, 44),
         prompt_line("风格", slot.get("global_visual_style", ""), 36),
         f"构图：{route_frame} 画面干净，公众号头图质感。",
+        *build_prompt_constraints(slot),
     ])
 
 
@@ -950,6 +1038,7 @@ def build_body_prompt(slot: dict[str, Any], article_summary: str, target_body_ch
         prompt_line("画面核心", slot.get("content_focus", ""), 72),
         prompt_line("风格", slot.get("global_visual_style", ""), 36),
         f"构图：{route_frame} 从读者理解和阅读节奏出发。",
+        *build_prompt_constraints(slot),
     ])
 
 
@@ -977,6 +1066,7 @@ def build_closing_prompt(slot: dict[str, Any], article_summary: str, article_ess
         prompt_line("画面核心", slot.get("content_focus", ""), 64),
         prompt_line("风格", slot.get("global_visual_style", ""), 36),
         f"构图：{route_frame}",
+        *build_prompt_constraints(slot),
     ])
 
 
@@ -1211,6 +1301,8 @@ def build_jobs(
         "purpose": "题图，抓人并建立全文气质",
     }
     cover_slot["must_avoid"] = build_role_avoids(cover_slot["role"])
+    cover_slot["visual_type"] = visual_type_key_for_slot(cover_slot)
+    cover_slot["text_budget"] = text_budget_key_for_slot(cover_slot)
     cover_slot["must_include"] = build_must_include(cover_slot)
     cover_slot["quality_gate"] = build_quality_gate(cover_slot)
     cover_slot["variation_note"] = build_variation_note(slots, cover_slot)
@@ -1254,6 +1346,8 @@ def build_jobs(
         }
         slot["content_focus"] = build_content_focus(slot["role"], local_context, article_summary)
         slot["must_avoid"] = build_role_avoids(slot["role"])
+        slot["visual_type"] = visual_type_key_for_slot(slot)
+        slot["text_budget"] = text_budget_key_for_slot(slot)
         slot["must_include"] = build_must_include(slot)
         slot["quality_gate"] = build_quality_gate(slot)
         slot["variation_note"] = build_variation_note(slots, slot)
@@ -1289,6 +1383,8 @@ def build_jobs(
         "purpose": "尾图，收束文章结论并留下情绪余味",
     }
     closing_slot["must_avoid"] = build_role_avoids(closing_slot["role"])
+    closing_slot["visual_type"] = visual_type_key_for_slot(closing_slot)
+    closing_slot["text_budget"] = text_budget_key_for_slot(closing_slot)
     closing_slot["must_include"] = build_must_include(closing_slot)
     closing_slot["quality_gate"] = build_quality_gate(closing_slot)
     closing_slot["variation_note"] = build_variation_note(slots, closing_slot)
@@ -1317,6 +1413,8 @@ def build_jobs(
                 "local_context": slot["local_context"],
                 "source_context": slot["source_context"],
                 "image_type": slot["image_type"],
+                "visual_type": slot.get("visual_type", ""),
+                "text_budget": slot.get("text_budget", ""),
                 "content_focus": slot["content_focus"],
                 "must_include": slot.get("must_include", []),
                 "quality_gate": slot.get("quality_gate", []),

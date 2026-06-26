@@ -293,21 +293,23 @@ class SkillP1ContractTest(unittest.TestCase):
             self.assertIn("generation_prompt", job)
             self.assertIn("review_contract", job)
             self.assertEqual(job["prompt"], job["generation_prompt"])
-            self.assertLess(len(job["generation_prompt"]), 700)
-            self.assertNotIn("必须包含", job["generation_prompt"])
-            self.assertNotIn("质量门槛", job["generation_prompt"])
-            self.assertNotIn("必须避免", job["generation_prompt"])
+            self.assertLess(len(job["generation_prompt"]), 1300)
+            self.assertIn("视觉类型", job["generation_prompt"])
+            self.assertIn("文字预算", job["generation_prompt"])
+            self.assertIn("硬性限制", job["generation_prompt"])
             self.assertIn("selection_criteria", job["review_contract"])
             self.assertIn("must_include", job["review_contract"])
             self.assertIn("quality_gate", job["review_contract"])
             self.assertIn("must_avoid", job["review_contract"])
+            self.assertIn("visual_type", job["review_contract"])
+            self.assertIn("text_budget", job["review_contract"])
 
         cover = next(job for job in payload["jobs"] if job["name"] == "cover")
         body = next(job for job in payload["jobs"] if job["name"] == "body-1")
         closing = next(job for job in payload["jobs"] if job["name"] == "closing")
         self.assertIn("钩子", cover["generation_prompt"])
         self.assertIn("读者", body["generation_prompt"])
-        self.assertRegex(closing["generation_prompt"], r"余韵|收藏|总结")
+        self.assertRegex(closing["generation_prompt"], r"余韵|象征")
 
         for item in payload["generation_queue"]:
             self.assertIn("generation_prompt", item)
@@ -341,19 +343,21 @@ class SkillP1ContractTest(unittest.TestCase):
             self.assertEqual(first["prompt"], first["generation_prompt"])
             self.assertEqual(second["prompt"], second["generation_prompt"])
 
-    def test_image_rules_are_single_source_and_keep_only_two_avoid_rules(self) -> None:
+    def test_image_rules_are_single_source_and_include_prompt_guardrails(self) -> None:
         rules_path = SKILL_DIR / "references" / "image-rules.json"
         rules = json.loads(rules_path.read_text(encoding="utf-8"))
 
-        expected_avoids = [
-            "不要假 UI 截图。",
-            "不要复用上一张图的主体、构图、隐喻或情绪。",
-        ]
-        self.assertEqual(rules["avoid_rules"], expected_avoids)
+        self.assertGreaterEqual(len(rules["avoid_rules"]), 8)
+        self.assertTrue(any("PPT" in rule for rule in rules["avoid_rules"]))
+        self.assertTrue(any("小字墙" in rule for rule in rules["avoid_rules"]))
+        self.assertTrue(any("总结卡" in rule for rule in rules["avoid_rules"]))
         self.assertTrue(rules["print_before_generation"])
         self.assertIn("generation_rules", rules)
         self.assertIn("influencing_rules", rules)
         self.assertIn("slot_objectives", rules)
+        self.assertIn("text_budget_rules", rules)
+        self.assertIn("visual_type_rules", rules)
+        self.assertIn("prompt_guardrails", rules)
 
         image_production = (SKILL_DIR / "references" / "image-production.md").read_text(encoding="utf-8")
         style_guide = (SKILL_DIR / "references" / "style-guide.md").read_text(encoding="utf-8")
@@ -380,22 +384,22 @@ class SkillP1ContractTest(unittest.TestCase):
             min_body_chars=120,
         )
 
-        expected_avoids = [
-            "不要假 UI 截图。",
-            "不要复用上一张图的主体、构图、隐喻或情绪。",
-        ]
+        expected_avoids = payload["image_rules"]["avoid_rules"]
         self.assertEqual(payload["image_rules"]["avoid_rules"], expected_avoids)
         self.assertIn("## 当前生图规则", payload["image_rules_markdown"])
         self.assertIn("## 当前避免规则", payload["image_rules_markdown"])
+        self.assertIn("## 当前文字预算", payload["image_rules_markdown"])
+        self.assertIn("## 当前视觉类型", payload["image_rules_markdown"])
         self.assertIn("## 影响生成图片的规则", payload["image_rules_markdown"])
 
         for job in payload["jobs"]:
             self.assertEqual(job["must_avoid"], expected_avoids)
             self.assertEqual(job["review_contract"]["must_avoid"], expected_avoids)
-            self.assertNotIn("小字墙", job["generation_prompt"])
-            self.assertNotIn("杂乱拼贴", job["generation_prompt"])
-            self.assertNotIn("generic wallpaper", job["generation_prompt"])
-            self.assertNotIn("PPT", job["generation_prompt"])
+            self.assertIn("小字墙", job["generation_prompt"])
+            self.assertIn("generic wallpaper", job["generation_prompt"])
+            self.assertIn("PPT", job["generation_prompt"])
+            self.assertIn("text_budget", job)
+            self.assertIn("visual_type", job)
 
         for item in payload["generation_queue"]:
             self.assertEqual(item["review_contract"]["must_avoid"], expected_avoids)
