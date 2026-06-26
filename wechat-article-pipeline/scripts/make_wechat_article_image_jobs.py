@@ -298,6 +298,7 @@ def image_rules_markdown(rules: dict[str, Any] | None = None) -> str:
     lines.extend(section("当前避免规则", list(rules.get("avoid_rules", []))))
     lines.extend(section("当前文字预算", list(rules.get("text_budget_rules", {}).values())))
     lines.extend(section("当前视觉类型", list(rules.get("visual_type_rules", {}).values())))
+    lines.extend(section("当前生成硬限制", list(rules.get("prompt_hard_limits", []))))
     lines.extend(section("影响生成图片的规则", list(rules.get("influencing_rules", []))))
     return "\n".join(lines).strip()
 
@@ -889,11 +890,11 @@ def build_prompt_constraints(slot: dict[str, Any]) -> list[str]:
     visual_type = rule_text("visual_type_rules", str(slot.get("visual_type", "")))
     text_budget = rule_text("text_budget_rules", str(slot.get("text_budget", "")))
     guardrails = list(rules.get("prompt_guardrails", []))
-    hard_avoids = list(slot.get("must_avoid", []))
+    hard_limits = list(rules.get("prompt_hard_limits", []))
     lines = [
         f"视觉类型：{visual_type}" if visual_type else "",
         f"文字预算：{text_budget}" if text_budget else "",
-        "硬性限制：" + "；".join([*guardrails, *hard_avoids]) if guardrails or hard_avoids else "",
+        "硬性限制：" + "；".join([*guardrails, *hard_limits]) if guardrails or hard_limits else "",
     ]
     return [line for line in lines if line]
 
