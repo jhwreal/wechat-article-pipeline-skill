@@ -298,6 +298,7 @@ def image_rules_markdown(rules: dict[str, Any] | None = None) -> str:
     lines.extend(section("当前避免规则", list(rules.get("avoid_rules", []))))
     lines.extend(section("当前文字预算", list(rules.get("text_budget_rules", {}).values())))
     lines.extend(section("当前视觉类型", list(rules.get("visual_type_rules", {}).values())))
+    lines.extend(section("当前质感要求", list(rules.get("quality_floor_rules", []))))
     lines.extend(section("当前生成硬限制", list(rules.get("prompt_hard_limits", []))))
     lines.extend(section("影响生成图片的规则", list(rules.get("influencing_rules", []))))
     return "\n".join(lines).strip()
@@ -889,14 +890,25 @@ def build_prompt_constraints(slot: dict[str, Any]) -> list[str]:
     rules = load_image_rules()
     visual_type = rule_text("visual_type_rules", str(slot.get("visual_type", "")))
     text_budget = rule_text("text_budget_rules", str(slot.get("text_budget", "")))
+    quality_floor = list(rules.get("quality_floor_rules", []))
     guardrails = list(rules.get("prompt_guardrails", []))
     hard_limits = list(rules.get("prompt_hard_limits", []))
     lines = [
         f"视觉类型：{visual_type}" if visual_type else "",
         f"文字预算：{text_budget}" if text_budget else "",
+        "质感要求：" + "；".join(quality_floor) if quality_floor else "",
         "硬性限制：" + "；".join([*guardrails, *hard_limits]) if guardrails or hard_limits else "",
     ]
     return [line for line in lines if line]
+
+
+def prompt_style_for_slot(slot: dict[str, Any]) -> str:
+    role = str(slot.get("role", ""))
+    if role == "hero_cover":
+        return "题图优先一个强主视觉、干净留白和第一屏冲击力；画面要有编辑插图质感。"
+    if role == "closing_image":
+        return "安静、有留白、收束感强；优先远景、自然光、物件隐喻或空间关系，不做流程总结。"
+    return str(slot.get("global_visual_style", "")).strip()
 
 
 def build_must_include(slot: dict[str, Any]) -> list[str]:
@@ -991,6 +1003,7 @@ def build_review_contract(slot: dict[str, Any]) -> dict[str, Any]:
         "content_focus": slot.get("content_focus", ""),
         "visual_type": slot.get("visual_type", ""),
         "text_budget": slot.get("text_budget", ""),
+        "quality_floor": list(load_image_rules().get("quality_floor_rules", [])),
         "selection_criteria": build_selection_criteria(slot),
         "must_include": slot.get("must_include", []),
         "quality_gate": slot.get("quality_gate", []),
@@ -1015,7 +1028,7 @@ def build_cover_prompt(slot: dict[str, Any], article_summary: str, article_essen
         f"目标：{route_goal}",
         prompt_line("画面核心", slot.get("content_focus", ""), 72),
         prompt_line("标题线索", article_summary or article_essence, 44),
-        prompt_line("风格", slot.get("global_visual_style", ""), 36),
+        prompt_line("风格", prompt_style_for_slot(slot), 48),
         f"构图：{route_frame} 画面干净，公众号头图质感。",
         *build_prompt_constraints(slot),
     ])
@@ -1037,7 +1050,7 @@ def build_body_prompt(slot: dict[str, Any], article_summary: str, target_body_ch
         f"目标：{route_goal}",
         prompt_line("当前段落", slot.get("local_context", ""), min(target_body_chars, 96)),
         prompt_line("画面核心", slot.get("content_focus", ""), 72),
-        prompt_line("风格", slot.get("global_visual_style", ""), 36),
+        prompt_line("风格", prompt_style_for_slot(slot), 36),
         f"构图：{route_frame} 从读者理解和阅读节奏出发。",
         *build_prompt_constraints(slot),
     ])
@@ -1065,7 +1078,7 @@ def build_closing_prompt(slot: dict[str, Any], article_summary: str, article_ess
         prompt_line("结尾线索", slot.get("local_context", "") or article_summary, 84),
         prompt_line("全文主旨", article_essence or article_summary, 56),
         prompt_line("画面核心", slot.get("content_focus", ""), 64),
-        prompt_line("风格", slot.get("global_visual_style", ""), 36),
+        prompt_line("风格", prompt_style_for_slot(slot), 48),
         f"构图：{route_frame}",
         *build_prompt_constraints(slot),
     ])

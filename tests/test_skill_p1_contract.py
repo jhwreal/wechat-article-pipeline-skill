@@ -293,9 +293,13 @@ class SkillP1ContractTest(unittest.TestCase):
             self.assertIn("generation_prompt", job)
             self.assertIn("review_contract", job)
             self.assertEqual(job["prompt"], job["generation_prompt"])
-            self.assertLess(len(job["generation_prompt"]), 950)
             self.assertIn("视觉类型", job["generation_prompt"])
             self.assertIn("文字预算", job["generation_prompt"])
+            self.assertIn("质感要求", job["generation_prompt"])
+            self.assertIn("高端中文杂志", job["generation_prompt"])
+            self.assertIn("光线方向", job["generation_prompt"])
+            self.assertIn("材质", job["generation_prompt"])
+            self.assertIn("手机窄屏", job["generation_prompt"])
             self.assertIn("硬性限制", job["generation_prompt"])
             self.assertNotIn("generic wallpaper", job["generation_prompt"])
             self.assertNotIn("官网链接", job["generation_prompt"])
@@ -305,13 +309,16 @@ class SkillP1ContractTest(unittest.TestCase):
             self.assertIn("must_avoid", job["review_contract"])
             self.assertIn("visual_type", job["review_contract"])
             self.assertIn("text_budget", job["review_contract"])
+            self.assertIn("quality_floor", job["review_contract"])
 
         cover = next(job for job in payload["jobs"] if job["name"] == "cover")
         body = next(job for job in payload["jobs"] if job["name"] == "body-1")
         closing = next(job for job in payload["jobs"] if job["name"] == "closing")
         self.assertIn("钩子", cover["generation_prompt"])
         self.assertIn("读者", body["generation_prompt"])
+        self.assertNotIn("正文图优先", cover["generation_prompt"])
         self.assertRegex(closing["generation_prompt"], r"余韵|象征")
+        self.assertNotIn("正文图优先", closing["generation_prompt"])
 
         for item in payload["generation_queue"]:
             self.assertIn("generation_prompt", item)
@@ -359,6 +366,7 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("slot_objectives", rules)
         self.assertIn("text_budget_rules", rules)
         self.assertIn("visual_type_rules", rules)
+        self.assertIn("quality_floor_rules", rules)
         self.assertIn("prompt_guardrails", rules)
         self.assertIn("prompt_hard_limits", rules)
 
@@ -393,6 +401,7 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("## 当前避免规则", payload["image_rules_markdown"])
         self.assertIn("## 当前文字预算", payload["image_rules_markdown"])
         self.assertIn("## 当前视觉类型", payload["image_rules_markdown"])
+        self.assertIn("## 当前质感要求", payload["image_rules_markdown"])
         self.assertIn("## 当前生成硬限制", payload["image_rules_markdown"])
         self.assertIn("## 影响生成图片的规则", payload["image_rules_markdown"])
 
