@@ -2,17 +2,17 @@
 
 Use this file after `postprocess_wechat_article.py --plan-only` creates `<slug>.image-jobs.json` and before final packaging.
 
-All generation, avoid, selection, and image-influence rules live in [image-rules.json](image-rules.json). Do not duplicate or edit those rules here.
+All generation, avoid, regeneration, and image-influence rules live in [image-rules.json](image-rules.json). Do not duplicate or edit those rules here.
 
-Before the first image call, print `image_rules_markdown` from `<slug>.image-jobs.json` in the conversation so the user can adjust the skill if a rule looks wrong.
+Default execution is single-pass: no A/B candidates and no agent-side image review. The user decides whether any image needs another generation pass.
 
 Execution:
 
-- Use `generation_queue[]` as the execution list.
-- Send only `generation_prompt` (or the backward-compatible `prompt` copy) to image generation.
-- Keep `review_contract` for selection and regeneration decisions.
-- Save candidates under `<workspace>/image/<slug>/candidates/` using `candidate_output`.
-- Show all candidates in the conversation grouped by slot and id after generation finishes.
-- If the user selects, use the user's selection. If the user does not intervene, choose the better candidate and state the choice briefly.
-- Copy or rename selected candidates to final outputs: `cover.png`, `body-1.png`, `body-2.png`, ..., `closing.png`.
+- Use `generation_queue[]` as the execution list. Each item maps to one final file in `jobs[].output`.
+- Do not print the full `generation_queue`, `image_rules_markdown`, job-level `review_contract`, or image base64 in the conversation. Show only a compact progress summary.
+- Send only the queue item's `generation_prompt` (or the backward-compatible `prompt` copy) to image generation.
+- Use up to 4 image worker subagents in parallel. Spawn workers without forking the full thread context; pass only `id`, `slot`, `generation_prompt`, and output path. If there are more than 4 images, keep a queue and start the next worker when any worker finishes.
+- Each worker saves its result directly to `<workspace>/image/<slug>/<output>`, such as `cover.png`, `body-1.png`, or `closing.png`.
+- Do not inspect, compare, rank, or select images by default. Keep job-level `review_contract` only as metadata for a later user-requested regeneration; do not include it in worker tasks.
+- If the user dislikes a generated image, rerun the same `generation_prompt` for only that slot and replace that slot's output.
 - Continue packaging only after every final output named in `jobs[].output` exists.

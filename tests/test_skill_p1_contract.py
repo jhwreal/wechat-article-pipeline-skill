@@ -234,18 +234,17 @@ class SkillP1ContractTest(unittest.TestCase):
                 "jobs": [{"name": "cover"}, {"name": "body-1"}],
                 "image_slots": [{"name": "cover"}, {"name": "body-1"}],
                 "generation_queue": [
-                    {"slot": "cover", "id": "01A"},
-                    {"slot": "body-1", "id": "02A"},
-                    {"slot": "body-1", "id": "02B"},
+                    {"slot": "cover", "id": "01"},
+                    {"slot": "body-1", "id": "02"},
                 ],
                 "image_plan": {"image_slots": [{"name": "cover"}, {"name": "body-1"}]},
             }
 
             filtered = image_jobs.filter_missing_jobs(payload, images_dir)
 
-        self.assertEqual([item["slot"] for item in filtered["generation_queue"]], ["body-1", "body-1"])
+        self.assertEqual([item["slot"] for item in filtered["generation_queue"]], ["body-1"])
 
-    def test_image_jobs_emit_two_numbered_prompt_variants_per_slot(self) -> None:
+    def test_image_jobs_emit_single_direct_generation_task_per_slot(self) -> None:
         markdown = (
             "# 标题\n\n"
             "![题图]({{visual:cover}})\n\n"
@@ -262,14 +261,18 @@ class SkillP1ContractTest(unittest.TestCase):
         )
 
         queue = payload["generation_queue"]
-        self.assertEqual(len(queue), 6)
-        self.assertEqual([variant["id"] for variant in payload["jobs"][0]["variants"]], ["01A", "01B"])
-        self.assertEqual(len(payload["jobs"][1]["variants"]), 2)
-        self.assertNotEqual(payload["jobs"][1]["variants"][0]["prompt"], payload["jobs"][1]["variants"][1]["prompt"])
-        self.assertRegex(payload["jobs"][0]["variants"][0]["candidate_output"], r"^01-cover-a-.+\.png$")
-        self.assertIn("material_name", payload["jobs"][0]["variants"][0])
-        self.assertIn("01A", payload["image_plan_markdown"])
-        self.assertIn("01B", payload["image_plan_markdown"])
+        self.assertEqual(len(queue), 3)
+        self.assertEqual([item["id"] for item in queue], ["01", "02", "03"])
+        self.assertEqual([item["output"] for item in queue], ["cover.png", "body-1.png", "closing.png"])
+        self.assertEqual(payload["jobs"][0]["generation_task"]["id"], "01")
+        self.assertEqual(payload["jobs"][0]["generation_task"]["output"], "cover.png")
+        self.assertNotIn("variants", payload["jobs"][0])
+        self.assertNotIn("candidate_output", payload["generation_queue"][0])
+        self.assertNotIn("review_contract", payload["generation_queue"][0])
+        self.assertIn("material_name", payload["jobs"][0]["generation_task"])
+        self.assertIn("01", payload["image_plan_markdown"])
+        self.assertNotIn("01A", payload["image_plan_markdown"])
+        self.assertNotIn("01B", payload["image_plan_markdown"])
 
     def test_image_jobs_split_short_generation_prompt_from_review_contract(self) -> None:
         markdown = (
@@ -322,10 +325,10 @@ class SkillP1ContractTest(unittest.TestCase):
 
         for item in payload["generation_queue"]:
             self.assertIn("generation_prompt", item)
-            self.assertIn("review_contract", item)
+            self.assertNotIn("review_contract", item)
             self.assertEqual(item["prompt"], item["generation_prompt"])
 
-    def test_image_job_variants_are_distinct_creative_routes(self) -> None:
+    def test_image_jobs_do_not_emit_candidate_variants(self) -> None:
         markdown = (
             "# 普通人如何把复杂问题讲清楚\n\n"
             "![题图]({{visual:cover}})\n\n"
@@ -344,13 +347,13 @@ class SkillP1ContractTest(unittest.TestCase):
         )
 
         for job in payload["jobs"]:
-            first, second = job["variants"]
-            self.assertIn("创意路线", first["direction"])
-            self.assertIn("创意路线", second["direction"])
-            self.assertFalse(second["generation_prompt"].startswith(first["generation_prompt"]))
-            self.assertNotEqual(first["generation_prompt"], second["generation_prompt"])
-            self.assertEqual(first["prompt"], first["generation_prompt"])
-            self.assertEqual(second["prompt"], second["generation_prompt"])
+            self.assertNotIn("variants", job)
+            task = job["generation_task"]
+            self.assertEqual(task["generation_prompt"], job["generation_prompt"])
+            self.assertEqual(task["prompt"], task["generation_prompt"])
+            self.assertEqual(task["output"], job["output"])
+            self.assertNotIn("review_contract", task)
+            self.assertIn("直接生成", task["direction"])
 
     def test_image_rules_are_single_source_and_include_prompt_guardrails(self) -> None:
         rules_path = SKILL_DIR / "references" / "image-rules.json"
@@ -360,7 +363,7 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertTrue(any("PPT" in rule for rule in rules["avoid_rules"]))
         self.assertTrue(any("小字墙" in rule for rule in rules["avoid_rules"]))
         self.assertTrue(any("总结卡" in rule for rule in rules["avoid_rules"]))
-        self.assertTrue(rules["print_before_generation"])
+        self.assertFalse(rules["print_before_generation"])
         self.assertIn("generation_rules", rules)
         self.assertIn("influencing_rules", rules)
         self.assertIn("slot_objectives", rules)
@@ -416,13 +419,15 @@ class SkillP1ContractTest(unittest.TestCase):
             self.assertIn("visual_type", job)
 
         for item in payload["generation_queue"]:
-            self.assertEqual(item["review_contract"]["must_avoid"], expected_avoids)
+            self.assertNotIn("review_contract", item)
 
     def test_skill_routes_image_generation_rules_to_reference(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
 
         self.assertIn("image-production.md", skill_md)
-        self.assertIn("two candidates", skill_md)
+        self.assertIn("single-pass", skill_md)
+        self.assertIn("4 image worker subagents", skill_md)
+        self.assertNotIn("two candidates", skill_md)
 
     def test_skill_draft_creation_advances_original_issue(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")

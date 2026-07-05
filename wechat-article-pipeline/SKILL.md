@@ -50,7 +50,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-5. Read [image-production.md](references/image-production.md), print the generated `image_rules_markdown` in the conversation, then use `generation_queue[]` to generate two candidates per slot, show numbered candidates, select, and save final files as `jobs[].output`.
+5. Read [image-production.md](references/image-production.md), then use `generation_queue[]` for single-pass image generation. Use up to 4 image worker subagents in parallel, save each result directly as `jobs[].output`, and do not run candidate review unless the user asks to regenerate a specific image.
 6. Run the same script again without `--plan-only` to build the HTML, job JSON, crop previews, support files, and publish manifest.
 7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html` and fix any failures before delivery.
 
@@ -126,7 +126,7 @@ Before delivery, confirm:
 ## References
 
 - [workflow.md](references/workflow.md): article structure, interaction defaults, and focus marking.
-- [image-production.md](references/image-production.md): candidate execution, conversation rule display, and selection workflow.
+- [image-production.md](references/image-production.md): single-pass image execution, 4 image worker subagents, and user-requested regeneration.
 - [image-rules.json](references/image-rules.json): the single source for image generation, avoid, selection, and image-influence rules.
 - [style-guide.md](references/style-guide.md): writing style, Secretary Mode, focus marks, and technical inline-code rules.
 - [job-schema.md](references/job-schema.md): image-job and workbench JSON contracts.

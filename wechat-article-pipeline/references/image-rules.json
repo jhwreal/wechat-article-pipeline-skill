@@ -1,11 +1,12 @@
 {
-  "version": 4,
-  "print_before_generation": true,
+  "version": 5,
+  "print_before_generation": false,
   "generation_rules": [
-    "先一次性生成全部候选提示词，再按 generation_queue[] 并行或排队生图。",
-    "每个图片位置生成 A/B 两个候选，全部完成后统一展示、检查、选择。",
-    "只把 generation_prompt 发送给生图模型；review_contract 只用于选图和返工。",
-    "候选图先保存到 image/<slug>/candidates/，选中后再复制为 cover.png、body-*.png 或 closing.png。"
+    "先一次性生成全部单次直出提示词，再按 generation_queue[] 执行。",
+    "每个图片位置默认只生成 1 张图，不做 A/B 候选、不做默认评审。",
+    "最多同时使用 4 个 image worker subagents 生图；图片更多时保持 4 个并发，任一完成后再启动下一张。",
+    "generation_queue[] 只保留执行必需字段；只把 generation_prompt 发送给生图模型，review_contract 不进入 worker 任务，只在用户要求重生或返工时参考。",
+    "生成图直接保存为 jobs[].output：cover.png、body-*.png 或 closing.png。"
   ],
   "avoid_rules": [
     "不要 PPT 信息卡、课件页、深色卡片堆叠、营销海报或大字报。",
@@ -52,8 +53,8 @@
     "首页题图：优先冲击力、引人入胜和点击钩子。",
     "正文插图：呼应前后文、情绪或内容，增强情绪、知识性或视觉可读性。",
     "尾图：默认余韵悠长、引人遐想；不要默认做收藏型总结图。",
-    "A/B 候选：A 走稳定清楚路线，B 换主体、镜头、场景或表达方式。",
-    "选图：先考虑读者理解和操作便利，再考虑画面炫技。"
+    "默认不替用户评审图片；用户不满意哪一张，就用同一个 generation_prompt 只重生那一张。",
+    "重生时仍优先读者理解和操作便利，再考虑画面炫技。"
   ],
   "slot_objectives": {
     "cover": {

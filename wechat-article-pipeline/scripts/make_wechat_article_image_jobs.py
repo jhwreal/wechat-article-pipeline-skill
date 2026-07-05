@@ -1109,9 +1109,10 @@ def build_plan_markdown(article_summary: str, global_visual_style: str, visual_i
         lines.append(
             f"| {slot['index']} | {slot['position']} | {slot['role']} | {slot['image_type']} | {main_content(slot)} | {plan_avoids(slot)} |"
         )
-        for variant in slot.get("variants", []):
+        task = slot.get("generation_task")
+        if isinstance(task, dict):
             lines.append(
-                f"| {variant['id']} | {slot['position']} | {slot['role']} | {variant['candidate_output']} | {truncate_text(variant.get('direction', ''), 34)} | {plan_avoids(slot)} |"
+                f"| {task['id']} | {slot['position']} | {slot['role']} | {task['output']} | {truncate_text(task.get('direction', ''), 34)} | {plan_avoids(slot)} |"
             )
     return "\n".join(lines)
 
@@ -1139,52 +1140,42 @@ def build_variant_direction(slot: dict[str, Any], route: str) -> str:
     return objective[f"route_{route.lower()}_direction"]
 
 
-def build_prompt_variants(slot: dict[str, Any]) -> list[dict[str, Any]]:
+def single_pass_prompt(prompt: str) -> str:
+    return prompt.replace("创意路线 A｜", "单次直出｜", 1)
+
+
+def build_single_pass_direction(slot: dict[str, Any]) -> str:
+    route_direction = build_variant_direction(slot, "A")
+    route_direction = route_direction.replace("创意路线 A：", "").strip()
+    return f"直接生成：{route_direction}"
+
+
+def build_generation_task(slot: dict[str, Any]) -> dict[str, Any]:
     material = material_slug(slot)
     index = int(slot.get("index", 0))
     name = str(slot.get("name", f"slot-{index}"))
-    review_contract = slot.get("review_contract") or build_review_contract(slot)
-    variants: list[dict[str, Any]] = []
-    for suffix in ("A", "B"):
-        prompt = build_generation_prompt_for_route(slot, suffix)
-        variant_id = f"{index:02d}{suffix}"
-        variants.append(
-            {
-                "id": variant_id,
-                "slot": name,
-                "variant": suffix,
-                "material_name": material,
-                "candidate_output": f"{index:02d}-{name}-{suffix.lower()}-{material}.png",
-                "final_output": str(slot.get("output", f"{name}.png")),
-                "direction": build_variant_direction(slot, suffix),
-                "generation_prompt": prompt,
-                "prompt": prompt,
-                "review_contract": review_contract,
-            }
-        )
-    return variants
+    prompt = single_pass_prompt(build_generation_prompt_for_route(slot, "A"))
+    output = str(slot.get("output", f"{name}.png"))
+    return {
+        "id": f"{index:02d}",
+        "slot": name,
+        "material_name": material,
+        "output": output,
+        "final_output": output,
+        "direction": build_single_pass_direction(slot),
+        "generation_prompt": prompt,
+        "prompt": prompt,
+    }
 
 
-def attach_prompt_variants(slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def attach_generation_tasks(slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
     queue: list[dict[str, Any]] = []
     for slot in slots:
-        variants = build_prompt_variants(slot)
-        slot["variants"] = variants
-        queue.extend(
-            {
-                "id": variant["id"],
-                "slot": slot["name"],
-                "variant": variant["variant"],
-                "candidate_output": variant["candidate_output"],
-                "final_output": variant["final_output"],
-                "material_name": variant["material_name"],
-                "direction": variant["direction"],
-                "generation_prompt": variant["generation_prompt"],
-                "prompt": variant["prompt"],
-                "review_contract": variant["review_contract"],
-            }
-            for variant in variants
-        )
+        task = build_generation_task(slot)
+        slot["generation_task"] = task
+        slot["generation_prompt"] = task["generation_prompt"]
+        slot["prompt"] = task["prompt"]
+        queue.append(task)
     return queue
 
 
@@ -1217,6 +1208,11 @@ def empty_image_payload(article_path: Path, article_slug: str, markdown: str) ->
         "image_rules": rules,
         "image_rules_markdown": image_rules_markdown(rules),
         "image_slots": [],
+        "image_execution": {
+            "mode": "no_image",
+            "max_parallel_subagents": 0,
+            "review_policy": "none",
+        },
         "generation_queue": [],
         "jobs": [],
     }
@@ -1407,7 +1403,7 @@ def build_jobs(
     closing_slot["generation_prompt"] = build_closing_prompt(closing_slot, article_summary, article_essence)
     closing_slot["prompt"] = closing_slot["generation_prompt"]
     slots.append(closing_slot)
-    generation_queue = attach_prompt_variants(slots)
+    generation_queue = attach_generation_tasks(slots)
 
     image_plan = {
         "article_title": title,
@@ -1454,6 +1450,12 @@ def build_jobs(
         "image_rules": rules,
         "image_rules_markdown": image_rules_markdown(rules),
         "image_slots": image_plan["image_slots"],
+        "image_execution": {
+            "mode": "single_pass",
+            "max_parallel_subagents": 4,
+            "review_policy": "user_decides_after_generation",
+            "regeneration_policy": "rerun_same_generation_prompt_for_user_requested_slots",
+        },
         "generation_queue": generation_queue,
         "jobs": slots,
     }

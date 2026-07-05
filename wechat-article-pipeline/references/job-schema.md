@@ -83,15 +83,15 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-Then call Codex's built-in `image_gen` tool directly once per needed `jobs[]` entry, save accepted bitmap files under `<workspace>/image/<slug>/`, and rerun the same command without `--plan-only` to package.
+Then execute `generation_queue[]` as single-pass image work, save each bitmap directly under `<workspace>/image/<slug>/` using `jobs[].output`, and rerun the same command without `--plan-only` to package.
 
-For missing-image repair, use `postprocess_wechat_article.py --missing-only --plan-only`. For no-image formatting, use `postprocess_wechat_article.py --no-images`. Nested Codex runtimes are not part of this path.
+For missing-image repair, use `postprocess_wechat_article.py --missing-only --plan-only`. For no-image formatting, use `postprocess_wechat_article.py --no-images`.
 
 For no-body-image draft delivery, use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>`. The job may contain `visuals.cover` even when `article_markdown` has no image placeholder; that cover is for WeChat `thumb_media_id` only and is not inserted into the body.
 
 `make_wechat_article_image_jobs.py` also supports direct lightweight planning flags: `--mode no-image|fast|full`, `--max-body-images N`, and `--missing-only --images-dir <dir>`. Prefer `postprocess_wechat_article.py` for the normal workflow, but use these flags when diagnosing or regenerating the image plan directly.
 
-Each `jobs[]` slot includes a short `generation_prompt` for image generation and a separate `review_contract` for selection checks. The legacy `prompt` field mirrors `generation_prompt` for compatibility; do not append `review_contract` into it. Each slot also includes `variants[]` with two numbered creative-route candidates, and the top-level `generation_queue[]` flattens those candidates for parallel or queued generation. Candidate files use `candidate_output` names under `image/<slug>/candidates/`; only the selected candidate is copied to the slot's final `output`. Image generation rules come from `references/image-rules.json`; generated payloads include `image_rules` and `image_rules_markdown` so Codex can print the current rules before generation.
+Each `jobs[]` slot includes a short `generation_prompt` for image generation and a separate job-level `review_contract` for later user-requested regeneration. The legacy `prompt` field mirrors `generation_prompt` for compatibility; do not append `review_contract` into it. Each slot also includes a lightweight `generation_task`, and top-level `generation_queue[]` has one task per slot for direct parallel execution. Queue tasks intentionally omit `review_contract`; workers should receive only the prompt and output metadata they need. Image generation rules come from `references/image-rules.json`; generated payloads include `image_execution`, `image_rules`, and `image_rules_markdown`, but normal execution should not print the full rules or queue.
 
 Build outputs may also include:
 - `quality-report.json` — records how each visual asset was resolved

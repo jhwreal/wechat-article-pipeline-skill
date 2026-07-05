@@ -50,7 +50,7 @@ The orchestration script runs `mark_wechat_article_focus.py` unless disabled. It
 ## Execution Choices
 
 - Full package with images: use the default `postprocess_wechat_article.py --plan-only`, generate listed images, then rerun without `--plan-only`.
-- Image production: use `image-production.md`; generate two numbered candidates per slot from `generation_queue[].generation_prompt`, then select final files with `review_contract`.
+- Image production: use `image-production.md`; generate one image per slot from `generation_queue[].generation_prompt`, save directly to the final output, and let the user request regeneration if needed.
 - No generated images: use `postprocess_wechat_article.py --no-images`.
 - No body images + API draft delivery: still provide one cover image and use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>`.
 - Missing images only: use `postprocess_wechat_article.py --missing-only --plan-only`, generate only listed files, then rerun the normal package command.
