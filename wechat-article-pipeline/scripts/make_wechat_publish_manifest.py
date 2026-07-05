@@ -126,12 +126,19 @@ def extract_digest(markdown: str, title: str, limit: int = 120) -> str:
 
 
 def markdown_for_draft_body(markdown: str, title: str) -> str:
-    match = re.match(r"^\s*#\s+([^\n]+)\s*(?:\n+|$)", markdown)
+    match = re.match(
+        r"^(?P<prefix>(?:\s*!\[[^\]]*\]\([^)]+\)\s*)*)#\s+(?P<title>[^\n]+)\s*(?:\n+|$)",
+        markdown,
+    )
     if not match:
         return markdown
-    if strip_markdown(match.group(1)) != title.strip():
+    if strip_markdown(match.group("title")) != title.strip():
         return markdown
-    return markdown[match.end() :].lstrip("\n")
+    prefix = match.group("prefix").strip()
+    body = markdown[match.end() :].lstrip("\n")
+    if not prefix:
+        return body
+    return f"{prefix}\n\n{body}"
 
 
 def image_candidates(markdown: str, visuals: dict[str, Any]) -> list[dict[str, str]]:

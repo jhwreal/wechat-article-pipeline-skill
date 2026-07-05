@@ -424,6 +424,11 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("image-production.md", skill_md)
         self.assertIn("two candidates", skill_md)
 
+    def test_skill_draft_creation_advances_original_issue(self) -> None:
+        skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("--create-draft --increment-original-issue", skill_md)
+
     def test_packaging_does_not_increment_original_issue_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

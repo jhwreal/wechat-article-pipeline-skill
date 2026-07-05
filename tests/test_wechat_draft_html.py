@@ -38,6 +38,20 @@ class WeChatDraftHtmlTest(unittest.TestCase):
         self.assertLess(html.index("<img "), html.index("树懒的第209篇原创"))
         self.assertLess(html.index("树懒的第209篇原创"), html.index("正文第一段"))
 
+    def test_draft_body_omits_title_after_leading_cover(self) -> None:
+        markdown = """![题图](data:image/png;base64,abc)
+
+# 标题
+
+正文第一段。
+"""
+        title = manifest_builder.extract_title(markdown, "fallback")
+        body_markdown = manifest_builder.markdown_for_draft_body(markdown, title)
+        html = manifest_builder.markdown_to_wechat_html(body_markdown)
+
+        self.assertNotIn(">标题</p>", html)
+        self.assertLess(html.index("<img "), html.index("正文第一段"))
+
     def test_manifest_html_is_paragraph_only_and_keeps_fenced_code_together(self) -> None:
         markdown = """# 标题
 
