@@ -24,7 +24,8 @@ Run commands from the user's current article workspace unless the user names ano
 - focused markdown: `<workspace>/files/<slug>.focused.md`
 - image jobs: `<workspace>/files/<slug>.image-jobs.json`
 - HTML workbench: `<workspace>/files/<slug>.html`
-- builder job: `<workspace>/files/<slug>.job.json`
+- sidecar: `<workspace>/files/<slug>.clipboard-assets.js`
+- job: `<workspace>/files/<slug>.job.json`
 - publish manifest: `<workspace>/files/<slug>.publish-manifest.json`
 - images: `<workspace>/image/<slug>/cover.png`, `body-*.png`, `closing.png`
 - support files: `<workspace>/files/wechat-article-pipeline/<slug>/`
@@ -118,7 +119,7 @@ Before delivery, confirm:
 - markdown, job JSON, manifest, and image directory use the same slug
 - every requested visual is present or intentionally skipped by `--no-images`
 - no unresolved `{{visual:*}}` remains in the HTML
-- embedded HTML does not point to local image files
+- workbench Markdown uses relative image paths; copy inlines local images only in clipboard HTML
 - `verify_wechat_article_package.py` reports `status: ok`
 - optional WeChat API result file is reported if draft delivery was run
 - final response gives the HTML path first, then markdown/image/manifest paths when relevant

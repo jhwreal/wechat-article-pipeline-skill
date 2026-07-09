@@ -5,7 +5,7 @@
   "page_title": "Harness 到底是什么？给普通人讲明白",
   "storage_key": "wechat-md-workbench-harness-plain-v1",
   "brand_title": "Harness 文章工作台",
-  "brand_subtitle": "单文件 HTML · 含正文和配图 · 可继续编辑",
+  "brand_subtitle": "HTML 工作台 · 相对路径配图 · 可继续编辑",
   "theme_color": "#17b394",
   "image_plan": {
     "article_title": "标题",
@@ -57,7 +57,7 @@ Each `visuals` entry supports one of these source forms:
 - `path` - local image file path, relative to the job file or absolute
 - `data_uri` - already embedded image payload
 - `base64` plus `mime_type` - raw image bytes returned by the generator
-- `url` - external image URL; this is allowed but will not be embedded into the final single-file HTML
+- `url` - external image URL; this is allowed and is kept as a direct reference in the workbench
 
 Recommended contract:
 - image meaning comes from the finished article, not from a preselected layout name
@@ -65,11 +65,12 @@ Recommended contract:
 - in-body placeholders use `body-1`, `body-2`, `body-3` ...
 - local generated files live under `<workspace>/image/<article-slug>/` using placeholder-aligned basenames
 - resolved image assets are passed into `visuals`
+- the HTML workbench stores relative image paths in editable markdown; the copy button temporarily inlines local images into clipboard HTML
 
 Generation policy:
 - when the user gives only a rough idea, infer missing brief fields from the defaults above
 - keep the package single-shot by default
-- prefer local assets, `data_uri`, or base64 so the final HTML stays self-contained
+- prefer local assets; workbench markdown uses paths relative to the HTML output directory, copy-time clipboard HTML embeds local images, and the publish manifest still embeds images for WeChat API upload
 
 Default orchestration path:
 
@@ -94,6 +95,8 @@ For no-body-image draft delivery, use `postprocess_wechat_article.py --no-images
 Each `jobs[]` slot includes a short `generation_prompt` for image generation and a separate job-level `review_contract` for later user-requested regeneration. The legacy `prompt` field mirrors `generation_prompt` for compatibility; do not append `review_contract` into it. Each slot also includes a lightweight `generation_task`, and top-level `generation_queue[]` has one task per slot for direct parallel execution. Queue tasks intentionally omit `review_contract`; workers should receive only the prompt and output metadata they need. Image generation rules come from `references/image-rules.json`; generated payloads include `image_execution`, `image_rules`, and `image_rules_markdown`, but normal execution should not print the full rules or queue.
 
 Build outputs may also include:
+- `<html-stem>.assets/` — local files materialized from `data_uri` or `base64` visual inputs for clean workbench markdown
+- `<html-stem>.clipboard-assets.js` — sidecar local-image data used only when copying rich HTML from the workbench
 - `quality-report.json` — records how each visual asset was resolved
 - `resolved-assets.json` — records the final URI used for each placeholder
 - `image-plan.json` — records the role-based slot plan

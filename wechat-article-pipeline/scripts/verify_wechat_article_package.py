@@ -12,7 +12,12 @@ import publish_wechat_api as publisher
 
 
 VISUAL_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
-DATA_IMAGE_RE = re.compile(r"data:image/", re.I)
+MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
+HTML_IMAGE_RE = re.compile(r"<img\b", re.I)
+NONPORTABLE_MARKDOWN_IMAGE_RE = re.compile(
+    r"!\[[^\]]*\]\((?:file:|/)[^)]+\.(?:png|jpe?g|webp|gif|bmp|svg)\)",
+    re.I,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -91,12 +96,19 @@ def verify_job(report: dict[str, Any], html_text: str, job_path: Path | None) ->
     job = read_json(job_path)
     markdown = str(job.get("article_markdown", ""))
     placeholders = sorted(set(VISUAL_RE.findall(markdown)))
-    data_count = len(DATA_IMAGE_RE.findall(html_text))
+    resolved_image_count = len(MARKDOWN_IMAGE_RE.findall(html_text)) + len(HTML_IMAGE_RE.findall(html_text))
     add_check(
         report,
-        "embedded_images_cover_placeholders",
-        data_count >= len(placeholders),
-        f"embedded={data_count}, placeholders={len(placeholders)}",
+        "workbench_images_cover_placeholders",
+        resolved_image_count >= len(placeholders),
+        f"resolved_images={resolved_image_count}, placeholders={len(placeholders)}",
+    )
+    nonportable_refs = NONPORTABLE_MARKDOWN_IMAGE_RE.findall(html_text)
+    add_check(
+        report,
+        "workbench_image_refs_are_portable",
+        not nonportable_refs,
+        ", ".join(nonportable_refs[:3]),
     )
     missing_paths: list[str] = []
     for spec in (job.get("visuals", {}) or {}).values():

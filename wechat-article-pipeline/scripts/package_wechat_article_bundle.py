@@ -88,7 +88,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--brand-title", help="Optional brand title override.")
     parser.add_argument(
         "--brand-subtitle",
-        default="单文件 HTML · 含正文和配图 · 可继续编辑",
+        default="HTML 工作台 · 相对路径配图 · 可继续编辑",
         help="Optional brand subtitle.",
     )
     parser.add_argument(
@@ -544,12 +544,18 @@ def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, 
     job_dir = job_path.parent.resolve()
 
     markdown = job["article_markdown"]
-    expected_embedded_visual_count = len({match.group(1) for match in builder.PLACEHOLDER_RE.finditer(markdown)})
+    expected_visual_count = len({match.group(1) for match in builder.PLACEHOLDER_RE.finditer(markdown)})
     rendered_visuals: dict[str, str] = {}
     quality_report: dict[str, object] = {"visuals": {}}
 
     for name, visual_spec in job.get("visuals", {}).items():
-        asset_uri, audit = builder.resolve_image_asset(visual_spec, job_dir)
+        asset_uri, audit = builder.resolve_image_reference(
+            visual_spec,
+            job_dir,
+            out_path.resolve().parent,
+            name,
+            builder.materialized_assets_dir(out_path.resolve()),
+        )
         rendered_visuals[name] = asset_uri
         quality_report["visuals"][name] = audit
 
@@ -558,8 +564,16 @@ def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, 
         names = ", ".join(sorted(set(missing)))
         raise SystemExit(f"Missing visual assets for placeholders: {names}")
 
+    clipboard_assets_script = builder.write_clipboard_assets(
+        out_path.resolve(),
+        rendered_visuals,
+        job.get("visuals", {}),
+        job_dir,
+    )
+    if clipboard_assets_script:
+        job["clipboard_assets_script"] = clipboard_assets_script
     html = builder.apply_template(job, template, markdown)
-    validate_embedded_html(html, expected_embedded_visual_count)
+    validate_workbench_html(html, expected_visual_count)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
@@ -618,21 +632,17 @@ def default_publish_manifest_path(out_path: Path) -> Path:
     return out_path.resolve().with_suffix(".publish-manifest.json")
 
 
-def validate_embedded_html(html: str, expected_visual_count: int) -> None:
+def validate_workbench_html(html: str, expected_visual_count: int) -> None:
     if "{{visual:" in html:
         raise SystemExit("Generated HTML still contains unresolved {{visual:*}} placeholders")
-    embedded_count = html.count("data:image/")
-    if embedded_count < expected_visual_count:
+    if expected_visual_count and html.count("![") < expected_visual_count:
         raise SystemExit(
-            f"Generated HTML only contains {embedded_count} embedded images; "
+            f"Generated HTML only contains {html.count('![')} markdown image links; "
             f"expected at least {expected_visual_count}"
         )
-    local_image_re = re.compile(
-        r"!\[[^\]]*\]\((?:/Users/|file:|\.{0,2}/)[^)]+\.(?:png|jpe?g|webp|gif)\)",
-        re.I,
-    )
-    if local_image_re.search(html):
-        raise SystemExit("Generated HTML still contains markdown image links to local files")
+    nonportable_image_re = re.compile(r"!\[[^\]]*\]\((?:file:|/)[^)]+\.(?:png|jpe?g|webp|gif|bmp|svg)\)", re.I)
+    if nonportable_image_re.search(html):
+        raise SystemExit("Generated HTML contains non-portable absolute local image paths")
 
 
 def main() -> None:

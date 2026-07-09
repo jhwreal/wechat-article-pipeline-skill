@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="506" viewBox="0 0 900 506">
+  <rect width="900" height="506" fill="#f5faf9"/>
+  <rect x="90" y="86" width="720" height="334" rx="28" fill="#1f9d8a" opacity=".12"/>
+  <path d="M205 302c62-88 127-88 190 0 62-88 127-88 190 0" fill="none" stroke="#1f9d8a" stroke-width="24" stroke-linecap="round" opacity=".32"/>
+  <rect x="285" y="154" width="330" height="30" rx="15" fill="#2f554e" opacity=".32"/>
+  <rect x="330" y="218" width="240" height="24" rx="12" fill="#1f9d8a" opacity=".30"/>
+  <text x="450" y="414" text-anchor="middle" font-size="32" font-family="Arial, sans-serif" fill="#2f554e">closing</text>
+</svg>

@@ -58,6 +58,41 @@ class SkillP0ContractTest(unittest.TestCase):
         ):
             self.assertNotIn(conflicting_phrase, skill_md)
 
+    def test_workbench_template_copies_images_as_data_uri_without_polluting_markdown(self) -> None:
+        template = (SKILL_DIR / "assets" / "templates" / "wechat-md-workbench.template.v3.html").read_text(encoding="utf-8")
+
+        self.assertIn("相对路径配图", template)
+        self.assertIn("复制富文本", template)
+        self.assertIn("CLIPBOARD_ASSETS_SCRIPT", template)
+        self.assertIn("WECHAT_CLIPBOARD_IMAGE_DATA", template)
+        self.assertIn("copyRichHtmlWithEmbeddedImages", template)
+        self.assertIn("inlineImagesForClipboard", template)
+        self.assertIn("imageToDataUri", template)
+        self.assertIn("canvas.toDataURL", template)
+        self.assertIn("ClipboardItem", template)
+        self.assertIn("data:image", template)
+        for stale_phrase in (
+            "单文件",
+            "复制到公众号",
+            "公众号可粘贴",
+        ):
+            self.assertNotIn(stale_phrase, template)
+
+    def test_example_workbenches_keep_markdown_images_relative(self) -> None:
+        examples_dir = ROOT / "examples"
+        for html_path in (examples_dir / "method-article.html", examples_dir / "emotion-article.html"):
+            html = html_path.read_text(encoding="utf-8")
+
+            self.assertIn(f"{html_path.stem}.clipboard-assets.js", html)
+            self.assertIn("![题图](assets/cover.svg)", html)
+            self.assertNotIn("data:image/svg+xml;base64", html)
+            self.assertNotIn("复制到公众号", html)
+
+            sidecar = html_path.with_name(f"{html_path.stem}.clipboard-assets.js").read_text(encoding="utf-8")
+            self.assertIn("WECHAT_CLIPBOARD_IMAGE_DATA", sidecar)
+            self.assertIn("assets/cover.svg", sidecar)
+            self.assertIn("data:image/svg+xml;base64", sidecar)
+
     def test_postprocess_no_images_skips_image_planning(self) -> None:
         commands: list[list[str]] = []
 

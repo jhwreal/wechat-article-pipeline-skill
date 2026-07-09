@@ -6,9 +6,11 @@ import base64
 import html
 import json
 import mimetypes
+import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote_to_bytes
 
 
 DEFAULT_TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "templates" / "wechat-md-workbench.template.v3.html"
@@ -18,7 +20,7 @@ FRONT_MATTER_RE = re.compile(r"\A---[ \t]*\n(?P<body>.*?)[ \t]*\n---[ \t]*(?:\n|
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build a single-file editable WeChat article workbench HTML."
+        description="Build an editable WeChat article workbench HTML with relative local image references."
     )
     parser.add_argument("job", type=Path, help="Path to the article job JSON.")
     parser.add_argument("out", type=Path, help="Path to the output HTML file.")
@@ -82,6 +84,46 @@ def infer_mime_type(path: Path, fallback: str = "image/png") -> str:
     return guessed or fallback
 
 
+def extension_for_mime_type(mime_type: str) -> str:
+    normalized = mime_type.lower().split(";", 1)[0].strip()
+    return {
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "image/bmp": ".bmp",
+        "image/svg+xml": ".svg",
+    }.get(normalized, ".png")
+
+
+def safe_asset_name(value: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "-", value.strip()).strip("-")
+    return cleaned or "image"
+
+
+def decode_data_uri(data_uri: str) -> tuple[bytes, str]:
+    if not data_uri.startswith("data:") or "," not in data_uri:
+        raise ValueError("Invalid data URI")
+    header, payload = data_uri.split(",", 1)
+    mime_type = header[5:].split(";", 1)[0] or "image/png"
+    if ";base64" in header:
+        return base64.b64decode(payload), mime_type
+    return unquote_to_bytes(payload), mime_type
+
+
+def materialized_assets_dir(out_path: Path) -> Path:
+    return out_path.with_name(f"{out_path.stem}.assets")
+
+
+def materialize_data_uri(data_uri: str, asset_name: str, out_dir: Path) -> Path:
+    payload, mime_type = decode_data_uri(data_uri)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{safe_asset_name(asset_name)}{extension_for_mime_type(mime_type)}"
+    out.write_bytes(payload)
+    return out
+
+
 def resolve_image_asset(spec: dict[str, Any], job_dir: Path) -> tuple[str, dict[str, Any]]:
     source = "unknown"
     mime_type = spec.get("mime_type")
@@ -114,6 +156,41 @@ def resolve_image_asset(spec: dict[str, Any], job_dir: Path) -> tuple[str, dict[
     raise SystemExit("Each visual asset must provide one of: data_uri, base64, path, url")
 
 
+def resolve_image_reference(
+    spec: dict[str, Any],
+    job_dir: Path,
+    reference_dir: Path,
+    asset_name: str = "image",
+    generated_assets_dir: Path | None = None,
+) -> tuple[str, dict[str, Any]]:
+    if "path" in spec:
+        raw_path = Path(spec["path"])
+        path = raw_path if raw_path.is_absolute() else (job_dir / raw_path).resolve()
+        if not path.exists():
+            raise SystemExit(f"Image asset path does not exist: {path}")
+
+        relative_path = os.path.relpath(path, start=reference_dir.resolve())
+        return Path(relative_path).as_posix(), {
+            "source": "path",
+            "embedded": False,
+            "path": str(path),
+            "reference_dir": str(reference_dir.resolve()),
+        }
+
+    asset_uri, audit = resolve_image_asset(spec, job_dir)
+    if asset_uri.startswith("data:image/") and generated_assets_dir:
+        path = materialize_data_uri(asset_uri, asset_name, generated_assets_dir)
+        relative_path = os.path.relpath(path, start=reference_dir.resolve())
+        return Path(relative_path).as_posix(), {
+            **audit,
+            "embedded": False,
+            "materialized": True,
+            "path": str(path),
+            "reference_dir": str(reference_dir.resolve()),
+        }
+    return asset_uri, audit
+
+
 def replace_default_markdown(template: str, markdown: str) -> str:
     escaped = escape_for_js_template(markdown)
     return re.sub(
@@ -144,6 +221,14 @@ def replace_article_signature(template: str, signature: dict[str, Any]) -> str:
     )
 
 
+def replace_clipboard_assets_script(template: str, script_path: str) -> str:
+    if script_path:
+        tag = f'<script src="{html.escape(script_path, quote=True)}"></script>'
+    else:
+        tag = ""
+    return template.replace("<!-- CLIPBOARD_ASSETS_SCRIPT -->", tag)
+
+
 def replace_first(pattern: str, repl: str, text: str) -> str:
     return re.sub(pattern, repl, text, count=1, flags=re.S)
 
@@ -154,7 +239,7 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     page_title = str(job.get("page_title", "公众号 Markdown 工作台"))
     storage_key = str(job.get("storage_key", "wechat-md-workbench-generated"))
     brand_title = str(job.get("brand_title", "公众号 Markdown 工作台"))
-    brand_subtitle = str(job.get("brand_subtitle", "单文件 HTML · 含正文和配图 · 可继续编辑"))
+    brand_subtitle = str(job.get("brand_subtitle", "HTML 工作台 · 相对路径配图 · 可继续编辑"))
     theme_color = str(job.get("theme_color", "#17b394"))
 
     html_text = template
@@ -166,6 +251,7 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     html_text = replace_default_markdown(html_text, markdown)
     html_text = replace_default_metadata(html_text, article_metadata if isinstance(article_metadata, dict) else {})
     html_text = replace_article_signature(html_text, job.get("article_signature") or {})
+    html_text = replace_clipboard_assets_script(html_text, str(job.get("clipboard_assets_script", "")).strip())
     return html_text
 
 
@@ -202,6 +288,40 @@ def write_support_files(
             str(rendered_job["image_plan_markdown"]),
             encoding="utf-8",
         )
+
+
+def clipboard_assets_path(out_path: Path) -> Path:
+    return out_path.with_name(f"{out_path.stem}.clipboard-assets.js")
+
+
+def write_clipboard_assets(
+    out_path: Path,
+    rendered_visuals: dict[str, str],
+    visuals: dict[str, Any],
+    job_dir: Path,
+) -> str:
+    assets: dict[str, str] = {}
+    for name, visual_spec in visuals.items():
+        reference = rendered_visuals.get(name, "")
+        if not reference or reference.startswith("data:image/") or not isinstance(visual_spec, dict):
+            continue
+        try:
+            data_uri, _audit = resolve_image_asset(visual_spec, job_dir)
+        except Exception:
+            continue
+        if data_uri.startswith("data:image/"):
+            assets[reference] = data_uri
+    if not assets:
+        return ""
+    out = clipboard_assets_path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        "window.WECHAT_CLIPBOARD_IMAGE_DATA = "
+        + json.dumps(assets, ensure_ascii=False, separators=(",", ":"))
+        + ";\n",
+        encoding="utf-8",
+    )
+    return Path(os.path.relpath(out.resolve(), start=out_path.resolve().parent)).as_posix()
 
 
 def replace_visual_placeholders(markdown: str, rendered_visuals: dict[str, str]) -> tuple[str, list[str]]:
@@ -247,7 +367,13 @@ def main() -> None:
     quality_report: dict[str, Any] = {"visuals": {}}
 
     for name, visual_spec in visuals.items():
-        asset_uri, audit = resolve_image_asset(visual_spec, job_dir)
+        asset_uri, audit = resolve_image_reference(
+            visual_spec,
+            job_dir,
+            args.out.resolve().parent,
+            name,
+            materialized_assets_dir(args.out.resolve()),
+        )
         rendered_visuals[name] = asset_uri
         quality_report["visuals"][name] = audit
 
@@ -256,6 +382,9 @@ def main() -> None:
         names = ", ".join(sorted(set(missing)))
         raise SystemExit(f"Missing visual assets for placeholders: {names}")
 
+    clipboard_assets_script = write_clipboard_assets(args.out.resolve(), rendered_visuals, visuals, job_dir)
+    if clipboard_assets_script:
+        job["clipboard_assets_script"] = clipboard_assets_script
     html = apply_template(job, template, markdown)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

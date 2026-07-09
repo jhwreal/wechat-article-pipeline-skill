@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="506" viewBox="0 0 900 506">
+  <rect width="900" height="506" fill="#f4f8f6"/>
+  <rect x="72" y="72" width="756" height="362" rx="28" fill="#17b394" opacity=".14"/>
+  <circle cx="235" cy="253" r="88" fill="#17b394" opacity=".32"/>
+  <rect x="350" y="174" width="310" height="30" rx="15" fill="#32544d" opacity=".32"/>
+  <rect x="350" y="238" width="410" height="24" rx="12" fill="#17b394" opacity=".34"/>
+  <rect x="350" y="296" width="250" height="24" rx="12" fill="#32544d" opacity=".18"/>
+  <text x="450" y="420" text-anchor="middle" font-size="32" font-family="Arial, sans-serif" fill="#32544d">cover</text>
+</svg>

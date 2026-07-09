@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>emotion-article</title>
+  <title>为什么越忙的人越需要留一点空白 工作台</title>
   <style>
     :root {
       --bg: #f5f7fb;
@@ -398,8 +398,8 @@
     <div class="brand">
       <div class="brand-badge"></div>
       <div class="brand-text">
-        <div class="brand-title">emotion-article工作台</div>
-        <div class="brand-sub">示例文章 · 可继续编辑</div>
+        <div class="brand-title">为什么越忙的人越需要留一点空白 示例</div>
+        <div class="brand-sub">HTML 工作台 · 相对路径配图 · 可继续编辑</div>
       </div>
     </div>
     <div class="toolbar">
@@ -415,7 +415,7 @@
         <option value="18">18px</option>
       </select>
       <input id="themeColor" class="color" type="color" value="#17b394" title="主题色" />
-      <button id="copyWechat" class="btn primary">复制到公众号</button>
+      <button id="copyWechat" class="btn primary">复制富文本</button>
     </div>
   </div>
 
@@ -438,7 +438,7 @@
         </div>
         <div class="status-right">
           <span>自动保存：localStorage</span>
-          <span>复制：输出公众号可粘贴富文本</span>
+          <span>复制：输出预览富文本</span>
         </div>
       </div>
     </section>
@@ -471,33 +471,36 @@
     </section>
   </div>
 
+  <script src="emotion-article.clipboard-assets.js"></script>
   <script>
+    window.WECHAT_CLIPBOARD_IMAGE_DATA = window.WECHAT_CLIPBOARD_IMAGE_DATA || {};
+
     const DEFAULT_MARKDOWN = `# 为什么越忙的人越需要留一点空白
 
-![题图](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iNTA2IiB2aWV3Qm94PSIwIDAgOTAwIDUwNiI+CiAgPHJlY3Qgd2lkdGg9IjkwMCIgaGVpZ2h0PSI1MDYiIGZpbGw9IiNmNWZiZjgiLz4KICA8cmVjdCB4PSI3MiIgeT0iNzIiIHdpZHRoPSI3NTYiIGhlaWdodD0iMzYyIiByeD0iMjgiIGZpbGw9IiMxN2IzOTQiIG9wYWNpdHk9IjAuMTYiLz4KICA8Y2lyY2xlIGN4PSIyMTUiIGN5PSIyNTMiIHI9Ijg2IiBmaWxsPSIjMTdiMzk0IiBvcGFjaXR5PSIwLjMyIi8+CiAgPHJlY3QgeD0iMzM1IiB5PSIxODQiIHdpZHRoPSIzMzAiIGhlaWdodD0iMjgiIHJ4PSIxNCIgZmlsbD0iIzE3YjM5NCIgb3BhY2l0eT0iMC40MiIvPgogIDxyZWN0IHg9IjMzNSIgeT0iMjQ0IiB3aWR0aD0iNDIwIiBoZWlnaHQ9IjIyIiByeD0iMTEiIGZpbGw9IiMxN2IzOTQiIG9wYWNpdHk9IjAuMzAiLz4KICA8cmVjdCB4PSIzMzUiIHk9IjMwMiIgd2lkdGg9IjI1MCIgaGVpZ2h0PSIyMiIgcng9IjExIiBmaWxsPSIjMTdiMzk0IiBvcGFjaXR5PSIwLjIyIi8+CiAgPHRleHQgeD0iNDUwIiB5PSI0MjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMzIiIGZvbnQtZmFtaWx5PSJQaW5nRmFuZyBTQywgTWljcm9zb2Z0IFlhSGVpLCBzYW5zLXNlcmlmIiBmaWxsPSIjMzI1NDRkIj5jb3ZlcjwvdGV4dD4KPC9zdmc+)
+![题图](assets/cover.svg)
 
 很多人的一天不是被工作填满的，而是被切换填满的。刚回完消息，又想起一个会议；刚打开文档，又被新的提醒拉走。
 
 真正消耗人的，往往不是某一件事本身，而是一直没有机会把自己收回来。
 
-![配图1](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iNTA2IiB2aWV3Qm94PSIwIDAgOTAwIDUwNiI+CiAgPHJlY3Qgd2lkdGg9IjkwMCIgaGVpZ2h0PSI1MDYiIGZpbGw9IiNmNWZiZjgiLz4KICA8cmVjdCB4PSI3MiIgeT0iNzIiIHdpZHRoPSI3NTYiIGhlaWdodD0iMzYyIiByeD0iMjgiIGZpbGw9IiMxN2IzOTQiIG9wYWNpdHk9IjAuMTYiLz4KICA8Y2lyY2xlIGN4PSIyMTUiIGN5PSIyNTMiIHI9Ijg2IiBmaWxsPSIjMTdiMzk0IiBvcGFjaXR5PSIwLjMyIi8+CiAgPHJlY3QgeD0iMzM1IiB5PSIxODQiIHdpZHRoPSIzMzAiIGhlaWdodD0iMjgiIHJ4PSIxNCIgZmlsbD0iIzE3YjM5NCIgb3BhY2l0eT0iMC40MiIvPgogIDxyZWN0IHg9IjMzNSIgeT0iMjQ0IiB3aWR0aD0iNDIwIiBoZWlnaHQ9IjIyIiByeD0iMTEiIGZpbGw9IiMxN2IzOTQiIG9wYWNpdHk9IjAuMzAiLz4KICA8cmVjdCB4PSIzMzUiIHk9IjMwMiIgd2lkdGg9IjI1MCIgaGVpZ2h0PSIyMiIgcng9IjExIiBmaWxsPSIjMTdiMzk0IiBvcGFjaXR5PSIwLjIyIi8+CiAgPHRleHQgeD0iNDUwIiB5PSI0MjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMzIiIGZvbnQtZmFtaWx5PSJQaW5nRmFuZyBTQywgTWljcm9zb2Z0IFlhSGVpLCBzYW5zLXNlcmlmIiBmaWxsPSIjMzI1NDRkIj5ib2R5LTE8L3RleHQ+Cjwvc3ZnPg==)
+![配图1](assets/body-1.svg)
 
 留一点空白，不是偷懒，也不是效率低。它更像是给大脑留一个缓冲区，让你知道自己到底在做什么，而不是只是在反应。
 
 有时候，十分钟不看手机，比多做一项任务更重要。因为那十分钟会让你重新分清：哪些事情真的重要，哪些只是声音很大。
 
-![配图2](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iNTA2IiB2aWV3Qm94PSIwIDAgOTAwIDUwNiI+CiAgPHJlY3Qgd2lkdGg9IjkwMCIgaGVpZ2h0PSI1MDYiIGZpbGw9IiNmNWZiZjgiLz4KICA8cmVjdCB4PSI3MiIgeT0iNzIiIHdpZHRoPSI3NTYiIGhlaWdodD0iMzYyIiByeD0iMjgiIGZpbGw9IiMxN2IzOTQiIG9wYWNpdHk9IjAuMTYiLz4KICA8Y2lyY2xlIGN4PSIyMTUiIGN5PSIyNTMiIHI9Ijg2IiBmaWxsPSIjMTdiMzk0IiBvcGFjaXR5PSIwLjMyIi8+CiAgPHJlY3QgeD0iMzM1IiB5PSIxODQiIHdpZHRoPSIzMzAiIGhlaWdodD0iMjgiIHJ4PSIxNCIgZmlsbD0iIzE3YjM5NCIgb3BhY2l0eT0iMC40MiIvPgogIDxyZWN0IHg9IjMzNSIgeT0iMjQ0IiB3aWR0aD0iNDIwIiBoZWlnaHQ9IjIyIiByeD0iMTEiIGZpbGw9IiMxN2IzOTQiIG9wYWNpdHk9IjAuMzAiLz4KICA8cmVjdCB4PSIzMzUiIHk9IjMwMiIgd2lkdGg9IjI1MCIgaGVpZ2h0PSIyMiIgcng9IjExIiBmaWxsPSIjMTdiMzk0IiBvcGFjaXR5PSIwLjIyIi8+CiAgPHRleHQgeD0iNDUwIiB5PSI0MjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMzIiIGZvbnQtZmFtaWx5PSJQaW5nRmFuZyBTQywgTWljcm9zb2Z0IFlhSGVpLCBzYW5zLXNlcmlmIiBmaWxsPSIjMzI1NDRkIj5ib2R5LTI8L3RleHQ+Cjwvc3ZnPg==)
+![配图2](assets/body-2.svg)
 
 人不是机器。长期没有空白，判断会变钝，情绪会变硬，连休息都会带着负罪感。
 
-![尾图](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iNTA2IiB2aWV3Qm94PSIwIDAgOTAwIDUwNiI+CiAgPHJlY3Qgd2lkdGg9IjkwMCIgaGVpZ2h0PSI1MDYiIGZpbGw9IiNmNWZiZjgiLz4KICA8cmVjdCB4PSI3MiIgeT0iNzIiIHdpZHRoPSI3NTYiIGhlaWdodD0iMzYyIiByeD0iMjgiIGZpbGw9IiMxN2IzOTQiIG9wYWNpdHk9IjAuMTYiLz4KICA8Y2lyY2xlIGN4PSIyMTUiIGN5PSIyNTMiIHI9Ijg2IiBmaWxsPSIjMTdiMzk0IiBvcGFjaXR5PSIwLjMyIi8+CiAgPHJlY3QgeD0iMzM1IiB5PSIxODQiIHdpZHRoPSIzMzAiIGhlaWdodD0iMjgiIHJ4PSIxNCIgZmlsbD0iIzE3YjM5NCIgb3BhY2l0eT0iMC40MiIvPgogIDxyZWN0IHg9IjMzNSIgeT0iMjQ0IiB3aWR0aD0iNDIwIiBoZWlnaHQ9IjIyIiByeD0iMTEiIGZpbGw9IiMxN2IzOTQiIG9wYWNpdHk9IjAuMzAiLz4KICA8cmVjdCB4PSIzMzUiIHk9IjMwMiIgd2lkdGg9IjI1MCIgaGVpZ2h0PSIyMiIgcng9IjExIiBmaWxsPSIjMTdiMzk0IiBvcGFjaXR5PSIwLjIyIi8+CiAgPHRleHQgeD0iNDUwIiB5PSI0MjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMzIiIGZvbnQtZmFtaWx5PSJQaW5nRmFuZyBTQywgTWljcm9zb2Z0IFlhSGVpLCBzYW5zLXNlcmlmIiBmaWxsPSIjMzI1NDRkIj5jbG9zaW5nPC90ZXh0Pgo8L3N2Zz4=)
+![尾图](assets/closing.svg)
 
 忙不是问题，问题是忙到完全没有余地。能留下一点空白的人，才更容易把生活重新握在手里。
 `;
 
-    const ARTICLE_METADATA = {"slug": "emotion-article"};
-    const ARTICLE_SIGNATURE = {"author": "树懒", "issue": 209};
-    const STORAGE_KEY = "wechat-md-workbench-example-emotion-article";
+    const ARTICLE_METADATA = {"raw": "title: \"为什么越忙的人越需要留一点空白\"\nslug: \"emotion-article\"", "title": "为什么越忙的人越需要留一点空白", "slug": "emotion-article"};
+    const ARTICLE_SIGNATURE = {};
+    const STORAGE_KEY = "wechat-md-workbench-example-emotion-article-v2";
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const previewShell = document.querySelector('.preview-shell');
@@ -963,36 +966,142 @@
       }
     }
 
-    function copyWechatContent() {
-      const writeByRenderedSelection = () => {
-        const box = document.createElement('article');
-        box.className = 'preview';
-        box.style.position = 'fixed';
-        box.style.left = '-99999px';
-        box.style.top = '0';
-        box.style.width = getComputedStyle(preview).width || '430px';
-        box.style.maxWidth = getComputedStyle(preview).width || '430px';
-        box.style.background = '#fff';
-        box.innerHTML = preview.innerHTML;
-        document.body.appendChild(box);
-
-        const selection = window.getSelection();
-        const range = document.createRange();
-
-        try {
-          selection.removeAllRanges();
-          range.selectNodeContents(box);
-          selection.addRange(range);
-          return document.execCommand('copy');
-        } finally {
-          selection.removeAllRanges();
-          document.body.removeChild(box);
-        }
-      };
-
+    function absoluteImageUrl(src) {
       try {
-        const ok = writeByRenderedSelection();
-        saveStatus.textContent = ok ? '已复制到公众号' : '复制失败，请手动复制右侧预览';
+        return new URL(src, document.baseURI).href;
+      } catch {
+        return src;
+      }
+    }
+
+    function mimeTypeForImageSrc(src) {
+      const clean = String(src || '').split(/[?#]/, 1)[0].toLowerCase();
+      if (clean.endsWith('.jpg') || clean.endsWith('.jpeg')) return 'image/jpeg';
+      if (clean.endsWith('.webp')) return 'image/webp';
+      return 'image/png';
+    }
+
+    function clipboardMappedDataUri(src) {
+      const assets = window.WECHAT_CLIPBOARD_IMAGE_DATA || {};
+      return assets[src] || assets[decodeURI(src)] || assets[absoluteImageUrl(src)] || '';
+    }
+
+    function blobToDataUri(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('blob read failed'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function fetchImageDataUri(src) {
+      const response = await fetch(absoluteImageUrl(src));
+      if (!response.ok) throw new Error('image fetch failed');
+      const blob = await response.blob();
+      return blobToDataUri(blob);
+    }
+
+    function waitForClipboardImage(img) {
+      if (img.complete && img.naturalWidth > 0) return Promise.resolve(img);
+      return new Promise((resolve, reject) => {
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('image load failed'));
+      });
+    }
+
+    async function imageToDataUri(img) {
+      const src = img.getAttribute('src') || img.currentSrc || img.src;
+      if (!src || /^data:image\//i.test(src)) return src;
+      const mapped = clipboardMappedDataUri(src);
+      if (mapped) return mapped;
+      try {
+        return await fetchImageDataUri(src);
+      } catch {
+        // file:// images cannot be fetched by Chrome; the generated sidecar covers that path.
+      }
+      const absoluteSrc = absoluteImageUrl(src);
+      const image = await waitForClipboardImage(img);
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth || image.width;
+      canvas.height = image.naturalHeight || image.height;
+      const context = canvas.getContext('2d');
+      if (!context || !canvas.width || !canvas.height) return src;
+      context.drawImage(image, 0, 0);
+      return canvas.toDataURL(mimeTypeForImageSrc(absoluteSrc));
+    }
+
+    async function inlineImagesForClipboard(root) {
+      const images = Array.from(root.querySelectorAll('img'));
+      let converted = 0;
+      let failed = 0;
+      for (const img of images) {
+        const originalSrc = img.getAttribute('src') || img.currentSrc || img.src;
+        if (!originalSrc || /^data:image\//i.test(originalSrc)) continue;
+        try {
+          img.setAttribute('src', await imageToDataUri(img));
+          converted += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      return { converted, failed };
+    }
+
+    function createClipboardBox() {
+      const box = document.createElement('article');
+      box.className = 'preview';
+      box.style.position = 'fixed';
+      box.style.left = '-99999px';
+      box.style.top = '0';
+      box.style.width = getComputedStyle(preview).width || '430px';
+      box.style.maxWidth = getComputedStyle(preview).width || '430px';
+      box.style.background = '#fff';
+      box.innerHTML = preview.innerHTML;
+      return box;
+    }
+
+    function copyBoxBySelection(box) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      try {
+        selection.removeAllRanges();
+        range.selectNodeContents(box);
+        selection.addRange(range);
+        return document.execCommand('copy');
+      } finally {
+        selection.removeAllRanges();
+      }
+    }
+
+    async function copyRichHtmlWithEmbeddedImages() {
+      const box = createClipboardBox();
+      document.body.appendChild(box);
+      try {
+        const imageResult = await inlineImagesForClipboard(box);
+        const html = box.innerHTML;
+        const plain = box.innerText;
+        if (navigator.clipboard && window.ClipboardItem) {
+          const item = new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([plain], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([item]);
+          return imageResult;
+        }
+        const copied = copyBoxBySelection(box);
+        if (!copied) throw new Error('copy failed');
+        return imageResult;
+      } finally {
+        document.body.removeChild(box);
+      }
+    }
+
+    async function copyWechatContent() {
+      saveStatus.textContent = '正在准备图片…';
+      try {
+        const result = await copyRichHtmlWithEmbeddedImages();
+        saveStatus.textContent = result.failed ? '已复制富文本，部分图片保持原路径' : '已复制富文本';
       } catch (e) {
         saveStatus.textContent = '复制失败，请手动复制右侧预览';
       }

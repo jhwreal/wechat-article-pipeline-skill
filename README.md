@@ -16,7 +16,7 @@ wechat-article-pipeline/
 - 支持方法类、分析类、情绪/故事类视觉模式
 - 情绪/故事类内容使用插画逻辑，而不是步骤图或流程图
 - 可根据正文自动规划题图、正文配图和尾图
-- 输出带内嵌图片的单文件可编辑 HTML
+- 输出可编辑 HTML 工作台，图片保留在独立目录，工作台 Markdown 使用相对路径引用，复制富文本时临时内嵌图片
 - 可通过微信官方 API 上传正文图片、上传封面素材、创建草稿箱草稿并验证草稿
 - 只有明确要求时才发送预览；不会自动发布或群发
 
@@ -44,7 +44,7 @@ rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 1. 先写文章正文
 2. 根据写好的文章内容生成按角色划分的图片计划
 3. 直接调用 Codex 内置图片生成工具生成题图、正文配图和尾图
-4. 将文章和图片打包成一个可编辑的单文件 HTML 工作台
+4. 将文章打包成可编辑 HTML 工作台，并用相对路径引用独立图片目录；复制富文本时再临时把图片写入剪贴板 HTML
 5. 如果你要求导入公众号草稿箱，再使用微信官方 API 创建草稿
 
 ### 文稿来源
@@ -69,7 +69,7 @@ rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 
 审稿有两种方式：
 
-1. 输出单文件 HTML 工作台，你在浏览器里打开检查标题、正文、配图和排版，再手工复制到微信公众号后台。
+1. 输出 HTML 工作台，你在浏览器里打开检查标题、正文、配图和排版；图片文件保留在项目的 `image/<slug>/` 目录，复制富文本时工作台会临时把本地图片转成剪贴板 HTML 里的图片数据。
 2. 在已绑定公众号凭据的情况下，让 Codex 调用微信官方 API 直接创建公众号草稿，然后到公众号草稿箱里检查。
 
 该 skill 只负责创建草稿和可选发送预览，不会自动群发或发布。
@@ -123,10 +123,13 @@ https://developers.weixin.qq.com/platform
 ├── README.md
 ├── LICENSE
 ├── examples/
+│   ├── assets/
 │   ├── method-article.md
 │   ├── emotion-article.md
 │   ├── method-article.html
-│   └── emotion-article.html
+│   ├── emotion-article.html
+│   ├── method-article.clipboard-assets.js
+│   └── emotion-article.clipboard-assets.js
 └── wechat-article-pipeline/
     ├── SKILL.md
     ├── assets/templates/
@@ -137,7 +140,7 @@ https://developers.weixin.qq.com/platform
 ## 六、说明
 
 - Codex 内置图片工具通常会把生成图片保存到 `$CODEX_HOME/generated_images`；打包前请将选中的图片复制到项目的图片目录。
-- 打包脚本会校验生成的 HTML 是否包含内嵌图片，并确认没有未解析的 `{{visual:*}}` 占位符。
+- 打包脚本会校验生成的 HTML 没有未解析的 `{{visual:*}}` 占位符，并确认工作台里的图片引用已经落成相对路径；工作台复制按钮会在复制时临时内嵌图片，不会污染左侧 Markdown。
 - 非 macOS 环境运行图片打包/发布流程前请安装 Pillow；macOS 对部分封面裁剪预览可使用系统 `sips`，但 Pillow 仍建议用于发布前正文图片压缩。
 - CI 目前只跑语法检查、单元测试和 skill zip 打包，不集成完整“文章 + 图片打包 + API dry-run” smoke test；修改图片或打包流程后，发布前应在本地手动跑一次完整 smoke test。
 - `.env`、token cache、生成的文章包和图片都不应提交到 GitHub。
@@ -166,7 +169,7 @@ wechat-article-pipeline/
 - Method, analysis, and emotional/story visual modes
 - Emotional/story content uses illustration logic instead of step diagrams
 - Automatic cover/body/closing image planning based on the finished article
-- Single-file editable HTML output with embedded images
+- Editable HTML workbench output with images kept in a separate folder, referenced by relative paths in Markdown, and temporarily inlined when copying rich HTML
 - Official API workflow for body image upload, cover material upload, draft creation, and draft verification
 - Preview is sent only when explicitly requested; publishing and mass sending are never automatic
 
@@ -194,7 +197,7 @@ In Codex, describe the WeChat Official Account article topic, direction, or draf
 1. Write the article first
 2. Derive a role-based visual plan from the finished article
 3. Generate cover/body/closing images directly with Codex's built-in image generation tool
-4. Package everything into a single editable HTML workbench
+4. Package the article into an editable HTML workbench that references the separate image folder, then temporarily inlines images only when copying rich HTML
 5. If you ask to import it into WeChat, create a draft through the official WeChat API
 
 ### Article Source
@@ -219,7 +222,7 @@ By default, the skill writes the article first and plans images from the finishe
 
 There are two review paths:
 
-1. Output a single editable HTML workbench, open it in a browser, review the title/body/images/layout, then copy it manually into the WeChat editor.
+1. Output an editable HTML workbench, open it in a browser, and review the title/body/images/layout. Image files stay in the local `image/<slug>/` folder; the copy button temporarily embeds local images in clipboard HTML.
 2. After binding Official Account credentials, ask Codex to create a WeChat draft through the official API, then review it in the WeChat draft box.
 
 The skill creates drafts and can optionally send previews. It does not automatically publish or mass-send.
@@ -273,10 +276,13 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 ├── README.md
 ├── LICENSE
 ├── examples/
+│   ├── assets/
 │   ├── method-article.md
 │   ├── emotion-article.md
 │   ├── method-article.html
-│   └── emotion-article.html
+│   ├── emotion-article.html
+│   ├── method-article.clipboard-assets.js
+│   └── emotion-article.clipboard-assets.js
 └── wechat-article-pipeline/
     ├── SKILL.md
     ├── assets/templates/
@@ -287,7 +293,7 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 ## 6. Notes
 
 - Codex's built-in image tool normally saves generated files under `$CODEX_HOME/generated_images`; copy accepted images into the project image directory before packaging.
-- The packager validates that generated HTML contains embedded images and no unresolved `{{visual:*}}` placeholders.
+- The packager validates that generated HTML has no unresolved `{{visual:*}}` placeholders and that workbench image references have been resolved to relative paths. The workbench copy button inlines images only in clipboard HTML, not in the editable Markdown.
 - Install Pillow before running image packaging/publishing workflows on non-macOS systems. macOS can use the built-in `sips` fallback for some cover-crop previews, but Pillow is still recommended for pre-upload body-image compression.
 - CI currently runs syntax checks, unit tests, and skill zip packaging only. It intentionally does not run the full article + image packaging + API dry-run smoke test; run that smoke test locally before releases that change image or packaging behavior.
 - `.env`, token cache files, generated article packages, and generated images should not be committed to GitHub.
