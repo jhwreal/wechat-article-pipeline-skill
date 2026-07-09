@@ -1453,7 +1453,8 @@ def build_jobs(
         "image_execution": {
             "mode": "single_pass",
             "max_parallel_subagents": 4,
-            "review_policy": "user_decides_after_generation",
+            "scheduling_policy": "concurrent_batches_up_to_4_then_queue",
+            "review_policy": "no_agent_visual_review_user_decides_after_generation",
             "regeneration_policy": "rerun_same_generation_prompt_for_user_requested_slots",
         },
         "generation_queue": generation_queue,

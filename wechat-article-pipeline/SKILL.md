@@ -50,7 +50,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-5. Read [image-production.md](references/image-production.md), then use `generation_queue[]` for single-pass image generation. Use up to 4 image worker subagents in parallel, save each result directly as `jobs[].output`, and do not run candidate review unless the user asks to regenerate a specific image.
+5. Read [image-production.md](references/image-production.md), then use `generation_queue[]` for single-pass image generation. Run image workers in concurrent batches of up to 4 subagents; if the queue has more than 4 images, start the next image as soon as any worker finishes. Save each result directly as `jobs[].output`. Do not inspect the generated images, including the cover; after files exist, continue to packaging and script verification only.
 6. Run the same script again without `--plan-only` to build the HTML, job JSON, crop previews, support files, and publish manifest.
 7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html` and fix any failures before delivery.
 
