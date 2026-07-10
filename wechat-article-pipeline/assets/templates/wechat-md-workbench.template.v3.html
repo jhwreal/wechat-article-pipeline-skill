@@ -950,10 +950,12 @@
         if (!response.ok) return false;
         const result = await response.json();
         if (!result.saved) throw new Error(result.error || 'save failed');
+        window.__workbenchRevision = result.revision || window.__workbenchRevision;
+        if (window.workbenchSaveController && window.workbenchSaveController.setServerRevision) window.workbenchSaveController.setServerRevision(window.__workbenchRevision);
         updateServerStatus(result);
         storageModeLabel.textContent = '自动保存：HTML 文件 + localStorage';
         saveStatus.textContent = '已写入 HTML';
-        return true;
+        return result;
       } catch {
         return false;
       }
