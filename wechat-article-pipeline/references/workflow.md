@@ -51,6 +51,7 @@ The orchestration script runs `mark_wechat_article_focus.py` unless disabled. It
 
 - Full package with images: use the default `postprocess_wechat_article.py --plan-only`, generate listed images, then rerun without `--plan-only`.
 - Image production: use `image-production.md`; generate one image per slot from `generation_queue[].generation_prompt`, save directly to the final output, and let the user request regeneration if needed.
+- Workbench saving: edits are written to browser cache immediately. After 3 seconds without editing, one debounced save is sent to the server. The Save button sends the latest state immediately and cancels the current timer; later edits start a new timer. Show saved/saving/error/recovery-required states explicitly.
 - No generated images: use `postprocess_wechat_article.py --no-images`.
 - No body images + API draft delivery: still provide one cover image and use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>`.
 - Missing images only: use `postprocess_wechat_article.py --missing-only --plan-only`, generate only listed files, then rerun the normal package command.

@@ -84,7 +84,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-Then execute `generation_queue[]` as single-pass image work, save each bitmap directly under `<workspace>/image/<slug>/` using `jobs[].output`, and rerun the same command without `--plan-only` to package.
+Then execute `generation_queue[]` as single-pass image work, save each bitmap directly under `<workspace>/image/<slug>/` using the canonical slot `output`, and rerun the same command without `--plan-only` to package.
 
 For missing-image repair, use `postprocess_wechat_article.py --missing-only --plan-only`. For no-image formatting, use `postprocess_wechat_article.py --no-images`.
 
@@ -92,7 +92,7 @@ For no-body-image draft delivery, use `postprocess_wechat_article.py --no-images
 
 `make_wechat_article_image_jobs.py` also supports direct lightweight planning flags: `--mode no-image|fast|full`, `--max-body-images N`, and `--missing-only --images-dir <dir>`. Prefer `postprocess_wechat_article.py` for the normal workflow, but use these flags when diagnosing or regenerating the image plan directly.
 
-Each `jobs[]` slot includes a short `generation_prompt` for image generation and a separate job-level `review_contract` for later user-requested regeneration. The legacy `prompt` field mirrors `generation_prompt` for compatibility; do not append `review_contract` into it. Each slot also includes a lightweight `generation_task`, and top-level `generation_queue[]` has one task per slot for direct parallel execution. Queue tasks intentionally omit `review_contract`; workers should receive only the prompt and output metadata they need. Image generation rules come from `references/image-rules.json`; generated payloads include `image_execution`, `image_rules`, and `image_rules_markdown`, but normal execution should not print the full rules or queue.
+The canonical image payload is schema v2: `slots[]` stores article-facing placement and visual constraints, while `generation_queue[]` stores only `{slot, output, generation_prompt}` for execution. Shared rules and review defaults live once at the top level. Historical v1 payloads (`jobs[]`, `image_slots`, nested `generation_task`, duplicate variants) are normalized on read; new writers must emit v2 only. Queue tasks intentionally omit review details. Image generation rules come from `references/image-rules.json`; normal execution should not print the full rules or queue.
 
 Build outputs may also include:
 - `<html-stem>.assets/` — local files materialized from `data_uri` or `base64` visual inputs for clean workbench markdown
