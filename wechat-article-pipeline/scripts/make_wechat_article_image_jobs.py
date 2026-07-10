@@ -1435,9 +1435,21 @@ def build_jobs(
     }
     image_plan_markdown = build_plan_markdown(article_summary, global_visual_style, visual_intent, visual_mode, slots)
 
-    return {
-        "article_slug": article_slug,
-        "article_title": title,
+    # Canonical v2 contract: compatibility copies are intentionally omitted.
+    from image_jobs_contract import normalize_image_jobs
+    article_record = {"slug": article_slug, "title": title, "type": article_type}
+    canonical_slots = []
+    prompts = []
+    for slot in slots:
+        item = {k: slot[k] for k in ("index", "name") if k in slot}
+        item["output"] = slot.get("output") or f"{slot['name']}.png"
+        for k in ("position","role","image_type","target_effect","local_context","source_context","content_focus","visual_distance","composition","emotional_tone","abstraction_level","information_density","visual_type","text_budget","purpose","must_include","quality_gate","variation_note","selection_criteria"):
+            if k in slot: item[k] = slot[k]
+        canonical_slots.append(item); prompts.append(slot.get("generation_prompt") or slot.get("prompt") or "")
+    return normalize_image_jobs({"kind":"wechat-image-jobs", "schema_version":2, "article":article_record,
+        "rules":{"version":rules.get("version"), "sha256":""}, "review_defaults":{"must_avoid":rules.get("must_avoid",[]), "quality_floor":rules.get("quality_floor",[])},
+        "slots":canonical_slots, "generation_queue":[{"slot":s["name"],"output":s["output"],"generation_prompt":p} for s,p in zip(canonical_slots,prompts)]})
+    """
         "article_type": article_type,
         "visual_mode": visual_mode,
         "visual_intent": visual_intent,
@@ -1460,6 +1472,7 @@ def build_jobs(
         "generation_queue": generation_queue,
         "jobs": slots,
     }
+    """
 
 
 def existing_image(images_dir: Path, name: str) -> bool:
