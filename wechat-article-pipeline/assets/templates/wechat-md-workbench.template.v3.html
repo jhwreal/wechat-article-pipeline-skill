@@ -437,7 +437,7 @@
           <span id="lineCount">0 行</span>
         </div>
         <div class="status-right">
-          <span>自动保存：localStorage</span>
+          <span id="storageModeLabel">自动保存：localStorage</span>
           <span>复制：输出预览富文本</span>
         </div>
       </div>
@@ -492,6 +492,8 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     const ARTICLE_METADATA = {};
     const ARTICLE_SIGNATURE = {};
     const STORAGE_KEY = 'wechat-md-workbench-template-v10';
+    const DEFAULT_WORKBENCH_STATE = {"themeColor":"#17b394","fontSize":"16","fontFamily":"-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Microsoft YaHei\", sans-serif"};
+    const WORKBENCH_SAVE_ENDPOINT = '/__wechat_workbench/save';
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const previewShell = document.querySelector('.preview-shell');
@@ -502,6 +504,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     const lastSavedLabel = document.getElementById('lastSavedLabel');
     const wordCount = document.getElementById('wordCount');
     const lineCount = document.getElementById('lineCount');
+    const storageModeLabel = document.getElementById('storageModeLabel');
 
     let saveTimer = null;
     let activeScrollSource = null;
@@ -934,6 +937,30 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       }
     }
 
+    function isLoopbackServer() {
+      return (location.protocol === 'http:' || location.protocol === 'https:')
+        && (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
+    }
+
+    async function saveStateToServer(data) {
+      if (!isLoopbackServer()) return false;
+      try {
+        const response = await fetch(WORKBENCH_SAVE_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (!response.ok) return false;
+        const result = await response.json();
+        if (!result.saved) return false;
+        storageModeLabel.textContent = '自动保存：HTML 文件 + localStorage';
+        saveStatus.textContent = '已写入 HTML';
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     function updatePreview(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
       preview.innerHTML = markdownToHtml(editor.value);
       injectSignature(preview);
@@ -955,6 +982,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       const saved = safeSetStorage(STORAGE_KEY, JSON.stringify(data));
       saveStatus.textContent = saved ? '已自动保存' : '已加载';
       lastSavedLabel.textContent = `最近保存：${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+      saveStateToServer(data);
     }
 
     function scheduleSave() {
@@ -973,14 +1001,17 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       const raw = safeGetStorage(STORAGE_KEY);
       if (!raw) {
         editor.value = DEFAULT_MARKDOWN;
+        themeColor.value = DEFAULT_WORKBENCH_STATE.themeColor;
+        fontSize.value = DEFAULT_WORKBENCH_STATE.fontSize;
+        fontFamily.value = DEFAULT_WORKBENCH_STATE.fontFamily;
         return;
       }
       try {
         const data = JSON.parse(raw);
         editor.value = data.markdown && data.markdown.trim() ? data.markdown : DEFAULT_MARKDOWN;
-        themeColor.value = data.themeColor || '#17b394';
-        fontSize.value = data.fontSize || '16';
-        fontFamily.value = data.fontFamily || '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+        themeColor.value = data.themeColor || DEFAULT_WORKBENCH_STATE.themeColor;
+        fontSize.value = data.fontSize || DEFAULT_WORKBENCH_STATE.fontSize;
+        fontFamily.value = data.fontFamily || DEFAULT_WORKBENCH_STATE.fontFamily;
       } catch {
         editor.value = DEFAULT_MARKDOWN;
       }

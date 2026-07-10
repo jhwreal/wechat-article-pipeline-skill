@@ -221,6 +221,16 @@ def replace_article_signature(template: str, signature: dict[str, Any]) -> str:
     )
 
 
+def replace_default_workbench_state(template: str, state: dict[str, str]) -> str:
+    payload = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
+    return re.sub(
+        r"const DEFAULT_WORKBENCH_STATE = .*?;",
+        lambda _match: f"const DEFAULT_WORKBENCH_STATE = {payload};",
+        template,
+        flags=re.S,
+    )
+
+
 def replace_clipboard_assets_script(template: str, script_path: str) -> str:
     if script_path:
         tag = f'<script src="{html.escape(script_path, quote=True)}"></script>'
@@ -251,6 +261,19 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     html_text = replace_default_markdown(html_text, markdown)
     html_text = replace_default_metadata(html_text, article_metadata if isinstance(article_metadata, dict) else {})
     html_text = replace_article_signature(html_text, job.get("article_signature") or {})
+    html_text = replace_default_workbench_state(
+        html_text,
+        {
+            "themeColor": theme_color,
+            "fontSize": str(job.get("font_size", "16")),
+            "fontFamily": str(
+                job.get(
+                    "font_family",
+                    '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif',
+                )
+            ),
+        },
+    )
     html_text = replace_clipboard_assets_script(html_text, str(job.get("clipboard_assets_script", "")).strip())
     return html_text
 

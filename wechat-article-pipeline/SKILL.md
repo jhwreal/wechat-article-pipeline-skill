@@ -54,6 +54,15 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
 5. Read [image-production.md](references/image-production.md), then use `generation_queue[]` for single-pass image generation. Run image workers in concurrent batches of up to 4 subagents; if the queue has more than 4 images, start the next image as soon as any worker finishes. Save each result directly as `jobs[].output`. Do not inspect the generated images, including the cover; after files exist, continue to packaging and script verification only.
 6. Run the same script again without `--plan-only` to build the HTML, job JSON, crop previews, support files, and publish manifest.
 7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html` and fix any failures before delivery.
+8. When the user asks to “直接出工作台”, “打开工作台”, or otherwise wants the workbench as the primary deliverable, start the local persistence server after verification:
+
+```bash
+python3 <skill>/scripts/serve_wechat_workbench.py \
+  <workspace>/files/<slug>.html \
+  --workspace <workspace>
+```
+
+Keep the command running. Read the printed `WORKBENCH_URL` and `HTML_PATH`. Deliver `WORKBENCH_URL` first as the primary clickable workbench, then the HTML file path. Edits made through the local URL are written back to the HTML, source Markdown, rendered job, and publish manifest when publisher config is available. The HTML remains standalone: opening it directly continues to use `localStorage` and must not show a server error.
 
 ## Fast Paths
 
@@ -122,7 +131,8 @@ Before delivery, confirm:
 - workbench Markdown uses relative image paths; copy inlines local images only in clipboard HTML
 - `verify_wechat_article_package.py` reports `status: ok`
 - optional WeChat API result file is reported if draft delivery was run
-- final response gives the HTML path first, then markdown/image/manifest paths when relevant
+- for a requested live workbench, final response gives the local `http://127.0.0.1:<port>/...` link first, then the HTML file path
+- otherwise, final response gives the HTML path first, then markdown/image/manifest paths when relevant
 
 ## References
 
