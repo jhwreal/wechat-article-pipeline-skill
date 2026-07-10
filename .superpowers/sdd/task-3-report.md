@@ -1,4 +1,4 @@
-Status: partial implementation (revision/HTTP/async refresh and source-state validation landed; transaction recovery remains limited)
+Status: revision/HTTP/async refresh/source-state validation and staged transaction replay implemented.
 
 Implemented revisioned WorkbenchDocument persistence, sidecar state, async manifest refresh, token/host/origin/content-type checks, status endpoint, RevisionConflict, and worker close. Existing server tests pass.
 
@@ -10,4 +10,4 @@ Follow-up commits: `d0ef62d` (candidate manifest coalescing, source-state propag
 
 Verification: `python3 -m unittest wechat-article-pipeline/tests/test_serve_wechat_workbench.py -v` and `python3 -m unittest tests/test_wechat_draft_html.py -v` pass.
 
-Known limitation: transaction journal recovery currently validates the journal's recorded file hashes and removes an intact journal, or reports `recovery_required` on mismatch; it does not yet replay staged temporary files. Do not claim full crash-recovery completion until replay is implemented.
+Transaction replay landed in `21a8b6d`; startup replaces staged files in journal order when hashes match, otherwise enters `recovery_required`.
