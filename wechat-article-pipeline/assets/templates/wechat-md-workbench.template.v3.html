@@ -499,7 +499,6 @@
     const lineCount = document.getElementById('lineCount');
     const storageModeLabel = document.getElementById('storageModeLabel');
 
-    let saveTimer = null;
     let initializing = true;
     let activeScrollSource = null;
     let scrollReleaseTimer = null;
@@ -946,7 +945,7 @@
         });
         if (!response.ok) return false;
         const result = await response.json();
-        if (!result.saved) return false;
+        if (!result.saved) throw new Error(result.error || 'save failed');
         storageModeLabel.textContent = '自动保存：HTML 文件 + localStorage';
         saveStatus.textContent = '已写入 HTML';
         return true;
@@ -994,7 +993,12 @@
       storage: localStorage,
       storageKey: STORAGE_KEY,
       snapshot: () => ({ markdown: editor.value, themeColor: themeColor.value, fontSize: fontSize.value, fontFamily: fontFamily.value, savedAt: new Date().toISOString() }),
-      transport: data => saveStateToServer(data)
+      transport: data => saveStateToServer(data),
+      onStateChange: state => {
+        const labels = {cached:'已缓存到本机', saving:'正在保存正文…', saved:'正文已保存', error:'保存失败'};
+        if (labels[state]) { saveStatus.textContent = labels[state]; articleStatus.textContent = labels[state]; }
+        if (state === 'saved') lastSavedLabel.textContent = `最近保存：${new Date().toLocaleTimeString('zh-CN')}`;
+      }
     });
     document.getElementById('saveArticle').addEventListener('click', () => window.workbenchSaveController.saveNow());
 
