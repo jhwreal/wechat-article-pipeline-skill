@@ -506,6 +506,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     let saveTimer = null;
     let activeScrollSource = null;
     let scrollReleaseTimer = null;
+    let caretSyncFrame = null;
 
     function clamp(value, min, max) {
       return Math.min(Math.max(value, min), max);
@@ -798,6 +799,26 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       return Number.isFinite(lineHeight) ? lineHeight : font * 1.75;
     }
 
+    function getActiveSelectionOffset(textarea) {
+      return textarea.selectionDirection === 'backward'
+        ? textarea.selectionStart
+        : textarea.selectionEnd;
+    }
+
+    function getLineNumberAtOffset(text, offset) {
+      const numericOffset = Number(offset) || 0;
+      const safeOffset = Math.min(Math.max(numericOffset, 0), text.length);
+      return text.slice(0, safeOffset).split('\n').length;
+    }
+
+    function getCaretLine() {
+      return getLineNumberAtOffset(editor.value, getActiveSelectionOffset(editor));
+    }
+
+    function getFirstVisibleEditorLine() {
+      return Math.max(1, Math.floor(editor.scrollTop / getEditorLineHeight()) + 1);
+    }
+
     function getMarkdownLineCount() {
       return editor.value ? editor.value.split('\n').length : 1;
     }
@@ -861,9 +882,8 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       }, 80);
     }
 
-    function syncPreviewToEditor() {
-      const lineHeight = getEditorLineHeight();
-      const lineNo = Math.max(1, Math.floor(editor.scrollTop / lineHeight) + 1);
+    function syncPreviewToEditor(anchorMode = 'viewport') {
+      const lineNo = anchorMode === 'caret' ? getCaretLine() : getFirstVisibleEditorLine();
       const target = findPreviewScrollForLine(lineNo);
       const maxScroll = Math.max(0, previewShell.scrollHeight - previewShell.clientHeight);
       previewShell.scrollTop = clamp(target, 0, maxScroll);
@@ -877,14 +897,23 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       editor.scrollTop = clamp(target, 0, maxScroll);
     }
 
-    function syncAfterRender(preferredSource = 'editor') {
+    function syncAfterRender(preferredSource = 'editor', editorAnchor = 'viewport') {
       requestAnimationFrame(() => {
         holdScrollLock(preferredSource);
         if (preferredSource === 'preview') {
           syncEditorToPreview();
         } else {
-          syncPreviewToEditor();
+          syncPreviewToEditor(editorAnchor);
         }
+      });
+    }
+
+    function scheduleCaretSync() {
+      if (caretSyncFrame !== null) return;
+      caretSyncFrame = requestAnimationFrame(() => {
+        caretSyncFrame = null;
+        holdScrollLock('editor');
+        syncPreviewToEditor('caret');
       });
     }
 
@@ -905,14 +934,14 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       }
     }
 
-    function updatePreview(preferredSource = activeScrollSource || 'editor') {
+    function updatePreview(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
       preview.innerHTML = markdownToHtml(editor.value);
       injectSignature(preview);
       const text = editor.value.replace(/\s+/g, '');
       wordCount.textContent = `${text.length} 字`;
       lineCount.textContent = `${editor.value.split('\n').length} 行`;
       saveStatus.textContent = '编辑中…';
-      syncAfterRender(preferredSource);
+      syncAfterRender(preferredSource, editorAnchor);
     }
 
     function saveState() {
@@ -1155,14 +1184,18 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
 
     editor.addEventListener('input', () => {
       holdScrollLock('editor');
-      updatePreview('editor');
+      updatePreview('editor', 'caret');
       scheduleSave();
     });
+
+    editor.addEventListener('click', scheduleCaretSync);
+    editor.addEventListener('keyup', scheduleCaretSync);
+    editor.addEventListener('select', scheduleCaretSync);
 
     editor.addEventListener('scroll', () => {
       if (activeScrollSource === 'preview') return;
       holdScrollLock('editor');
-      syncPreviewToEditor();
+      syncPreviewToEditor('viewport');
     });
 
     previewShell.addEventListener('scroll', () => {
