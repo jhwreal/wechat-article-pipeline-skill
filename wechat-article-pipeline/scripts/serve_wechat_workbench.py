@@ -132,6 +132,10 @@ class WorkbenchDocument:
         self.markdown_path = self.html_path.with_suffix(".md")
         self.job_path = self.html_path.with_suffix(".job.json")
         self.manifest_path = self.html_path.with_suffix(".publish-manifest.json")
+        self._manifest_meta = {}
+        if self.manifest_path.exists():
+            try: self._manifest_meta = json.loads(self.manifest_path.read_text(encoding='utf-8'))
+            except Exception: self._manifest_meta = {}
         self._lock = threading.Lock()
         self.support_dir = self.html_path.parent / "support"
         self.sidecar = self.support_dir / (self.html_path.stem + '.workbench-state.json')
@@ -185,6 +189,8 @@ class WorkbenchDocument:
             "--env-file",
             str(req.env_file),
         ]
+        if req.article_slug: command += ["--article-slug", req.article_slug]
+        if req.account_selector: command += ["--account", req.account_selector]
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
             with self._lock:
@@ -262,7 +268,11 @@ class WorkbenchDocument:
             self._state.update({'coreRevision':rev,'manifest':{'state':'pending','targetRevision':rev},'assets':self._state.get('assets',{'state':'ready','staleVisuals':[],'missingVisuals':[]})})
             self._persist()
             snap=self.support_dir / f"{self.html_path.stem}.job.r{rev}.json"; atomic_write_text(snap, files.get(str(self.job_path), self.job_path.read_text() if self.job_path.exists() else "{}"))
-            req=ManifestRefreshRequest(rev,snap,self.manifest_path, self.html_path.stem, DEFAULT_ENV_FILE, source_state=self._state.get('source_state'))
+            meta = self._manifest_meta
+            env_file = Path(str(meta.get('env_file') or DEFAULT_ENV_FILE))
+            account = (meta.get('account') or {}).get('selector') if isinstance(meta.get('account'), dict) else None
+            slug = str(meta.get('article_slug') or self.html_path.stem)
+            req=ManifestRefreshRequest(rev,snap,self.manifest_path, slug, env_file, account, source_state=self._state.get('source_state'))
             self._manifest_pending = req
             if not self._manifest_thread or not self._manifest_thread.is_alive():
                 def worker():
