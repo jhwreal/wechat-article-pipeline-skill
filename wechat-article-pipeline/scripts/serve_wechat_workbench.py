@@ -144,10 +144,16 @@ class WorkbenchDocument:
     def _load_state(self):
         if self.journal.exists():
             try:
-                j=json.loads(self.journal.read_text()); files=j.get('files',{})
-                if all(Path(p).exists() and hashlib.sha256(Path(p).read_bytes()).hexdigest()==h for p,h in files.items()):
-                    self.journal.unlink()
-                else: return {"recovery_required":True,"coreRevision":0}
+                j=json.loads(self.journal.read_text()); entries=j.get('files',[])
+                if isinstance(entries,dict): entries=[{'target':p,'staged':p,'hash':h} for p,h in entries.items()]
+                if not all(Path(e['staged']).exists() and hashlib.sha256(Path(e['staged']).read_bytes()).hexdigest()==e['hash'] for e in entries):
+                    return {"recovery_required":True,"coreRevision":0}
+                for e in entries: os.replace(e['staged'], e['target'])
+                state = json.loads(self.sidecar.read_text()) if self.sidecar.exists() else {}
+                state['coreRevision'] = int(j.get('revision', state.get('coreRevision',0)))
+                atomic_write_text(self.sidecar, json.dumps(state, ensure_ascii=False, indent=2))
+                self.journal.unlink()
+                return state
             except Exception: return {"recovery_required":True,"coreRevision":0}
         if self.sidecar.exists():
             try: return json.loads(self.sidecar.read_text())
@@ -242,10 +248,15 @@ class WorkbenchDocument:
                 files[str(self.markdown_path)] = source_markdown
                 files[str(self.job_path)] = json.dumps(job, ensure_ascii=False, indent=2) + "\n"
             self.support_dir.mkdir(parents=True, exist_ok=True)
-            atomic_write_text(self.journal, json.dumps({'files':{p:hashlib.sha256(v.encode()).hexdigest() for p,v in files.items()}}))
-            for p,v in files.items(): atomic_write_text(Path(p),v)
-
             rev=int(self._state.get('coreRevision',0))+1
+            txn_dir = self.support_dir / '.txn' / str(rev); txn_dir.mkdir(parents=True, exist_ok=True)
+            entries=[]
+            for p,v in files.items():
+                staged=txn_dir / Path(p).name; atomic_write_text(staged,v)
+                with staged.open('rb') as fh: os.fsync(fh.fileno())
+                entries.append({'target':p,'staged':str(staged),'hash':hashlib.sha256(v.encode()).hexdigest()})
+            atomic_write_text(self.journal, json.dumps({'revision':rev,'files':entries}))
+            for e in entries: os.replace(e['staged'], e['target'])
             self._state.update({'coreRevision':rev,'manifest':{'state':'pending','targetRevision':rev},'assets':self._state.get('assets',{'state':'ready','staleVisuals':[],'missingVisuals':[]})})
             self._persist()
             snap=self.support_dir / f"{self.html_path.stem}.job.r{rev}.json"; atomic_write_text(snap, files.get(str(self.job_path), self.job_path.read_text() if self.job_path.exists() else "{}"))
