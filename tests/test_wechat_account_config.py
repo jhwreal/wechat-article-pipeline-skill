@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import sys
+import stat
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -46,6 +48,62 @@ class WeChatAccountConfigTest(unittest.TestCase):
 
         with self.assertRaises(SystemExit):
             account_config.find_account_profile(env, None, include_credentials=True)
+
+    def test_issue_increment_is_idempotent_and_never_rolls_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_file = Path(tmp_dir) / ".env"
+            env_file.write_text("UNRELATED=keep\nWECHAT_ORIGINAL_ISSUE=9\n", encoding="utf-8")
+            env_file.chmod(0o640)
+
+            result = account_config.compare_and_set_env_value(
+                env_file,
+                "WECHAT_ORIGINAL_ISSUE",
+                "9",
+                "10",
+            )
+
+            self.assertEqual(result, "updated")
+            self.assertEqual(
+                env_file.read_text(encoding="utf-8"),
+                "UNRELATED=keep\nWECHAT_ORIGINAL_ISSUE=10\n",
+            )
+            self.assertEqual(stat.S_IMODE(env_file.stat().st_mode), 0o640)
+
+            inode_after_update = env_file.stat().st_ino
+            result = account_config.compare_and_set_env_value(
+                env_file,
+                "WECHAT_ORIGINAL_ISSUE",
+                "9",
+                "10",
+            )
+            self.assertEqual(result, "already_applied")
+            self.assertEqual(env_file.stat().st_ino, inode_after_update)
+
+            env_file.write_text("UNRELATED=keep\nWECHAT_ORIGINAL_ISSUE=11\n", encoding="utf-8")
+            env_file.chmod(0o640)
+            before_conflict = env_file.read_bytes()
+            with self.assertRaisesRegex(ValueError, "conflict"):
+                account_config.compare_and_set_env_value(
+                    env_file,
+                    "WECHAT_ORIGINAL_ISSUE",
+                    "9",
+                    "10",
+                )
+            self.assertEqual(env_file.read_bytes(), before_conflict)
+            self.assertEqual(stat.S_IMODE(env_file.stat().st_mode), 0o640)
+
+            windows_env = Path(tmp_dir) / "windows.env"
+            windows_env.write_bytes(b"UNRELATED=keep\r\nWECHAT_ORIGINAL_ISSUE=9\r\n")
+            account_config.compare_and_set_env_value(
+                windows_env,
+                "WECHAT_ORIGINAL_ISSUE",
+                "9",
+                "10",
+            )
+            self.assertEqual(
+                windows_env.read_bytes(),
+                b"UNRELATED=keep\r\nWECHAT_ORIGINAL_ISSUE=10\r\n",
+            )
 
 
 if __name__ == "__main__":

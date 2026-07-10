@@ -17,8 +17,10 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+from atomic_files import atomic_write_json, manifest_fingerprint
+import publish_run_state as run_state
 import wechat_account_config as account_config
 
 
@@ -86,6 +88,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Create the WeChat draft through network APIs. Omit this flag for the default local dry-run.",
     )
+    parser.add_argument("--resume", action="store_true", help="Resume safe pending work from an existing --out receipt.")
+    parser.add_argument(
+        "--retry-preview",
+        action="store_true",
+        help="With --resume, explicitly retry a preview whose prior outcome is unknown.",
+    )
     parser.add_argument(
         "--increment-original-issue",
         action="store_true",
@@ -105,8 +113,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_json(path, data)
 
 
 def read_config(path: Path) -> dict[str, Any]:
@@ -134,12 +141,7 @@ def find_env_file(manifest: Path, explicit: Path | None) -> Path | None:
 
 def save_config(path: Path, config: dict[str, Any]) -> None:
     path = path.expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    atomic_write_json(path, config, mode=0o600)
 
 
 def save_token_cache(path: Path, token: str, expires_in: int) -> None:
@@ -616,6 +618,10 @@ def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, 
 def validate_execution_mode(args: argparse.Namespace) -> bool:
     if args.dry_run and args.create_draft:
         raise SystemExit("--dry-run and --create-draft cannot be used together.")
+    if args.retry_preview and not args.resume:
+        raise SystemExit("--retry-preview requires --resume.")
+    if args.resume and not args.out:
+        raise SystemExit("--resume requires an explicit --out result path.")
     network_flags = []
     for flag in (
         "check_draft_switch",
@@ -624,6 +630,8 @@ def validate_execution_mode(args: argparse.Namespace) -> bool:
         "send_preview",
         "increment_original_issue",
         "force_refresh_token",
+        "resume",
+        "retry_preview",
     ):
         if getattr(args, flag):
             network_flags.append("--" + flag.replace("_", "-"))
@@ -648,7 +656,7 @@ def increment_original_issue(manifest: dict[str, Any], env_file: Path | None) ->
         next_issue = int(raw_issue) + 1
     except ValueError as exc:
         raise SystemExit(f"Manifest article_signature.issue is not an integer: {raw_issue!r}") from exc
-    account_config.write_env_value(env_file, key, str(next_issue))
+    account_config.compare_and_set_env_value(env_file, key, raw_issue, str(next_issue))
     return {"env_file": str(env_file.expanduser()), "issue_env_key": key, "next_issue": str(next_issue)}
 
 
@@ -695,10 +703,277 @@ def send_preview(
     return api_post_json("/cgi-bin/message/mass/preview", payload, access_token)
 
 
+def requested_publish_operations(args: argparse.Namespace) -> list[str]:
+    operations = ["draft_add"]
+    if args.increment_original_issue:
+        operations.append("increment_original_issue")
+    if args.verify_draft:
+        operations.append("verify_draft")
+    if args.send_preview:
+        operations.append("send_preview")
+    return operations
+
+
+def operation_requested(run: dict[str, Any], operation: str) -> bool:
+    operation_state = run.get("operation_state")
+    if not isinstance(operation_state, dict):
+        return False
+    entry = operation_state.get(operation)
+    return isinstance(entry, dict) and bool(entry.get("requested", True))
+
+
+def operation_state_value(run: dict[str, Any], operation: str) -> str:
+    operation_state = run.get("operation_state")
+    if not isinstance(operation_state, dict):
+        return ""
+    entry = operation_state.get(operation)
+    if not isinstance(entry, dict):
+        return ""
+    return str(entry.get("state", ""))
+
+
+def run_checkpointed_operation(
+    out: Path,
+    run: dict[str, Any],
+    operation: str,
+    legacy_field: str,
+    action: Callable[[], Any],
+    *,
+    unknown_on_error: bool = False,
+) -> None:
+    run_state.mark_started(run, operation)
+    run["status"] = "partial_success"
+    run["last_error"] = None
+    run_state.checkpoint(out, run)
+    try:
+        value = action()
+    except BaseException as exc:
+        if unknown_on_error:
+            run_state.mark_unknown(run, operation, exc)
+        else:
+            run_state.mark_failed(run, operation, exc)
+        run["status"] = "partial_success"
+        run_state.checkpoint(out, run)
+        raise
+    run[legacy_field] = value
+    run_state.mark_succeeded(run, operation)
+    run["status"] = "partial_success"
+    run["last_error"] = None
+    run_state.checkpoint(out, run)
+
+
+def finish_publish_run(out: Path, run: dict[str, Any]) -> None:
+    operation_state = run.get("operation_state")
+    entries = operation_state.values() if isinstance(operation_state, dict) else []
+    if all(not entry.get("requested", True) or entry.get("state") == "succeeded" for entry in entries):
+        run["status"] = "success"
+        run["last_error"] = None
+    run_state.checkpoint(out, run)
+
+
+def validate_resume_receipt(
+    out: Path,
+    run: dict[str, Any],
+    manifest_path: Path,
+    account: dict[str, str],
+) -> str:
+    expected_fingerprint = manifest_fingerprint(manifest_path)
+    stored_fingerprint = str(run.get("manifest_sha256", ""))
+    if not stored_fingerprint or stored_fingerprint != expected_fingerprint:
+        raise SystemExit("Cannot resume: manifest SHA-256 does not match the existing result receipt.")
+
+    stored_account = run.get("account")
+    if not isinstance(stored_account, dict):
+        raise SystemExit("Cannot resume: existing result receipt has no account identity.")
+    for field in ("alias", "name"):
+        stored_value = str(stored_account.get(field, ""))
+        current_value = str(account.get(field, ""))
+        if stored_value != current_value:
+            raise SystemExit(
+                f"Cannot resume: account {field} changed from {stored_value!r} to {current_value!r}."
+            )
+
+    operation_state = run.get("operation_state")
+    draft_entry = operation_state.get("draft_add") if isinstance(operation_state, dict) else None
+    if not isinstance(draft_entry, dict):
+        raise SystemExit("Cannot resume: existing result receipt has no draft_add operation state.")
+    media_id = str(run.get("draft_media_id", "")).strip()
+    if not media_id:
+        error = RuntimeError("draft_add has no draft_media_id; its remote outcome is unknown")
+        run_state.mark_unknown(run, "draft_add", error)
+        run["status"] = "unknown"
+        run_state.checkpoint(out, run)
+        raise SystemExit("Cannot resume draft_add without a stored media_id; remote draft creation is unknown.")
+    if operation_state_value(run, "draft_add") != "succeeded":
+        run_state.mark_succeeded(run, "draft_add")
+        run["status"] = "partial_success"
+        run_state.checkpoint(out, run)
+    return media_id
+
+
+def resume_publish_run(
+    args: argparse.Namespace,
+    out: Path,
+    manifest: dict[str, Any],
+    config: dict[str, Any],
+    env_file: Path | None,
+    account: dict[str, str],
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    if not out.exists():
+        raise SystemExit(f"--resume requires an existing --out result: {out}")
+    run = read_json(out)
+    media_id = validate_resume_receipt(out, run, args.manifest, account)
+
+    preview_state = operation_state_value(run, "send_preview")
+    if operation_requested(run, "send_preview") and preview_state in {"in_progress", "unknown"}:
+        if preview_state == "in_progress":
+            error = RuntimeError("preview may have been sent before its success checkpoint")
+            run_state.mark_unknown(run, "send_preview", error)
+            run["status"] = "partial_success"
+            run_state.checkpoint(out, run)
+        if not args.retry_preview:
+            raise SystemExit(
+                "Cannot safely resume a preview with unknown outcome. Pass --retry-preview to accept duplicate-preview risk."
+            )
+
+    needs_access_token = any(
+        operation_requested(run, operation) and operation_state_value(run, operation) != "succeeded"
+        for operation in ("verify_draft", "send_preview")
+    )
+    access_token = get_access_token(args, config, account) if needs_access_token else ""
+
+    if operation_requested(run, "verify_draft") and operation_state_value(run, "verify_draft") != "succeeded":
+        run_checkpointed_operation(
+            out,
+            run,
+            "verify_draft",
+            "draft_verification",
+            lambda: verify_draft(media_id, validation["title"], access_token),
+        )
+    if operation_requested(run, "send_preview") and operation_state_value(run, "send_preview") != "succeeded":
+        run_checkpointed_operation(
+            out,
+            run,
+            "send_preview",
+            "preview",
+            lambda: send_preview(media_id, args, manifest, account, access_token),
+            unknown_on_error=True,
+        )
+    if (
+        operation_requested(run, "increment_original_issue")
+        and operation_state_value(run, "increment_original_issue") != "succeeded"
+    ):
+        run_checkpointed_operation(
+            out,
+            run,
+            "increment_original_issue",
+            "original_issue_increment",
+            lambda: increment_original_issue(manifest, env_file),
+        )
+
+    finish_publish_run(out, run)
+    return run
+
+
+def create_publish_run(
+    args: argparse.Namespace,
+    out: Path,
+    manifest: dict[str, Any],
+    base_result: dict[str, Any],
+    config: dict[str, Any],
+    env_file: Path | None,
+    account: dict[str, str],
+    content_html: str,
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    run = run_state.new_publish_run(
+        base_result,
+        manifest_sha256=manifest_fingerprint(args.manifest),
+        requested_operations=requested_publish_operations(args),
+    )
+    access_token = get_access_token(args, config, account)
+    if args.check_draft_switch:
+        run["draft_switch"] = check_or_open_draft_switch(access_token, args.open_draft_switch)
+    uploaded_content_html, body_uploads = upload_body_images(content_html, access_token)
+    cover_upload = upload_cover(manifest, access_token)
+    crop_values = manifest_cover_crop_values(manifest, int(cover_upload["width"]), int(cover_upload["height"]))
+    draft_payload = build_draft_payload(
+        manifest,
+        uploaded_content_html,
+        cover_upload["thumb_media_id"],
+        args.content_source_url,
+        crop_values,
+    )
+    run.update(
+        {
+            "body_upload_count": len(body_uploads),
+            "body_uploads": body_uploads,
+            "cover_upload": {
+                "thumb_media_id": cover_upload["thumb_media_id"],
+                "url": cover_upload.get("url", ""),
+                "width": cover_upload.get("width", ""),
+                "height": cover_upload.get("height", ""),
+            },
+            "draft_payload_summary": summarize_draft_payload(draft_payload),
+        }
+    )
+    if args.include_payload:
+        run["draft_payload"] = draft_payload
+
+    run_state.mark_started(run, "draft_add")
+    run["status"] = "unknown"
+    run_state.checkpoint(out, run)
+    try:
+        media_id = create_draft(draft_payload, access_token)
+    except BaseException as exc:
+        run_state.mark_unknown(run, "draft_add", exc)
+        run["status"] = "unknown"
+        run_state.checkpoint(out, run)
+        raise
+
+    run["draft_media_id"] = media_id
+    run_state.mark_succeeded(run, "draft_add")
+    run["status"] = "partial_success"
+    run["last_error"] = None
+    run_state.checkpoint(out, run)
+
+    if args.verify_draft:
+        run_checkpointed_operation(
+            out,
+            run,
+            "verify_draft",
+            "draft_verification",
+            lambda: verify_draft(media_id, validation["title"], access_token),
+        )
+    if args.send_preview:
+        run_checkpointed_operation(
+            out,
+            run,
+            "send_preview",
+            "preview",
+            lambda: send_preview(media_id, args, manifest, account, access_token),
+            unknown_on_error=True,
+        )
+    if args.increment_original_issue:
+        run_checkpointed_operation(
+            out,
+            run,
+            "increment_original_issue",
+            "original_issue_increment",
+            lambda: increment_original_issue(manifest, env_file),
+        )
+
+    finish_publish_run(out, run)
+    return run
+
+
 def main() -> None:
     args = parse_args()
     dry_run = validate_execution_mode(args)
-    manifest = read_json(args.manifest.resolve())
+    args.manifest = args.manifest.expanduser().resolve()
+    out = (args.out or args.manifest.with_suffix(".wechat-api-result.json")).expanduser().resolve()
+    manifest = read_json(args.manifest)
     config = read_config(args.config)
     env_file = find_env_file(args.manifest, args.env_file)
     env = account_config.read_env_file(env_file)
@@ -712,7 +987,7 @@ def main() -> None:
     validation = validate_manifest(manifest, content_html)
 
     result: dict[str, Any] = {
-        "manifest": str(args.manifest.resolve()),
+        "manifest": str(args.manifest),
         "dry_run": dry_run,
         "env_file": str(env_file.resolve()) if env_file and env_file.exists() else "",
         "account": {
@@ -723,8 +998,6 @@ def main() -> None:
         "token_cache": str(args.token_cache),
         "validation": validation,
     }
-    draft_payload: dict[str, Any]
-
     if dry_run:
         cover_src = str(((manifest.get("wechat_cover") or manifest.get("cover")) or {}).get("src", ""))
         cover_image = decode_data_image(cover_src, "png")
@@ -742,46 +1015,21 @@ def main() -> None:
         result["draft_payload_summary"] = summarize_draft_payload(draft_payload)
         if args.include_payload:
             result["draft_payload"] = draft_payload
+        write_json(out, result)
+    elif args.resume:
+        result = resume_publish_run(args, out, manifest, config, env_file, account, validation)
     else:
-        access_token = get_access_token(args, config, account)
-        if args.check_draft_switch:
-            result["draft_switch"] = check_or_open_draft_switch(access_token, args.open_draft_switch)
-        uploaded_content_html, body_uploads = upload_body_images(content_html, access_token)
-        cover_upload = upload_cover(manifest, access_token)
-        crop_values = manifest_cover_crop_values(manifest, int(cover_upload["width"]), int(cover_upload["height"]))
-        draft_payload = build_draft_payload(
+        result = create_publish_run(
+            args,
+            out,
             manifest,
-            uploaded_content_html,
-            cover_upload["thumb_media_id"],
-            args.content_source_url,
-            crop_values,
+            result,
+            config,
+            env_file,
+            account,
+            content_html,
+            validation,
         )
-        media_id = create_draft(draft_payload, access_token)
-        result.update(
-            {
-                "body_upload_count": len(body_uploads),
-                "body_uploads": body_uploads,
-                "cover_upload": {
-                    "thumb_media_id": cover_upload["thumb_media_id"],
-                    "url": cover_upload.get("url", ""),
-                    "width": cover_upload.get("width", ""),
-                    "height": cover_upload.get("height", ""),
-                },
-                "draft_payload_summary": summarize_draft_payload(draft_payload),
-                "draft_media_id": media_id,
-            }
-        )
-        if args.include_payload:
-            result["draft_payload"] = draft_payload
-        if args.verify_draft:
-            result["draft_verification"] = verify_draft(media_id, validation["title"], access_token)
-        if args.send_preview:
-            result["preview"] = send_preview(media_id, args, manifest, account, access_token)
-        if args.increment_original_issue:
-            result["original_issue_increment"] = increment_original_issue(manifest, env_file)
-
-    out = (args.out or args.manifest.with_suffix(".wechat-api-result.json")).resolve()
-    write_json(out, result)
     print(f"Wrote {out}")
     if result.get("draft_media_id"):
         print(f"Created draft media_id: {result['draft_media_id']}")

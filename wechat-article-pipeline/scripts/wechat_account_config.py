@@ -5,6 +5,8 @@ import hashlib
 import re
 from pathlib import Path
 
+from atomic_files import atomic_write_text
+
 
 ACCOUNT_FIELD_RE = re.compile(
     r"^WECHAT_ACCOUNT_([A-Z0-9_]+?)_(SIGNATURE_AUTHOR|ORIGINAL_ISSUE|PREVIEW_ACCOUNT|APPSECRET|APPID|AUTHOR|NAME)$"
@@ -45,8 +47,44 @@ def write_env_value(path: Path, key: str, value: str) -> None:
         if output and output[-1].strip():
             output.append("")
         output.append(f"{key}={value}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(output) + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(output) + "\n")
+
+
+def compare_and_set_env_value(path: Path, key: str, expected: str, value: str) -> str:
+    path = path.expanduser()
+    if not path.exists():
+        raise ValueError(f"Environment value conflict for {key}: file does not exist: {path}")
+
+    original = path.read_bytes().decode("utf-8")
+    lines = original.splitlines(keepends=True)
+    matching_indexes: list[int] = []
+    current_values: set[str] = set()
+    for index, line in enumerate(lines):
+        content = line.rstrip("\r\n")
+        if "=" not in content:
+            continue
+        candidate_key, candidate_value = content.split("=", 1)
+        if candidate_key.strip() != key:
+            continue
+        matching_indexes.append(index)
+        current_values.add(candidate_value.strip().strip('"').strip("'"))
+
+    if not matching_indexes:
+        raise ValueError(f"Environment value conflict for {key}: key is missing")
+    if current_values == {value}:
+        return "already_applied"
+    if current_values != {expected}:
+        current = ", ".join(sorted(current_values))
+        raise ValueError(
+            f"Environment value conflict for {key}: expected {expected!r} or {value!r}, found {current!r}"
+        )
+
+    for index in matching_indexes:
+        line = lines[index]
+        ending = line[len(line.rstrip("\r\n")) :]
+        lines[index] = f"{key}={value}{ending}"
+    atomic_write_text(path, "".join(lines))
+    return "updated"
 
 
 def normalize_account_alias(alias: str) -> str:
