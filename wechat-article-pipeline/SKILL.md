@@ -24,11 +24,9 @@ Run commands from the user's current article workspace unless the user names ano
 - focused markdown: `<workspace>/files/<slug>.focused.md`
 - image jobs: `<workspace>/files/<slug>.image-jobs.json`
 - HTML workbench: `<workspace>/files/<slug>.html`
-- sidecar: `<workspace>/files/<slug>.clipboard-assets.js`
 - job: `<workspace>/files/<slug>.job.json`
 - publish manifest: `<workspace>/files/<slug>.publish-manifest.json`
 - images: `<workspace>/image/<slug>/cover.png`, `body-*.png`, `closing.png`
-- support files: `<workspace>/files/wechat-article-pipeline/<slug>/`
 
 Do not leave final assets only in `$CODEX_HOME/generated_images` or a temp directory. Do not write finished article packages inside the skill repository unless the user explicitly asks.
 
@@ -51,7 +49,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-5. Read [image-production.md](references/image-production.md), then use `generation_queue[]` for single-pass image generation. Run image workers in concurrent batches of up to 4 subagents; if the queue has more than 4 images, start the next image as soon as any worker finishes. Save each result directly as `jobs[].output`. Do not inspect the generated images, including the cover; after files exist, continue to packaging and script verification only.
+5. Read [image-production.md](references/image-production.md), then use `generation_queue[]` for single-pass image generation. Start at most `min(queue length, currently available worker slots)` workers and refill a free slot as each finishes. Save each result to the queue item's `output`. Do not inspect generated images; continue to packaging and verification.
 6. Run the same script again without `--plan-only` to build the HTML, job JSON, crop previews, support files, and publish manifest.
 7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html` and fix any failures before delivery.
 8. When the user asks to “直接出工作台”, “打开工作台”, or otherwise wants the workbench as the primary deliverable, start the local persistence server after verification:
@@ -76,7 +74,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --support-dir <workspace>/files/wechat-article-pipeline/<slug>
 ```
 
-Use this when the user wants a formatted article without generated visuals. This path skips publish-manifest creation by default; add `--publish-manifest` only when a later API handoff is intentional. Official WeChat draft creation may still need a cover asset, depending on the account/API requirement; state that clearly instead of silently inventing one.
+Use this when the user wants a formatted article without generated visuals. This path skips publish-manifest creation by default; add `--publish-manifest` only for API handoff. Draft creation may still need a cover asset; state that clearly.
 
 No body images, but draft-box delivery:
 
@@ -108,9 +106,7 @@ Generate only those listed images, then rerun the default packaging command with
 
 ## Publishing Path
 
-Read [publishing.md](references/publishing.md) before any draft-box API call. Use the HTML-matched `<slug>.publish-manifest.json` as the handoff file. Run `scripts/publish_wechat_api.py <manifest>` first for local dry-run validation; add `--create-draft --increment-original-issue` only when the user explicitly asks to导入草稿箱 for a normal new article, so the next article number advances after successful draft creation. Omit `--increment-original-issue` when re-creating or fixing an old draft and the user does not want to consume a new original-issue number. Send preview only when separately requested. Never call final publish/group-send APIs by default.
-
-Account credentials and publisher defaults live in local `.env` values, never in article bundles or logs. If multiple accounts are configured and the user did not name one, ask which public account to use before API delivery. If credentials or author fields are missing, ask for the missing values instead of guessing.
+Read [publishing.md](references/publishing.md) before draft-box API calls. Run `publish_wechat_api.py <manifest>` in dry-run mode first; use `--create-draft --increment-original-issue` only for an explicitly requested new draft. Never call final publish/group-send APIs by default. Keep credentials in local `.env`, ask which account to use when ambiguous, and never guess missing author fields.
 
 ## Safety Rules
 

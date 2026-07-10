@@ -24,12 +24,20 @@ def normalize_image_jobs(payload: Mapping[str, Any]) -> dict[str, Any]:
         out['slots'] = [{k:s[k] for k in SLOT_KEYS if k in s} for s in payload.get('slots', [])]
         out['generation_queue'] = [dict(q) for q in payload.get('generation_queue', [])]
         return validate_image_jobs(out)
-    raw = payload.get('jobs') or payload.get('image_slots') or (payload.get('image_plan') or {}).get('image_slots') or []
+    raw = payload.get('jobs') or payload.get('slots') or payload.get('image_slots') or (payload.get('image_plan') or {}).get('image_slots') or []
     slots=[]; prompts={}
     queue = payload.get('generation_queue') or []
     qmap={str(q.get('slot') or q.get('name')):q for q in queue}
     for i, item in enumerate(raw):
-        d=dict(item); name=str(d.get('name') or d.get('slot') or '').strip()
+        d=dict(item)
+        # Historical planners sometimes emitted several candidate variants for one
+        # slot.  Preserve the first deterministic candidate as the canonical route;
+        # downstream consumers must never fan out into duplicate assets.
+        variants=d.get('variants') or d.get('candidates') or []
+        if isinstance(variants, list) and variants:
+            candidate=dict(variants[0]) if isinstance(variants[0], Mapping) else {}
+            merged=dict(candidate); merged.update(d); d=merged
+        name=str(d.get('name') or d.get('slot') or '').strip()
         output=d.get('output') or d.get('final_output') or (qmap.get(name) or {}).get('output') or f'{name}.png'
         prompt=d.get('generation_prompt') or d.get('prompt') or (qmap.get(name) or {}).get('generation_prompt') or (qmap.get(name) or {}).get('prompt') or (d.get('generation_task') or {}).get('generation_prompt') or (d.get('generation_task') or {}).get('prompt')
         slot={'index': d.get('index',i+1), 'name':name, 'output':_safe_output(output)}
@@ -38,7 +46,12 @@ def normalize_image_jobs(payload: Mapping[str, Any]) -> dict[str, Any]:
             if k in d: slot[k]=d[k]
         slots.append(slot)
         if prompt is not None: prompts[name]=prompt
-    article={'slug': payload.get('article_slug'), 'title': payload.get('article_title'), 'type': payload.get('article_type')}
+    source_article=payload.get('article') or payload.get('article_meta') or {}
+    article={'slug': payload.get('article_slug') or source_article.get('slug'),
+             'title': payload.get('article_title') or source_article.get('title'),
+             'type': payload.get('article_type') or source_article.get('type'),
+             'visual_mode': payload.get('visual_mode') or source_article.get('visual_mode'),
+             'visual_intent': payload.get('visual_intent') or source_article.get('visual_intent')}
     article={k:v for k,v in article.items() if v is not None}
     rules=payload.get('rules') or {'version': (payload.get('image_rules') or {}).get('version','1')}
     digest=hashlib.sha256(json.dumps(rules,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()

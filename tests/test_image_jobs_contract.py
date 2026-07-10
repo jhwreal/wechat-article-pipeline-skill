@@ -23,4 +23,18 @@ class ContractTests(unittest.TestCase):
         n=normalize_image_jobs({'kind':'wechat-image-jobs','schema_version':2,'article':{},'rules':{},'review_defaults':{},'slots':[],'generation_queue':[]})
         self.assertEqual(n['slots'],[])
 
+    def test_historical_variants_collapse_deterministically(self):
+        p={'article_slug':'demo','jobs':[{'name':'body-1','output':'final.png',
+            'variants':[{'prompt':'first candidate'},{'prompt':'second candidate'}]}]}
+        n=normalize_image_jobs(p)
+        self.assertEqual(len(n['slots']),1)
+        self.assertEqual(n['generation_queue'][0]['generation_prompt'],'first candidate')
+
+    def test_normalization_is_idempotent_and_does_not_mutate(self):
+        p={'article_slug':'demo','jobs':[{'name':'cover','output':'cover.png','prompt':'p'}]}
+        original=copy.deepcopy(p)
+        n=normalize_image_jobs(p)
+        self.assertEqual(normalize_image_jobs(n), n)
+        self.assertEqual(p, original)
+
 if __name__=='__main__': unittest.main()

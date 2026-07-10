@@ -193,30 +193,21 @@ class SkillP0ContractTest(unittest.TestCase):
             images_dir = Path(tmp_dir)
             (images_dir / "cover.png").write_bytes(b"ok")
             payload = {
-                "image_slots": [{"name": "cover"}, {"name": "body-1"}, {"name": "closing"}],
-                "jobs": [
+                "slots": [
                     {"name": "cover", "output": "cover.png"},
                     {"name": "body-1", "output": "body-1.png"},
                     {"name": "closing", "output": "closing.png"},
                 ],
                 "generation_queue": [
-                    {"slot": "cover", "id": "01A"},
-                    {"slot": "body-1", "id": "02A"},
-                    {"slot": "closing", "id": "03A"},
+                    {"slot": "cover", "output": "cover.png", "generation_prompt": "cover"},
+                    {"slot": "body-1", "output": "body-1.png", "generation_prompt": "body"},
+                    {"slot": "closing", "output": "closing.png", "generation_prompt": "closing"},
                 ],
-                "image_plan": {
-                    "image_slots": [{"name": "cover"}, {"name": "body-1"}, {"name": "closing"}],
-                },
             }
 
             filtered = postprocess.filter_jobs_for_missing_images(payload, images_dir)
 
-        self.assertEqual([job["name"] for job in filtered["jobs"]], ["body-1", "closing"])
-        self.assertEqual([slot["name"] for slot in filtered["image_slots"]], ["body-1", "closing"])
-        self.assertEqual(
-            [slot["name"] for slot in filtered["image_plan"]["image_slots"]],
-            ["body-1", "closing"],
-        )
+        self.assertEqual([slot["name"] for slot in filtered["slots"]], ["body-1", "closing"])
         self.assertEqual([item["slot"] for item in filtered["generation_queue"]], ["body-1", "closing"])
 
 

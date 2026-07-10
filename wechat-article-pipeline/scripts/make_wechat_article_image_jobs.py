@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import unicodedata
@@ -1185,36 +1186,27 @@ def empty_image_payload(article_path: Path, article_slug: str, markdown: str) ->
     text_entries = [entry for entry in entries if entry["kind"] == "text"]
     article_summary = build_article_summary(title, text_entries) if text_entries else ""
     rules = load_image_rules()
+    rules_bytes = json.dumps(rules, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return {
-        "article_slug": article_slug,
-        "article_title": title,
-        "article_type": detect_article_type(title, text_entries) if text_entries else "general",
-        "visual_mode": "no_image",
-        "visual_intent": "none",
-        "article_summary": article_summary,
-        "article_essence": build_article_essence(title, text_entries) if text_entries else "",
-        "global_visual_style": "",
-        "source_article": str(article_path.resolve()),
-        "image_plan": {
-            "article_title": title,
-            "article_summary": article_summary,
-            "article_type": detect_article_type(title, text_entries) if text_entries else "general",
+        "kind": "wechat-image-jobs",
+        "schema_version": 2,
+        "article": {
+            "slug": article_slug,
+            "title": title,
+            "type": detect_article_type(title, text_entries) if text_entries else "general",
             "visual_mode": "no_image",
             "visual_intent": "none",
-            "global_visual_style": "",
-            "image_slots": [],
+            "summary": article_summary,
+            "essence": build_article_essence(title, text_entries) if text_entries else "",
+            "source": str(article_path.resolve()),
         },
-        "image_plan_markdown": "## 图片策划表\n\n- 当前模式：no-image\n",
-        "image_rules": rules,
-        "image_rules_markdown": image_rules_markdown(rules),
-        "image_slots": [],
-        "image_execution": {
-            "mode": "no_image",
-            "max_parallel_subagents": 0,
-            "review_policy": "none",
+        "rules": {"version": rules.get("version"), "sha256": hashlib.sha256(rules_bytes).hexdigest()},
+        "review_defaults": {
+            "must_avoid": list(rules.get("avoid_rules", [])),
+            "quality_floor": list(rules.get("quality_floor_rules", [])),
         },
+        "slots": [],
         "generation_queue": [],
-        "jobs": [],
     }
 
 
@@ -1476,6 +1468,11 @@ def build_jobs(
 
 
 def existing_image(images_dir: Path, name: str) -> bool:
+    exact = images_dir / name
+    if exact.exists():
+        return True
+    if Path(name).suffix:
+        return False
     for suffix in (".png", ".jpg", ".jpeg", ".webp"):
         if (images_dir / f"{name}{suffix}").exists():
             return True
