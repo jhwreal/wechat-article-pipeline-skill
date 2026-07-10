@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import secrets
+import hashlib
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,6 +28,19 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 MAKE_MANIFEST = SCRIPT_DIR / "make_wechat_publish_manifest.py"
 DEFAULT_ENV_FILE = SCRIPT_DIR.parent / ".env"
 DEFAULT_STATE_RE = re.compile(r"const DEFAULT_WORKBENCH_STATE = .*?;", re.S)
+
+def inspect_visuals(markdown, visuals, *, job_dir, baselines=None):
+    baselines = baselines or {}; stale=[]; missing=[]; updated={}
+    for name, spec in (visuals or {}).items():
+        path = Path(str(spec.get('path',''))); path = path if path.is_absolute() else Path(job_dir)/path
+        src = hashlib.sha256((markdown or '').encode()).hexdigest()
+        asset = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+        old = baselines.get(name, {})
+        if asset is None: missing.append(name)
+        elif old.get('sourceFingerprint') and old.get('sourceFingerprint') != src and old.get('assetFingerprint') == asset: stale.append(name)
+        updated[name]={'sourceFingerprint':src,'assetFingerprint':asset}
+    state='missing' if missing else ('stale' if stale else 'ready')
+    return {'state':state,'staleVisuals':stale,'missingVisuals':missing,'baselines':updated}
 
 
 def parse_args() -> argparse.Namespace:

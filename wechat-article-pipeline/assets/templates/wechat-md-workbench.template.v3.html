@@ -943,9 +943,10 @@
       try {
         const response = await fetch(WORKBENCH_SAVE_ENDPOINT, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          headers: { 'Content-Type': 'application/json', 'X-Workbench-Token': window.__workbenchToken || '' },
+          body: JSON.stringify(Object.assign({}, data, {baseRevision: window.__workbenchRevision || 0, clientMutationId: 'client-' + Date.now()}))
         });
+        if (response.status === 409) { const latest = await response.json(); window.__workbenchRevision = latest.coreRevision || window.__workbenchRevision; return false; }
         if (!response.ok) return false;
         const result = await response.json();
         if (!result.saved) throw new Error(result.error || 'save failed');
@@ -957,6 +958,8 @@
         return false;
       }
     }
+    async function handshakeWorkbench() { if (!isLoopbackServer()) return; try { const r = await fetch('/__wechat_workbench/status'); if (!r.ok) throw new Error(); const s = await r.json(); window.__workbenchToken=s.token; window.__workbenchRevision=s.coreRevision||0; } catch (_) { window.__workbenchToken=null; } }
+    handshakeWorkbench();
     function updateServerStatus(status) {
       manifestStatus.textContent = status.manifest_updated ? '发布清单已更新' : '发布清单待刷新';
       assetsStatus.textContent = status.manifest_status === 'ok' ? '图片状态已检查' : '图片状态待检查';
