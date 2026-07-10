@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import secrets
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -87,6 +88,9 @@ def replace_default_workbench_state(html_text: str, state: dict[str, str]) -> st
     return html_text
 
 
+class RevisionConflict(Exception):
+    def __init__(self, current_status): self.current_status=current_status
+
 class WorkbenchDocument:
     def __init__(self, html_path: Path, workspace: Path):
         self.workspace = workspace.resolve()
@@ -99,9 +103,27 @@ class WorkbenchDocument:
         self.job_path = self.html_path.with_suffix(".job.json")
         self.manifest_path = self.html_path.with_suffix(".publish-manifest.json")
         self._lock = threading.Lock()
+        self.sidecar = self.html_path.with_suffix('.workbench-state.json')
+        self.token = secrets.token_urlsafe(32)
+        self._state = self._load_state()
+        self._manifest_thread = None
+
+    def _load_state(self):
+        if self.sidecar.exists():
+            try: return json.loads(self.sidecar.read_text())
+            except Exception: return {"recovery_required":True,"coreRevision":0}
+        return {"coreRevision":0,"manifest":{"state":"not_configured","targetRevision":0},"assets":{"state":"ready","staleVisuals":[],"missingVisuals":[]}}
+
+    def status(self):
+        out=dict(self._state); out.setdefault('coreRevision',0); out['available']=True; out['token']=self.token
+        return out
+
+    def _persist(self): atomic_write_text(self.sidecar, json.dumps(self._state,ensure_ascii=False,indent=2))
 
     def _refresh_manifest(self) -> tuple[bool, str]:
         if not self.job_path.exists() or not self.manifest_path.exists() or not DEFAULT_ENV_FILE.exists():
+            with self._lock:
+                self._state['manifest']={'state':'not_configured','targetRevision':self._state.get('coreRevision',0)}; self._persist()
             return False, "not-configured"
         command = [
             sys.executable,
@@ -115,8 +137,12 @@ class WorkbenchDocument:
         ]
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
+            with self._lock:
+                self._state['manifest']={'state':'ready','targetRevision':self._state.get('coreRevision',0)}; self._persist()
             return True, "ok"
         message = (result.stderr or result.stdout or "manifest refresh failed").strip().splitlines()[-1]
+        with self._lock:
+            self._state['manifest']={'state':'failed','targetRevision':self._state.get('coreRevision',0),'error':message[:240]}; self._persist()
         return False, message[:240]
 
     def save(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -132,6 +158,8 @@ class WorkbenchDocument:
         }
 
         with self._lock:
+            base = payload.get('baseRevision', self._state.get('coreRevision',0))
+            if int(base) != int(self._state.get('coreRevision',0)): raise RevisionConflict(self.status())
             html_text = self.html_path.read_text(encoding="utf-8")
             try:
                 updated_html = builder.replace_bootstrap(html_text, {"markdown": markdown, "workbenchState": state})
@@ -155,7 +183,10 @@ class WorkbenchDocument:
                 atomic_write_text(self.markdown_path, source_markdown)
                 atomic_write_text(self.job_path, json.dumps(job, ensure_ascii=False, indent=2) + "\n")
 
-            manifest_updated, manifest_status = self._refresh_manifest()
+            rev=int(self._state.get('coreRevision',0))+1
+            self._state.update({'coreRevision':rev,'manifest':{'state':'pending','targetRevision':rev},'assets':self._state.get('assets',{'state':'ready','staleVisuals':[],'missingVisuals':[]})})
+            self._persist()
+            self._manifest_thread=threading.Thread(target=self._refresh_manifest,daemon=True); self._manifest_thread.start()
 
         return {
             "saved": True,
@@ -163,9 +194,12 @@ class WorkbenchDocument:
             "html": str(self.html_path),
             "markdown": str(self.markdown_path) if job is not None else "",
             "job": str(self.job_path) if job is not None else "",
-            "manifest_updated": manifest_updated,
-            "manifest_status": manifest_status,
+            "revision": rev, "clientMutationId": payload.get('clientMutationId'),
+            "manifest": self._state['manifest'], "assets": self._state['assets'],
         }
+
+    def close(self):
+        if self._manifest_thread and self._manifest_thread.is_alive(): self._manifest_thread.join(timeout=1)
 
 
 def make_handler(document: WorkbenchDocument):
@@ -181,7 +215,7 @@ def make_handler(document: WorkbenchDocument):
 
         def do_GET(self) -> None:
             if urlparse(self.path).path == STATUS_ENDPOINT:
-                self.send_json(200, {"available": True, "html": str(document.html_path)})
+                self.send_json(200, document.status())
                 return
             super().do_GET()
 
@@ -190,6 +224,11 @@ def make_handler(document: WorkbenchDocument):
                 self.send_json(404, {"saved": False, "error": "not found"})
                 return
             try:
+                host=self.headers.get('Host','')
+                if not (host.startswith('127.0.0.1:') or host.startswith('localhost:')): self.send_json(403,{"saved":False,"error":"invalid host"}); return
+                if self.headers.get('Origin') and self.headers.get('Origin') not in ('http://127.0.0.1:'+str(self.server.server_address[1]),'http://localhost:'+str(self.server.server_address[1])): self.send_json(403,{"saved":False,"error":"invalid origin"}); return
+                if self.headers.get('X-Workbench-Token') != document.token: self.send_json(403,{"saved":False,"error":"invalid token"}); return
+                if self.headers.get('Content-Type','').split(';')[0].strip() != 'application/json': self.send_json(415,{"saved":False,"error":"content type"}); return
                 length = int(self.headers.get("Content-Length", "0"))
                 if length <= 0 or length > MAX_REQUEST_BYTES:
                     raise ValueError("invalid request size")
@@ -197,6 +236,8 @@ def make_handler(document: WorkbenchDocument):
                 if not isinstance(payload, dict):
                     raise ValueError("request body must be an object")
                 self.send_json(200, document.save(payload))
+            except RevisionConflict as exc:
+                self.send_json(409, exc.current_status)
             except (ValueError, json.JSONDecodeError) as exc:
                 self.send_json(400, {"saved": False, "error": str(exc)})
             except Exception as exc:
