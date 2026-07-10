@@ -29,15 +29,31 @@ MAKE_MANIFEST = SCRIPT_DIR / "make_wechat_publish_manifest.py"
 DEFAULT_ENV_FILE = SCRIPT_DIR.parent / ".env"
 DEFAULT_STATE_RE = re.compile(r"const DEFAULT_WORKBENCH_STATE = .*?;", re.S)
 
+class ManifestRefreshRequest:
+    __slots__ = ('revision','job_snapshot','manifest_path','article_slug','env_file','account_selector','source_state','_locked')
+    def __init__(self, revision, job_snapshot, manifest_path, article_slug='', env_file=None, account_selector=None, source_state=None):
+        object.__setattr__(self,'revision',revision); object.__setattr__(self,'job_snapshot',job_snapshot); object.__setattr__(self,'manifest_path',manifest_path); object.__setattr__(self,'article_slug',article_slug); object.__setattr__(self,'env_file',env_file); object.__setattr__(self,'account_selector',account_selector); object.__setattr__(self,'source_state',source_state); object.__setattr__(self,'_locked',True)
+    def __setattr__(self, n, v):
+        if getattr(self,'_locked',False): raise AttributeError('immutable')
+        object.__setattr__(self,n,v)
+
 def inspect_visuals(markdown, visuals, *, job_dir, baselines=None):
     baselines = baselines or {}; stale=[]; missing=[]; updated={}
     for name, spec in (visuals or {}).items():
         path = Path(str(spec.get('path',''))); path = path if path.is_absolute() else Path(job_dir)/path
-        src = hashlib.sha256((markdown or '').encode()).hexdigest()
+        # Fingerprint the source block associated with this visual, so a
+        # style-only or unrelated paragraph edit does not stale every asset.
+        marker = f"visual:{name}"
+        block = ""
+        for line in (markdown or '').splitlines():
+            if marker in line or str(spec.get('path','')) in line:
+                block = line.strip(); break
+        src = hashlib.sha256((block or marker).encode()).hexdigest()
         asset = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
         old = baselines.get(name, {})
         if asset is None: missing.append(name)
         elif old.get('sourceFingerprint') and old.get('sourceFingerprint') != src and old.get('assetFingerprint') == asset: stale.append(name)
+        # A regenerated asset resolves a prior stale/missing slot.
         updated[name]={'sourceFingerprint':src,'assetFingerprint':asset}
     state='missing' if missing else ('stale' if stale else 'ready')
     return {'state':state,'staleVisuals':stale,'missingVisuals':missing,'baselines':updated}
@@ -117,12 +133,22 @@ class WorkbenchDocument:
         self.job_path = self.html_path.with_suffix(".job.json")
         self.manifest_path = self.html_path.with_suffix(".publish-manifest.json")
         self._lock = threading.Lock()
-        self.sidecar = self.html_path.with_suffix('.workbench-state.json')
+        self.support_dir = self.html_path.parent / "support"
+        self.sidecar = self.support_dir / (self.html_path.stem + '.workbench-state.json')
+        self.journal = self.support_dir / (self.html_path.stem + '.transaction.json')
         self.token = secrets.token_urlsafe(32)
         self._state = self._load_state()
         self._manifest_thread = None
+        self._manifest_pending = None
 
     def _load_state(self):
+        if self.journal.exists():
+            try:
+                j=json.loads(self.journal.read_text()); files=j.get('files',{})
+                if all(Path(p).exists() and hashlib.sha256(Path(p).read_bytes()).hexdigest()==h for p,h in files.items()):
+                    self.journal.unlink()
+                else: return {"recovery_required":True,"coreRevision":0}
+            except Exception: return {"recovery_required":True,"coreRevision":0}
         if self.sidecar.exists():
             try: return json.loads(self.sidecar.read_text())
             except Exception: return {"recovery_required":True,"coreRevision":0}
@@ -134,25 +160,42 @@ class WorkbenchDocument:
 
     def _persist(self): atomic_write_text(self.sidecar, json.dumps(self._state,ensure_ascii=False,indent=2))
 
-    def _refresh_manifest(self) -> tuple[bool, str]:
-        if not self.job_path.exists() or not self.manifest_path.exists() or not DEFAULT_ENV_FILE.exists():
+    def _refresh_manifest(self, req: ManifestRefreshRequest) -> tuple[bool, str]:
+        if not req.job_snapshot.exists() or not req.env_file or not req.env_file.exists():
             with self._lock:
                 self._state['manifest']={'state':'not_configured','targetRevision':self._state.get('coreRevision',0)}; self._persist()
             return False, "not-configured"
+        # Render into a revision-specific candidate; never let an old worker
+        # overwrite the public manifest while a newer save is committed.
+        candidate = req.manifest_path.with_name(req.manifest_path.name + f".r{req.revision}.candidate")
         command = [
             sys.executable,
             str(MAKE_MANIFEST),
-            str(self.job_path),
-            str(self.manifest_path),
+            str(req.job_snapshot), str(candidate),
             "--workbench-html",
             str(self.html_path),
             "--env-file",
-            str(DEFAULT_ENV_FILE),
+            str(req.env_file),
         ]
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
             with self._lock:
-                self._state['manifest']={'state':'ready','targetRevision':self._state.get('coreRevision',0)}; self._persist()
+                if req.revision != self._state.get('coreRevision'):
+                    candidate.unlink(missing_ok=True)
+                    return False, 'stale-candidate'
+                try:
+                    manifest = json.loads(candidate.read_text(encoding='utf-8'))
+                    if req.source_state:
+                        ss = dict(req.source_state)
+                        ss['manifest_revision'] = req.revision
+                        manifest['source_state'] = ss
+                        atomic_write_text(candidate, json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
+                    os.replace(candidate, req.manifest_path)
+                except Exception as exc:
+                    candidate.unlink(missing_ok=True)
+                    self._state['manifest']={'state':'failed','targetRevision':req.revision,'error':str(exc)[:240]}; self._persist()
+                    return False, 'candidate-invalid'
+                self._state['manifest']={'state':'ready','targetRevision':req.revision}; self._persist()
             return True, "ok"
         message = (result.stderr or result.stdout or "manifest refresh failed").strip().splitlines()[-1]
         with self._lock:
@@ -191,16 +234,32 @@ class WorkbenchDocument:
                 source_markdown = restore_visual_placeholders(markdown, job, self.html_path)
                 job["article_markdown"] = source_markdown
                 job["theme_color"] = state["themeColor"]
+                self._state['assets'] = inspect_visuals(source_markdown, job.get('visuals',{}), job_dir=self.job_path.parent, baselines=self._state.get('assets',{}).get('baselines',{}))
+                self._state['source_state'] = {'core_revision': int(self._state.get('coreRevision',0))+1, 'asset_state': self._state['assets']['state'], 'stale_visuals': self._state['assets'].get('staleVisuals',[]), 'missing_visuals': self._state['assets'].get('missingVisuals',[])}
 
-            atomic_write_text(self.html_path, updated_html)
+            files={str(self.html_path):updated_html}
             if job is not None:
-                atomic_write_text(self.markdown_path, source_markdown)
-                atomic_write_text(self.job_path, json.dumps(job, ensure_ascii=False, indent=2) + "\n")
+                files[str(self.markdown_path)] = source_markdown
+                files[str(self.job_path)] = json.dumps(job, ensure_ascii=False, indent=2) + "\n"
+            self.support_dir.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(self.journal, json.dumps({'files':{p:hashlib.sha256(v.encode()).hexdigest() for p,v in files.items()}}))
+            for p,v in files.items(): atomic_write_text(Path(p),v)
 
             rev=int(self._state.get('coreRevision',0))+1
             self._state.update({'coreRevision':rev,'manifest':{'state':'pending','targetRevision':rev},'assets':self._state.get('assets',{'state':'ready','staleVisuals':[],'missingVisuals':[]})})
             self._persist()
-            self._manifest_thread=threading.Thread(target=self._refresh_manifest,daemon=True); self._manifest_thread.start()
+            snap=self.support_dir / f"{self.html_path.stem}.job.r{rev}.json"; atomic_write_text(snap, files.get(str(self.job_path), self.job_path.read_text() if self.job_path.exists() else "{}"))
+            req=ManifestRefreshRequest(rev,snap,self.manifest_path, self.html_path.stem, DEFAULT_ENV_FILE, source_state=self._state.get('source_state'))
+            self._manifest_pending = req
+            if not self._manifest_thread or not self._manifest_thread.is_alive():
+                def worker():
+                    while True:
+                        with self._lock:
+                            current = self._manifest_pending; self._manifest_pending = None
+                        if current is None: break
+                        self._refresh_manifest(current)
+                self._manifest_thread=threading.Thread(target=worker,daemon=True); self._manifest_thread.start()
+            self.journal.unlink(missing_ok=True)
 
         return {
             "saved": True,
@@ -240,7 +299,9 @@ def make_handler(document: WorkbenchDocument):
             try:
                 host=self.headers.get('Host','')
                 if not (host.startswith('127.0.0.1:') or host.startswith('localhost:')): self.send_json(403,{"saved":False,"error":"invalid host"}); return
-                if self.headers.get('Origin') and self.headers.get('Origin') not in ('http://127.0.0.1:'+str(self.server.server_address[1]),'http://localhost:'+str(self.server.server_address[1])): self.send_json(403,{"saved":False,"error":"invalid origin"}); return
+                origin=self.headers.get('Origin')
+                expected=('http://127.0.0.1:'+str(self.server.server_address[1]),'http://localhost:'+str(self.server.server_address[1]))
+                if origin not in expected: self.send_json(403,{"saved":False,"error":"invalid origin"}); return
                 if self.headers.get('X-Workbench-Token') != document.token: self.send_json(403,{"saved":False,"error":"invalid token"}); return
                 if self.headers.get('Content-Type','').split(';')[0].strip() != 'application/json': self.send_json(415,{"saved":False,"error":"content type"}); return
                 length = int(self.headers.get("Content-Length", "0"))
@@ -280,6 +341,7 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        document.close()
         server.server_close()
 
 
