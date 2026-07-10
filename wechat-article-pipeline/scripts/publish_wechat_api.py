@@ -580,6 +580,12 @@ def summarize_draft_payload(draft_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, Any]:
+    source_state = manifest.get("source_state")
+    if source_state:
+        if source_state.get("core_revision") != source_state.get("manifest_revision"):
+            raise SystemExit("Manifest source revision mismatch.")
+        if source_state.get("asset_state") in ("stale", "missing") or source_state.get("stale_visuals") or source_state.get("missing_visuals"):
+            raise SystemExit("Manifest assets are stale or missing.")
     title = str(manifest.get("title", "")).strip()
     digest = str(manifest.get("digest", "")).strip()
     cover_src = str(((manifest.get("wechat_cover") or manifest.get("cover")) or {}).get("src", "")).strip()
