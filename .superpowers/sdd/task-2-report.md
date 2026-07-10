@@ -23,3 +23,5 @@ The template still contains compatibility constants sourced from bootstrap. Full
 ## Review follow-up
 
 Removed stray markdown literal, inlined the production controller through the builder, added Save toolbar/status elements, wired bootstrap signature/storage key, and guarded initialization from scheduling. Follow-up commit: `86eddfd`.
+
+State/error follow-up: controller emits cached/saving/saved/error and rejects unsuccessful server responses; template binds status labels. Commit `3782818`.
