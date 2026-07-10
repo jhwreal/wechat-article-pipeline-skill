@@ -201,7 +201,7 @@ class SkillP1ContractTest(unittest.TestCase):
             mode="no-image",
         )
 
-        self.assertEqual(payload["jobs"], [])
+        self.assertEqual(payload["slots"], [])
         self.assertEqual(payload["image_slots"], [])
         self.assertEqual(payload["visual_mode"], "no_image")
 
@@ -224,7 +224,7 @@ class SkillP1ContractTest(unittest.TestCase):
             max_body_images=1,
         )
 
-        self.assertEqual([job["name"] for job in payload["jobs"]], ["cover", "body-1", "closing"])
+        self.assertEqual([job["name"] for job in payload["slots"]], ["cover", "body-1", "closing"])
 
     def test_image_jobs_missing_only_filters_generation_queue(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -262,10 +262,9 @@ class SkillP1ContractTest(unittest.TestCase):
 
         queue = payload["generation_queue"]
         self.assertEqual(len(queue), 3)
-        self.assertEqual([item["id"] for item in queue], ["01", "02", "03"])
+        self.assertEqual([item["slot"] for item in queue], ["cover", "body-1", "closing"])
         self.assertEqual([item["output"] for item in queue], ["cover.png", "body-1.png", "closing.png"])
-        self.assertEqual(payload["jobs"][0]["generation_task"]["id"], "01")
-        self.assertEqual(payload["jobs"][0]["generation_task"]["output"], "cover.png")
+        self.assertEqual(payload["generation_queue"][0]["output"], "cover.png")
         self.assertNotIn("variants", payload["jobs"][0])
         self.assertNotIn("candidate_output", payload["generation_queue"][0])
         self.assertNotIn("review_contract", payload["generation_queue"][0])
