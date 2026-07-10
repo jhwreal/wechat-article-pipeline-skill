@@ -1483,27 +1483,8 @@ def existing_image(images_dir: Path, name: str) -> bool:
 
 
 def filter_missing_jobs(payload: dict[str, Any], images_dir: Path) -> dict[str, Any]:
-    jobs = [job for job in payload.get("jobs", []) if not existing_image(images_dir, str(job.get("name", "")).strip())]
-    missing_names = {str(job.get("name", "")).strip() for job in jobs}
-    payload["jobs"] = jobs
-    payload["image_slots"] = [
-        slot
-        for slot in payload.get("image_slots", [])
-        if str(slot.get("name", "")).strip() in missing_names
-    ]
-    payload["generation_queue"] = [
-        item
-        for item in payload.get("generation_queue", [])
-        if str(item.get("slot", "")).strip() in missing_names
-    ]
-    image_plan = payload.get("image_plan")
-    if isinstance(image_plan, dict):
-        image_plan["image_slots"] = [
-            slot
-            for slot in image_plan.get("image_slots", [])
-            if str(slot.get("name", "")).strip() in missing_names
-        ]
-    return payload
+    from image_jobs_contract import filter_missing_image_jobs, normalize_image_jobs
+    return filter_missing_image_jobs(normalize_image_jobs(payload), lambda output: existing_image(images_dir, output))
 
 
 def main() -> None:
@@ -1528,8 +1509,9 @@ def main() -> None:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Wrote {args.out.resolve()}")
-    if args.debug_plan and payload.get("image_plan_markdown"):
-        print(payload["image_plan_markdown"])
+    if args.debug_plan:
+        from image_jobs_contract import render_image_plan_markdown
+        print(render_image_plan_markdown(payload))
 
 
 if __name__ == "__main__":

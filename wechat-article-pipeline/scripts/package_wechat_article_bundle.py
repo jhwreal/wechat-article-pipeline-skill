@@ -14,6 +14,7 @@ from pathlib import Path
 
 import build_wechat_article_workbench as builder
 import wechat_account_config as account_config
+from image_jobs_contract import normalize_image_jobs, derive_image_plan, render_image_plan_markdown
 
 
 WORKSPACE = Path.cwd()
@@ -196,7 +197,9 @@ def make_content_storage_key(page_title: str, markdown: str, visuals: dict[str, 
 
 
 def infer_image_dir_name(article_path: Path, plan: dict | None) -> str:
-    plan_slug = str((plan or {}).get("article_slug", "")).strip()
+    plan_slug = str(((plan or {}).get("article") or {}).get("slug", "")).strip()
+    if not plan_slug:
+        plan_slug = str((plan or {}).get("article_slug", "")).strip()
     if plan_slug:
         return make_path_name(plan_slug)
     stem = article_path.stem.strip()
@@ -457,7 +460,7 @@ def resolve_signature_metadata(
 def plan_slot_map(plan: dict | None) -> dict[str, dict]:
     if not plan:
         return {}
-    slots = plan.get("image_slots") or plan.get("jobs") or []
+    slots = plan.get("slots") or plan.get("image_slots") or plan.get("jobs") or []
     result: dict[str, dict] = {}
     for slot in slots:
         if not isinstance(slot, dict):
@@ -527,15 +530,12 @@ def build_job(
         },
     }
     if plan:
-        job["image_plan"] = plan.get("image_plan") or {
-            "article_title": plan.get("article_title"),
-            "article_summary": plan.get("article_summary"),
-            "article_type": plan.get("article_type"),
-            "global_visual_style": plan.get("global_visual_style"),
-            "image_slots": plan.get("image_slots") or plan.get("jobs") or [],
-        }
-        if plan.get("image_plan_markdown"):
-            job["image_plan_markdown"] = plan["image_plan_markdown"]
+        try:
+            canonical = normalize_image_jobs(plan)
+            job["image_plan"] = derive_image_plan(canonical)
+            job["image_plan_markdown"] = render_image_plan_markdown(canonical)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid image jobs: {exc}")
     return job
 
 

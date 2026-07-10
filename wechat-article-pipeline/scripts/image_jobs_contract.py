@@ -16,8 +16,12 @@ def normalize_image_jobs(payload: Mapping[str, Any]) -> dict[str, Any]:
     version = payload.get('schema_version', 1)
     if version not in (1, 2): raise ValueError(f'unknown schema version: {version}')
     if version == 2:
-        out = dict(payload)
-        out['slots'] = [dict(s) for s in payload.get('slots', [])]
+        out = {k: payload[k] for k in ('kind','schema_version','article','rules','review_defaults') if k in payload}
+        out['kind']='wechat-image-jobs'; out['schema_version']=2
+        out['article'] = dict(payload.get('article') or {})
+        out['rules'] = dict(payload.get('rules') or {})
+        out['review_defaults'] = dict(payload.get('review_defaults') or {})
+        out['slots'] = [{k:s[k] for k in SLOT_KEYS if k in s} for s in payload.get('slots', [])]
         out['generation_queue'] = [dict(q) for q in payload.get('generation_queue', [])]
         return validate_image_jobs(out)
     raw = payload.get('jobs') or payload.get('image_slots') or (payload.get('image_plan') or {}).get('image_slots') or []
@@ -45,7 +49,7 @@ def validate_image_jobs(payload: Mapping[str, Any]) -> dict[str, Any]:
     if payload.get('kind')!='wechat-image-jobs' or payload.get('schema_version')!=2: raise ValueError('invalid image jobs kind/schema')
     slots=[dict(s) for s in payload.get('slots',[])]
     names=[s.get('name') for s in slots]; outputs=[s.get('output') for s in slots]
-    if not names or any(not n for n in names) or len(set(names))!=len(names) or len(set(outputs))!=len(outputs): raise ValueError('slot names and outputs must be unique')
+    if (names and (any(not n for n in names) or len(set(names))!=len(names) or len(set(outputs))!=len(outputs))) or (not names and payload.get('generation_queue')): raise ValueError('slot names and outputs must be unique')
     for o in outputs: _safe_output(o)
     queue=[dict(q) for q in payload.get('generation_queue',[])]
     if any(set(q)!= {'slot','output','generation_prompt'} for q in queue): raise ValueError('queue keys must be exactly slot/output/generation_prompt')
