@@ -67,6 +67,8 @@ The template has one non-executable bootstrap node:
 
 `build_wechat_article_workbench.py` serializes Markdown, metadata, signature, and default presentation state once. After JSON serialization it escapes `<`, `>`, `&`, U+2028, and U+2029, preventing an embedded `</script>` from terminating the HTML element. The browser parses only `textContent`; no user-controlled value is concatenated into executable JavaScript.
 
+The template contains exactly one `{{BOOTSTRAP_JSON}}` replacement point. Missing or duplicate replacement points are build errors. `read_bootstrap()` and `replace_bootstrap()` also recognize legacy constant-based workbenches so the first server save migrates them without losing content.
+
 ### Browser save controller
 
 The browser maintains three independent facts:
@@ -77,9 +79,11 @@ The browser maintains three independent facts:
 
 Every input event synchronously updates `localStorage`, marks the UI as locally cached, clears the previous timer, and starts a 3000 ms timer. The Save button clears that timer and immediately queues the latest snapshot. A later input event creates a new timer.
 
-Only one server request is active at a time. While it is active, repeated changes replace one pending snapshot instead of creating more requests. Responses carry a revision and mutation ID; an older response cannot mark a newer mutation saved. HTTP 409 causes the controller to refresh server status and retry only the newest pending snapshot.
+Only one server request is active at a time. While it is active, repeated changes replace one pending snapshot instead of creating more requests. Responses carry a revision and mutation ID; an older response cannot mark a newer mutation saved. HTTP 409 adopts the server's current status and keeps only the newest unsaved snapshot; it never blindly retries an obsolete base revision.
 
-The toolbar contains a visible Save button and compact state text distinguishing local cache, article save, manifest refresh, and image readiness.
+The pure save controller lives in `assets/workbench-save-controller.js`. The builder inlines that production source into the single-file template, while Node tests execute the same source with fake storage, clock, and transport adapters. Initial page rendering explicitly disables scheduling so merely opening a workbench does not create a revision.
+
+The toolbar contains a visible Save button. Separate compact elements report local/article save, manifest refresh, and image readiness so one state cannot overwrite another.
 
 ### Local server and revisioned document state
 
@@ -94,11 +98,11 @@ GET `/__wechat_workbench/status` returns the current revision, manifest state, a
 
 Direct `file://` mode never calls these endpoints and remains local-cache only.
 
-A save request contains `baseRevision`, `clientMutationId`, Markdown, theme color, font size, and font family. Under a short lock, the document validates the revision, stages HTML, Markdown, and job JSON, atomically replaces each file, commits a new revision in the sidecar, and returns immediately. The sidecar lives at `files/wechat-article-pipeline/<slug>/workbench-state.json` and is the durable server state.
+A save request contains `baseRevision`, `clientMutationId`, Markdown, theme color, font size, and font family. Under a short lock, the document validates the revision and stages HTML, Markdown, and job JSON. It writes a transaction journal containing target hashes, replaces each staged file, then commits the new revision and committed hashes in the sidecar. On startup, an unfinished journal is completed when its staged files remain valid; otherwise the document reports `recovery_required` instead of accepting a normal save. The sidecar lives at `files/wechat-article-pipeline/<slug>/workbench-state.json` and is the durable server state.
 
 ### Manifest refresh and asset freshness
 
-Manifest generation is not part of the synchronous save lock. A single background coordinator coalesces saves and retains only the newest requested revision. It writes a candidate manifest to a temporary path, verifies that the candidate still targets the current revision, then atomically replaces the public manifest. An older task can never overwrite a newer revision.
+Manifest generation is not part of the synchronous save lock. A single background coordinator coalesces immutable refresh requests containing the revision, job JSON snapshot, resolved paths, publisher selectors, and source state. It retains only the newest request, writes the job snapshot beside the original job so relative asset paths keep their meaning, writes a candidate manifest to a temporary path, verifies that the candidate still targets the current revision, then atomically replaces the public manifest. An older task can never overwrite a newer revision or generate against a newer job while claiming an older revision.
 
 Publisher parameters already present in the manifest or state—including article slug, environment-file path, and account selector—are preserved across refreshes.
 
@@ -116,7 +120,7 @@ The sidecar records:
 }
 ```
 
-Visual fingerprints are based on the article title plus the source segment associated with each visual slot. Presentation-only changes do not affect them. Existing images are never silently deleted. Changed source marks affected slots stale; missing files mark them missing. The workbench reports this explicitly, the refreshed manifest carries the state, and verification/publishing refuses a manifest whose source state is stale or missing.
+The sidecar stores a source fingerprint and asset fingerprint for each visual. Source fingerprints use the article title plus the segment associated with the slot; asset fingerprints use content and file metadata from paths resolved relative to the job. Presentation-only changes do not affect either value. Existing images are never silently deleted. Changed source with the same asset marks a slot stale; a missing file marks it missing. Replacing or regenerating the file advances the asset fingerprint and adopts a new ready baseline for the current source. The workbench reports this explicitly, the refreshed manifest carries the state, and verification/publishing refuses a manifest whose source state is stale or missing. A workbench without a manifest reports `not_configured` and does not start a refresh worker.
 
 ### Image-jobs v2
 
@@ -134,9 +138,9 @@ Visual fingerprints are based on the article title plus the source segment assoc
 }
 ```
 
-`slots` is the only source of image-plan and review data. `generation_queue` contains only `slot`, `output`, and `generation_prompt`. The writer no longer emits duplicate `jobs`, `image_slots`, nested `image_plan.image_slots`, `generation_task`, `prompt`, full rule copies, rule Markdown, or fixed concurrency capacity.
+`slots` is the only source of image-plan and slot-specific review data. It uses a fixed whitelist of identity, plan, local-context, visual, and slot-specific review fields; it does not repeat article defaults, global style, prompts, tasks, common avoid rules, or a complete review contract. Common avoid and quality-floor rules live once in `review_defaults`. `generation_queue` is the only prompt owner and contains only `slot`, authoritative `output`, and `generation_prompt`. The writer no longer emits duplicate `jobs`, `image_slots`, nested `image_plan.image_slots`, `generation_task`, `prompt`, full rule copies, rule Markdown, or fixed concurrency capacity.
 
-When `schema_version` is absent, the reader treats the document as v1 and normalizes `jobs`, `image_slots`, or nested image slots plus legacy prompt/output fallbacks. Unknown future versions fail explicitly. All consumers use the normalized contract. Support `image-plan.json` and Markdown are derived only when packaging needs them.
+When `schema_version` is absent or explicitly `1`, the reader treats the document as v1 and normalizes `jobs`, `image_slots`, or nested image slots plus legacy prompt/output fallbacks. Older A/B candidate files are recognized by variants or duplicate queue slots and deterministically collapse to their first route while keeping the final output. Conflicting copies in current single-pass v1 fail rather than silently choosing one. Unknown future versions fail explicitly. All consumers use the normalized contract and exact `output` filenames. Support `image-plan.json` and Markdown are derived through contract functions only when packaging needs them.
 
 Image generation concurrency is an orchestration decision, not article data:
 
