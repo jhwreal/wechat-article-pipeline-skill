@@ -293,6 +293,10 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     bootstrap = {"markdown": markdown, "metadata": article_metadata if isinstance(article_metadata, dict) else {}, "signature": job.get("article_signature") or {}, "storageKey": storage_key, "workbenchState": state}
     if html_text.count("{{BOOTSTRAP_JSON}}") != 1: raise ValueError("expected exactly one {{BOOTSTRAP_JSON}} placeholder")
     html_text = html_text.replace("{{BOOTSTRAP_JSON}}", html_safe_json(bootstrap), 1)
+    controller_path = Path(__file__).resolve().parents[1] / "assets" / "workbench-save-controller.js"
+    controller_source = controller_path.read_text(encoding="utf-8")
+    if html_text.count("{{SAVE_CONTROLLER_JS}}") != 1: raise ValueError("expected exactly one {{SAVE_CONTROLLER_JS}} placeholder")
+    html_text = html_text.replace("{{SAVE_CONTROLLER_JS}}", controller_source, 1)
     html_text = replace_clipboard_assets_script(html_text, str(job.get("clipboard_assets_script", "")).strip())
     return html_text
 

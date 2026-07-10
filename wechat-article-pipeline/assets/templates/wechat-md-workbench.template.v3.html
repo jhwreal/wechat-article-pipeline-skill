@@ -415,6 +415,7 @@
         <option value="18">18px</option>
       </select>
       <input id="themeColor" class="color" type="color" value="#17b394" title="主题色" />
+      <button id="saveArticle" class="btn">保存</button>
       <button id="copyWechat" class="btn primary">复制富文本</button>
     </div>
   </div>
@@ -433,6 +434,7 @@
       <div class="statusbar">
         <div class="status-left">
           <span><span class="dot"></span><span id="saveStatus">已就绪</span></span>
+          <span id="articleStatus">正文已保存</span><span id="manifestStatus">发布清单更新中</span><span id="assetsStatus">图片待复核</span>
           <span id="wordCount">0 字</span>
           <span id="lineCount">0 行</span>
         </div>
@@ -473,27 +475,16 @@
 
   <!-- CLIPBOARD_ASSETS_SCRIPT -->
   <script type="application/json" id="wechat-bootstrap">{{BOOTSTRAP_JSON}}</script>
+  <script>{{SAVE_CONTROLLER_JS}}</script>
   <script>
     window.WECHAT_CLIPBOARD_IMAGE_DATA = window.WECHAT_CLIPBOARD_IMAGE_DATA || {};
 
     const BOOTSTRAP = JSON.parse(document.getElementById('wechat-bootstrap').textContent);
     const DEFAULT_MARKDOWN = BOOTSTRAP.markdown;
 
-欢迎来到 Markdown 的奇妙世界！无论你是写作爱好者、开发者、博主，还是想要简单记录点什么的人，Markdown 都能成为你新的好伙伴。
-
-Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简单、直观的语法而著称，可以快速地生成 HTML。
-
-## Markdown 基础语法
-
-### 1. 标题：让你的内容层次分明
-
-用 # 号来创建标题。标题从 # 开始，# 的数量表示标题的级别。
-
-#### h4 示例`;
-
     const ARTICLE_METADATA = BOOTSTRAP.metadata || {};
-    const ARTICLE_SIGNATURE = {};
-    const STORAGE_KEY = 'wechat-md-workbench-template-v10';
+    const ARTICLE_SIGNATURE = BOOTSTRAP.signature || {};
+    const STORAGE_KEY = BOOTSTRAP.storageKey;
     const DEFAULT_WORKBENCH_STATE = BOOTSTRAP.workbenchState || {};
     const WORKBENCH_SAVE_ENDPOINT = '/__wechat_workbench/save';
     const editor = document.getElementById('editor');
@@ -509,6 +500,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     const storageModeLabel = document.getElementById('storageModeLabel');
 
     let saveTimer = null;
+    let initializing = true;
     let activeScrollSource = null;
     let scrollReleaseTimer = null;
     let caretSyncFrame = null;
@@ -988,16 +980,23 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     }
 
     function scheduleSave() {
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(saveState, 500);
+      if (window.workbenchSaveController) window.workbenchSaveController.cacheAndSchedule();
     }
 
     function applySettings() {
       document.documentElement.style.setProperty('--primary', themeColor.value);
       document.documentElement.style.setProperty('--preview-font', fontFamily.value);
       updatePreview(activeScrollSource || 'editor');
-      scheduleSave();
+      if (!initializing) scheduleSave();
     }
+
+    window.workbenchSaveController = createWorkbenchSaveController({
+      storage: localStorage,
+      storageKey: STORAGE_KEY,
+      snapshot: () => ({ markdown: editor.value, themeColor: themeColor.value, fontSize: fontSize.value, fontFamily: fontFamily.value, savedAt: new Date().toISOString() }),
+      transport: data => saveStateToServer(data)
+    });
+    document.getElementById('saveArticle').addEventListener('click', () => window.workbenchSaveController.saveNow());
 
     function loadState() {
       const raw = safeGetStorage(STORAGE_KEY);
@@ -1245,6 +1244,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     loadState();
     applySettings();
     updatePreview('editor');
+    initializing = false;
     saveStatus.textContent = '已加载';
   </script>
 </body>
