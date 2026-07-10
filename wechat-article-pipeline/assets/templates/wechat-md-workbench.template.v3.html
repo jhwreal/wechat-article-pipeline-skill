@@ -472,10 +472,12 @@
   </div>
 
   <!-- CLIPBOARD_ASSETS_SCRIPT -->
+  <script type="application/json" id="wechat-bootstrap">{{BOOTSTRAP_JSON}}</script>
   <script>
     window.WECHAT_CLIPBOARD_IMAGE_DATA = window.WECHAT_CLIPBOARD_IMAGE_DATA || {};
 
-    const DEFAULT_MARKDOWN = `# 探索 Markdown 的奇妙世界
+    const BOOTSTRAP = JSON.parse(document.getElementById('wechat-bootstrap').textContent);
+    const DEFAULT_MARKDOWN = BOOTSTRAP.markdown;
 
 欢迎来到 Markdown 的奇妙世界！无论你是写作爱好者、开发者、博主，还是想要简单记录点什么的人，Markdown 都能成为你新的好伙伴。
 
@@ -489,10 +491,10 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
 
 #### h4 示例`;
 
-    const ARTICLE_METADATA = {};
+    const ARTICLE_METADATA = BOOTSTRAP.metadata || {};
     const ARTICLE_SIGNATURE = {};
     const STORAGE_KEY = 'wechat-md-workbench-template-v10';
-    const DEFAULT_WORKBENCH_STATE = {"themeColor":"#17b394","fontSize":"16","fontFamily":"-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Microsoft YaHei\", sans-serif"};
+    const DEFAULT_WORKBENCH_STATE = BOOTSTRAP.workbenchState || {};
     const WORKBENCH_SAVE_ENDPOINT = '/__wechat_workbench/save';
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');

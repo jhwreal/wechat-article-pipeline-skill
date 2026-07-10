@@ -133,8 +133,14 @@ class WorkbenchDocument:
 
         with self._lock:
             html_text = self.html_path.read_text(encoding="utf-8")
-            updated_html = builder.replace_default_markdown(html_text, markdown)
-            updated_html = replace_default_workbench_state(updated_html, state)
+            try:
+                updated_html = builder.replace_bootstrap(html_text, {"markdown": markdown, "workbenchState": state})
+                if updated_html == html_text:
+                    updated_html = builder.replace_default_markdown(html_text, markdown)
+                    updated_html = replace_default_workbench_state(updated_html, state)
+            except (ValueError, json.JSONDecodeError):
+                updated_html = builder.replace_default_markdown(html_text, markdown)
+                updated_html = replace_default_workbench_state(updated_html, state)
 
             source_markdown = markdown
             job: dict[str, Any] | None = None
