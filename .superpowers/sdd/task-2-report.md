@@ -19,3 +19,7 @@
 ## Self-review / risks
 
 The template still contains compatibility constants sourced from bootstrap. Full browser smoke coverage and expanded status wiring remain for follow-up integration. Commit: `22b931e9e336979859ca8341c8bb9f47e9dab874`.
+
+## Review follow-up
+
+Removed stray markdown literal, inlined the production controller through the builder, added Save toolbar/status elements, wired bootstrap signature/storage key, and guarded initialization from scheduling. Follow-up commit: `86eddfd`.
