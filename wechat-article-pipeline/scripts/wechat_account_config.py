@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
+import os
 import re
 from pathlib import Path
+from typing import Iterator
 
 from atomic_files import atomic_write_text
 
@@ -11,6 +15,24 @@ from atomic_files import atomic_write_text
 ACCOUNT_FIELD_RE = re.compile(
     r"^WECHAT_ACCOUNT_([A-Z0-9_]+?)_(SIGNATURE_AUTHOR|ORIGINAL_ISSUE|PREVIEW_ACCOUNT|APPSECRET|APPID|AUTHOR|NAME)$"
 )
+
+
+def env_lock_path(path: Path) -> Path:
+    path = path.expanduser()
+    return path.with_name(path.name + ".lock")
+
+
+@contextlib.contextmanager
+def env_file_lock(path: Path) -> Iterator[None]:
+    lock_path = env_lock_path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(fd, "a+b") as lock_handle:
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
 
 
 def read_env_file(path: Path | None) -> dict[str, str]:
@@ -34,6 +56,11 @@ def read_env_file(path: Path | None) -> dict[str, str]:
 
 def write_env_value(path: Path, key: str, value: str) -> None:
     path = path.expanduser()
+    with env_file_lock(path):
+        _write_env_value_unlocked(path, key, value)
+
+
+def _write_env_value_unlocked(path: Path, key: str, value: str) -> None:
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     output: list[str] = []
     replaced = False
@@ -52,6 +79,11 @@ def write_env_value(path: Path, key: str, value: str) -> None:
 
 def compare_and_set_env_value(path: Path, key: str, expected: str, value: str) -> str:
     path = path.expanduser()
+    with env_file_lock(path):
+        return _compare_and_set_env_value_unlocked(path, key, expected, value)
+
+
+def _compare_and_set_env_value_unlocked(path: Path, key: str, expected: str, value: str) -> str:
     if not path.exists():
         raise ValueError(f"Environment value conflict for {key}: file does not exist: {path}")
 

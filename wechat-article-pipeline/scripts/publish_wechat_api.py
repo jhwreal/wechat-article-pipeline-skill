@@ -691,16 +691,34 @@ def send_preview(
     account: dict[str, str],
     access_token: str,
 ) -> dict[str, Any]:
-    preview = manifest.get("preview") or {}
+    target = normalize_preview_target(args, manifest, account)
     payload: dict[str, Any] = {"mpnews": {"media_id": media_id}, "msgtype": "mpnews"}
-    if args.preview_openid:
-        payload["touser"] = args.preview_openid.strip()
+    if not target["value"]:
+        raise SystemExit("Preview account is empty. Pass --preview-account or set manifest.preview.account.")
+    if target["kind"] == "openid":
+        payload["touser"] = target["value"]
     else:
-        preview_account = (args.preview_account or preview.get("account") or account.get("preview_account") or "").strip()
-        if not preview_account:
-            raise SystemExit("Preview account is empty. Pass --preview-account or set manifest.preview.account.")
-        payload["towxname"] = preview_account
+        payload["towxname"] = target["value"]
     return api_post_json("/cgi-bin/message/mass/preview", payload, access_token)
+
+
+def normalize_preview_target(
+    args: argparse.Namespace,
+    manifest: dict[str, Any],
+    account: dict[str, str],
+) -> dict[str, str]:
+    preview_openid = str(args.preview_openid or "").strip()
+    if preview_openid:
+        return {"kind": "openid", "value": preview_openid}
+    preview = manifest.get("preview") if isinstance(manifest.get("preview"), dict) else {}
+    preview_account = str(
+        args.preview_account or preview.get("account") or account.get("preview_account") or ""
+    ).strip()
+    return {"kind": "account", "value": preview_account}
+
+
+def resolved_env_file(env_file: Path | None) -> str:
+    return str(env_file.expanduser().resolve()) if env_file else ""
 
 
 def requested_publish_operations(args: argparse.Namespace) -> list[str]:
@@ -730,6 +748,83 @@ def operation_state_value(run: dict[str, Any], operation: str) -> str:
     if not isinstance(entry, dict):
         return ""
     return str(entry.get("state", ""))
+
+
+def bind_side_effect_parameters(
+    run: dict[str, Any],
+    args: argparse.Namespace,
+    manifest: dict[str, Any],
+    account: dict[str, str],
+    env_file: Path | None,
+) -> None:
+    operation_state = run["operation_state"]
+    if operation_requested(run, "send_preview"):
+        operation_state["send_preview"]["parameters"] = {
+            "target": normalize_preview_target(args, manifest, account)
+        }
+    if operation_requested(run, "increment_original_issue"):
+        operation_state["increment_original_issue"]["parameters"] = {
+            "env_file": resolved_env_file(env_file)
+        }
+
+
+def validate_resume_side_effect_parameters(
+    run: dict[str, Any],
+    args: argparse.Namespace,
+    env_file: Path | None,
+) -> tuple[argparse.Namespace, Path | None]:
+    preview_args = argparse.Namespace(**vars(args))
+    stored_env_file = env_file
+    operation_state = run.get("operation_state")
+    if not isinstance(operation_state, dict):
+        raise SystemExit("Cannot resume: existing result receipt has no operation state.")
+
+    if operation_requested(run, "send_preview"):
+        preview_entry = operation_state["send_preview"]
+        parameters = preview_entry.get("parameters")
+        target = parameters.get("target") if isinstance(parameters, dict) else None
+        if not isinstance(target, dict) or target.get("kind") not in {"openid", "account"}:
+            raise SystemExit("Cannot resume: receipt has no stored preview target parameters.")
+        stored_target = {"kind": str(target["kind"]), "value": str(target.get("value", "")).strip()}
+        explicit_target: dict[str, str] | None = None
+        if str(args.preview_openid or "").strip():
+            explicit_target = {"kind": "openid", "value": str(args.preview_openid).strip()}
+        elif str(args.preview_account or "").strip():
+            explicit_target = {"kind": "account", "value": str(args.preview_account).strip()}
+        if explicit_target is not None and explicit_target != stored_target:
+            raise SystemExit(
+                f"Cannot resume: preview target changed from {stored_target!r} to {explicit_target!r}."
+            )
+        if stored_target["kind"] == "openid":
+            preview_args.preview_openid = stored_target["value"]
+            preview_args.preview_account = None
+        else:
+            preview_args.preview_openid = None
+            preview_args.preview_account = stored_target["value"]
+
+    if operation_requested(run, "increment_original_issue"):
+        increment_entry = operation_state["increment_original_issue"]
+        parameters = increment_entry.get("parameters")
+        stored_path = parameters.get("env_file") if isinstance(parameters, dict) else None
+        if not isinstance(stored_path, str):
+            raise SystemExit("Cannot resume: receipt has no stored env_file parameter.")
+        current_path = resolved_env_file(env_file)
+        if stored_path != current_path:
+            raise SystemExit(f"Cannot resume: env_file changed from {stored_path!r} to {current_path!r}.")
+        stored_env_file = Path(stored_path) if stored_path else None
+
+    return preview_args, stored_env_file
+
+
+def is_publish_journal(path: Path) -> bool:
+    if not path.exists():
+        return False
+    try:
+        existing = read_json(path)
+    except (OSError, json.JSONDecodeError):
+        return False
+    operation_state = existing.get("operation_state")
+    return isinstance(operation_state, dict) and isinstance(operation_state.get("draft_add"), dict)
 
 
 def run_checkpointed_operation(
@@ -824,6 +919,7 @@ def resume_publish_run(
         raise SystemExit(f"--resume requires an existing --out result: {out}")
     run = read_json(out)
     media_id = validate_resume_receipt(out, run, args.manifest, account)
+    preview_args, stored_env_file = validate_resume_side_effect_parameters(run, args, env_file)
 
     preview_state = operation_state_value(run, "send_preview")
     if operation_requested(run, "send_preview") and preview_state in {"in_progress", "unknown"}:
@@ -857,7 +953,7 @@ def resume_publish_run(
             run,
             "send_preview",
             "preview",
-            lambda: send_preview(media_id, args, manifest, account, access_token),
+            lambda: send_preview(media_id, preview_args, manifest, account, access_token),
             unknown_on_error=True,
         )
     if (
@@ -869,7 +965,7 @@ def resume_publish_run(
             run,
             "increment_original_issue",
             "original_issue_increment",
-            lambda: increment_original_issue(manifest, env_file),
+            lambda: increment_original_issue(manifest, stored_env_file),
         )
 
     finish_publish_run(out, run)
@@ -892,6 +988,7 @@ def create_publish_run(
         manifest_sha256=manifest_fingerprint(args.manifest),
         requested_operations=requested_publish_operations(args),
     )
+    bind_side_effect_parameters(run, args, manifest, account, env_file)
     access_token = get_access_token(args, config, account)
     if args.check_draft_switch:
         run["draft_switch"] = check_or_open_draft_switch(access_token, args.open_draft_switch)
@@ -973,6 +1070,10 @@ def main() -> None:
     dry_run = validate_execution_mode(args)
     args.manifest = args.manifest.expanduser().resolve()
     out = (args.out or args.manifest.with_suffix(".wechat-api-result.json")).expanduser().resolve()
+    if not dry_run and not args.resume and is_publish_journal(out):
+        raise SystemExit(
+            f"Refusing to overwrite existing publish receipt: {out}. Use --resume or choose a different --out path."
+        )
     manifest = read_json(args.manifest)
     config = read_config(args.config)
     env_file = find_env_file(args.manifest, args.env_file)

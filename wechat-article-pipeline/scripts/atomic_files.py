@@ -33,7 +33,7 @@ def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None
 
 
 def atomic_write_json(path: Path, data: Mapping[str, Any], *, mode: int | None = None) -> None:
-    text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    text = json.dumps(dict(data), ensure_ascii=False, indent=2) + "\n"
     atomic_write_text(path, text, mode=mode)
 
 

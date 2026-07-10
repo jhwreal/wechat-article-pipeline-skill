@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable
 from unittest import mock
 
@@ -267,6 +268,94 @@ class PublishWechatReceiptTest(unittest.TestCase):
             self.assertEqual(receipt["status"], "success")
             self.assertEqual(receipt["preview"], {"msg_id": 42})
 
+    def test_resume_binds_stored_preview_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir))
+
+            def lose_preview_response(
+                _media_id: str,
+                _args: Any,
+                _manifest: dict[str, Any],
+                _account: dict[str, str],
+                _access_token: str,
+            ) -> dict[str, Any]:
+                raise RuntimeError("preview response lost")
+
+            with self.assertRaisesRegex(RuntimeError, "preview response lost"):
+                self.invoke(
+                    manifest,
+                    result_path,
+                    env_file,
+                    "--send-preview",
+                    "--preview-account",
+                    "original-preview-user",
+                    replacements={"send_preview": lose_preview_response},
+                )
+
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                receipt["operation_state"]["send_preview"]["parameters"]["target"],
+                {"kind": "account", "value": "original-preview-user"},
+            )
+
+            preview = mock.Mock(return_value={"msg_id": 42})
+            with self.assertRaisesRegex(SystemExit, "preview target"):
+                self.invoke(
+                    manifest,
+                    result_path,
+                    env_file,
+                    "--resume",
+                    "--retry-preview",
+                    "--preview-account",
+                    "different-preview-user",
+                    replacements={"send_preview": preview},
+                )
+            preview.assert_not_called()
+
+            def assert_stored_target(
+                _media_id: str,
+                args: Any,
+                _manifest: dict[str, Any],
+                _account: dict[str, str],
+                _access_token: str,
+            ) -> dict[str, Any]:
+                self.assertEqual(args.preview_account, "original-preview-user")
+                self.assertIsNone(args.preview_openid)
+                return {"msg_id": 42}
+
+            self.invoke(
+                manifest,
+                result_path,
+                env_file,
+                "--resume",
+                "--retry-preview",
+                replacements={"send_preview": assert_stored_target},
+            )
+
+    def test_resume_rejects_changed_env_file_before_issue_increment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            manifest, result_path, original_env = self.make_inputs(root, include_issue=True)
+            original_env.write_text("WECHAT_ORIGINAL_ISSUE=11\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "conflict"):
+                self.invoke(
+                    manifest,
+                    result_path,
+                    original_env,
+                    "--increment-original-issue",
+                )
+
+            other_env = root / "other.env"
+            other_env.write_text("WECHAT_ORIGINAL_ISSUE=9\n", encoding="utf-8")
+            before_original = original_env.read_bytes()
+            before_other = other_env.read_bytes()
+            with self.assertRaisesRegex(SystemExit, "env_file"):
+                self.invoke(manifest, result_path, other_env, "--resume")
+
+            self.assertEqual(original_env.read_bytes(), before_original)
+            self.assertEqual(other_env.read_bytes(), before_other)
+
     def test_draft_add_without_media_id_cannot_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             manifest, result_path, env_file = self.make_inputs(Path(tmp_dir))
@@ -297,6 +386,28 @@ class PublishWechatReceiptTest(unittest.TestCase):
             receipt = json.loads(result_path.read_text(encoding="utf-8"))
             self.assertEqual(receipt["status"], "unknown")
             self.assertEqual(receipt["operation_state"]["draft_add"]["state"], "unknown")
+
+    def test_new_run_refuses_to_overwrite_existing_journal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir))
+            old_receipt = {
+                "manifest": str(manifest.resolve()),
+                "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                "dry_run": False,
+                "account": {"selector": "", "alias": "", "name": ""},
+                "status": "success",
+                "operation_state": {"draft_add": {"requested": True, "state": "succeeded"}},
+                "last_error": None,
+                "draft_media_id": "old-media-id",
+            }
+            result_path.write_text(json.dumps(old_receipt, indent=2) + "\n", encoding="utf-8")
+            before = result_path.read_bytes()
+
+            with self.assertRaisesRegex(SystemExit, "--resume"):
+                self.invoke(manifest, result_path, env_file)
+
+            self.assertEqual(result_path.read_bytes(), before)
+            self.assertEqual(json.loads(result_path.read_text(encoding="utf-8"))["draft_media_id"], "old-media-id")
 
     def test_success_keeps_legacy_result_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -332,6 +443,17 @@ class PublishWechatReceiptTest(unittest.TestCase):
 
             self.assertEqual(destination.read_text(encoding="utf-8"), "previous\n")
             self.assertEqual(list(root.glob(".receipt.json.*.tmp")), [])
+
+    def test_atomic_write_json_accepts_generic_mapping(self) -> None:
+        atomic_files = importlib.import_module("atomic_files")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            destination = Path(tmp_dir) / "receipt.json"
+            atomic_files.atomic_write_json(destination, MappingProxyType({"title": "标题"}))
+
+            self.assertEqual(
+                json.loads(destination.read_text(encoding="utf-8")),
+                {"title": "标题"},
+            )
 
 
 if __name__ == "__main__":
