@@ -9,6 +9,7 @@
     const snapshot = options.snapshot || (() => ({}));
     const transport = options.transport || (() => Promise.resolve({saved:true}));
     let timer = null, mutation = 0, inFlight = null, pending = null, state = 'idle';
+    let serverRevision = Number(options.revision || 0);
     const emit = next => { state = next; if (options.onStateChange) options.onStateChange(next); };
     function cacheAndSchedule() {
       const value = snapshot(); mutation += 1;
@@ -27,13 +28,16 @@
     }
     function flush() {
       if (inFlight || !pending) return inFlight;
-      const item = pending; pending = null; inFlight = Promise.resolve(transport(item.value)).then(result => {
+      const item = pending; pending = null;
+      const request = Object.assign({}, item.value, {baseRevision: serverRevision});
+      inFlight = Promise.resolve(transport(request)).then(result => {
+        if (result && result.revision != null) serverRevision = Number(result.revision);
         if (item.id === mutation) emit('saved');
         return result;
       }).then(result => { if (!result || result.saved !== true) throw new Error('save failed'); return result; }).catch(error => { if (item.id === mutation) emit('error'); throw error; }).finally(() => { inFlight = null; if (pending) flush(); });
       return inFlight;
     }
-    return { cacheAndSchedule, saveNow, flush, getState: () => ({state, mutation, pending: !!pending, inFlight: !!inFlight}) };
+    return { cacheAndSchedule, saveNow, flush, setServerRevision: r => { serverRevision = Number(r || 0); }, getState: () => ({state, mutation, pending: !!pending, inFlight: !!inFlight, serverRevision}) };
   }
   global.createWorkbenchSaveController = createWorkbenchSaveController;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

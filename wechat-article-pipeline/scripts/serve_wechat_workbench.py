@@ -140,6 +140,7 @@ class WorkbenchDocument:
         self._state = self._load_state()
         self._manifest_thread = None
         self._manifest_pending = None
+        self._closed = False
 
     def _load_state(self):
         if self.journal.exists():
@@ -167,6 +168,7 @@ class WorkbenchDocument:
     def _persist(self): atomic_write_text(self.sidecar, json.dumps(self._state,ensure_ascii=False,indent=2))
 
     def _refresh_manifest(self, req: ManifestRefreshRequest) -> tuple[bool, str]:
+        if self._closed: return False, 'closed'
         if not req.job_snapshot.exists() or not req.env_file or not req.env_file.exists():
             with self._lock:
                 self._state['manifest']={'state':'not_configured','targetRevision':self._state.get('coreRevision',0)}; self._persist()
@@ -186,7 +188,7 @@ class WorkbenchDocument:
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
             with self._lock:
-                if req.revision != self._state.get('coreRevision'):
+                if self._closed or req.revision != self._state.get('coreRevision'):
                     candidate.unlink(missing_ok=True)
                     return False, 'stale-candidate'
                 try:
@@ -283,6 +285,8 @@ class WorkbenchDocument:
         }
 
     def close(self):
+        self._closed = True
+        self._manifest_pending = None
         if self._manifest_thread and self._manifest_thread.is_alive(): self._manifest_thread.join(timeout=1)
 
 
@@ -309,7 +313,8 @@ def make_handler(document: WorkbenchDocument):
                 return
             try:
                 host=self.headers.get('Host','')
-                if not (host.startswith('127.0.0.1:') or host.startswith('localhost:')): self.send_json(403,{"saved":False,"error":"invalid host"}); return
+                expected_host = f"{self.server.server_address[0]}:{self.server.server_address[1]}"
+                if host != expected_host: self.send_json(403,{"saved":False,"error":"invalid host"}); return
                 origin=self.headers.get('Origin')
                 expected=('http://127.0.0.1:'+str(self.server.server_address[1]),'http://localhost:'+str(self.server.server_address[1]))
                 if origin not in expected: self.send_json(403,{"saved":False,"error":"invalid origin"}); return
