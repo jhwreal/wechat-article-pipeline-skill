@@ -494,6 +494,9 @@
     const fontSize = document.getElementById('fontSize');
     const fontFamily = document.getElementById('fontFamily');
     const saveStatus = document.getElementById('saveStatus');
+    const articleStatus = document.getElementById('articleStatus');
+    const manifestStatus = document.getElementById('manifestStatus');
+    const assetsStatus = document.getElementById('assetsStatus');
     const lastSavedLabel = document.getElementById('lastSavedLabel');
     const wordCount = document.getElementById('wordCount');
     const lineCount = document.getElementById('lineCount');
@@ -946,12 +949,17 @@
         if (!response.ok) return false;
         const result = await response.json();
         if (!result.saved) throw new Error(result.error || 'save failed');
+        updateServerStatus(result);
         storageModeLabel.textContent = '自动保存：HTML 文件 + localStorage';
         saveStatus.textContent = '已写入 HTML';
         return true;
       } catch {
         return false;
       }
+    }
+    function updateServerStatus(status) {
+      manifestStatus.textContent = status.manifest_updated ? '发布清单已更新' : '发布清单待刷新';
+      assetsStatus.textContent = status.manifest_status === 'ok' ? '图片状态已检查' : '图片状态待检查';
     }
 
     function updatePreview(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
@@ -962,20 +970,6 @@
       lineCount.textContent = `${editor.value.split('\n').length} 行`;
       saveStatus.textContent = '编辑中…';
       syncAfterRender(preferredSource, editorAnchor);
-    }
-
-    function saveState() {
-      const data = {
-        markdown: editor.value,
-        themeColor: themeColor.value,
-        fontSize: fontSize.value,
-        fontFamily: fontFamily.value,
-        savedAt: new Date().toISOString()
-      };
-      const saved = safeSetStorage(STORAGE_KEY, JSON.stringify(data));
-      saveStatus.textContent = saved ? '已自动保存' : '已加载';
-      lastSavedLabel.textContent = `最近保存：${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-      saveStateToServer(data);
     }
 
     function scheduleSave() {
