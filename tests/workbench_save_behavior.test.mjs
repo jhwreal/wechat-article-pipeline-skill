@@ -24,3 +24,15 @@ test('manual save clears timer and later input arms a fresh timer', async () => 
 });
 
 test('initial controller creation does not schedule or save', () => { const h = harness(); h.tick(10000); assert.equal(h.writes.length,0); assert.equal(h.calls.length,0); });
+
+test('keeps only newest pending snapshot during an in-flight save', async () => {
+  let resolveFirst; const calls = []; const states = [];
+  const context = {setTimeout, clearTimeout}; vm.runInNewContext(source + '\nthis.createWorkbenchSaveController = createWorkbenchSaveController;', context);
+  let value = 0;
+  const transport = payload => { calls.push(payload); if (calls.length === 1) return new Promise(r => { resolveFirst = r; }); return Promise.resolve({saved:true}); };
+  const c = context.createWorkbenchSaveController({storage:{setItem(){}}, snapshot:()=>({value:++value}), transport, onStateChange:s=>states.push(s)});
+  c.cacheAndSchedule(); c.flush(); for (let i=0;i<20;i++) c.cacheAndSchedule();
+  assert.equal(calls.length, 1); assert.equal(c.getState().pending, true); resolveFirst({saved:true}); await Promise.resolve(); await Promise.resolve();
+  assert.notEqual(states.at(-1), 'saved'); await new Promise(r=>setTimeout(r,0)); await Promise.resolve();
+  assert.equal(calls.length, 2); assert.equal(calls[1].value, 21);
+});
