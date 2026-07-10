@@ -270,6 +270,7 @@ class WorkbenchDocument:
             snap=self.support_dir / f"{self.html_path.stem}.job.r{rev}.json"; atomic_write_text(snap, files.get(str(self.job_path), self.job_path.read_text() if self.job_path.exists() else "{}"))
             meta = self._manifest_meta
             env_file = Path(str(meta.get('env_file') or DEFAULT_ENV_FILE))
+            if not env_file.is_absolute(): env_file = (self.html_path.parent / env_file).resolve()
             account = (meta.get('account') or {}).get('selector') if isinstance(meta.get('account'), dict) else None
             slug = str(meta.get('article_slug') or self.html_path.stem)
             req=ManifestRefreshRequest(rev,snap,self.manifest_path, slug, env_file, account, source_state=self._state.get('source_state'))
@@ -313,6 +314,9 @@ def make_handler(document: WorkbenchDocument):
 
         def do_GET(self) -> None:
             if urlparse(self.path).path == STATUS_ENDPOINT:
+                host=self.headers.get('Host',''); port=str(self.server.server_address[1])
+                if host not in (f'localhost:{port}',f'127.0.0.1:{port}'):
+                    self.send_json(403, {'error':'invalid host'}); return
                 self.send_json(200, document.status())
                 return
             super().do_GET()
@@ -323,8 +327,8 @@ def make_handler(document: WorkbenchDocument):
                 return
             try:
                 host=self.headers.get('Host','')
-                expected_host = f"{self.server.server_address[0]}:{self.server.server_address[1]}"
-                if host != expected_host: self.send_json(403,{"saved":False,"error":"invalid host"}); return
+                port=str(self.server.server_address[1])
+                if host not in (f'localhost:{port}',f'127.0.0.1:{port}'): self.send_json(403,{"saved":False,"error":"invalid host"}); return
                 origin=self.headers.get('Origin')
                 expected=('http://127.0.0.1:'+str(self.server.server_address[1]),'http://localhost:'+str(self.server.server_address[1]))
                 if origin not in expected: self.send_json(403,{"saved":False,"error":"invalid origin"}); return
