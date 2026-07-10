@@ -409,6 +409,90 @@ class PublishWechatReceiptTest(unittest.TestCase):
             self.assertEqual(result_path.read_bytes(), before)
             self.assertEqual(json.loads(result_path.read_text(encoding="utf-8"))["draft_media_id"], "old-media-id")
 
+    def test_dry_run_refuses_to_overwrite_existing_journal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir))
+            old_receipt = {
+                "manifest": str(manifest.resolve()),
+                "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                "dry_run": False,
+                "account": {"selector": "", "alias": "", "name": ""},
+                "status": "success",
+                "operation_state": {"draft_add": {"requested": True, "state": "succeeded"}},
+                "last_error": None,
+                "draft_media_id": "old-media-id",
+            }
+            result_path.write_text(json.dumps(old_receipt, indent=2) + "\n", encoding="utf-8")
+            before = result_path.read_bytes()
+            argv = [
+                "publish_wechat_api.py",
+                str(manifest),
+                "--env-file",
+                str(env_file),
+                "--out",
+                str(result_path),
+            ]
+
+            with mock.patch.object(sys, "argv", argv):
+                with mock.patch.object(publisher, "request_json", side_effect=self.forbidden):
+                    with self.assertRaisesRegex(SystemExit, "--resume"):
+                        publisher.main()
+
+            self.assertEqual(result_path.read_bytes(), before)
+            self.assertEqual(json.loads(result_path.read_text(encoding="utf-8"))["draft_media_id"], "old-media-id")
+
+    def test_missing_preview_target_fails_before_draft_side_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir))
+            body_upload = mock.Mock(return_value=("<p>正文第一段。</p>", []))
+            cover_upload = mock.Mock(return_value=self.fake_upload_cover({}, ""))
+            draft_add = mock.Mock(return_value="media-123")
+
+            with self.assertRaisesRegex(SystemExit, "Preview account"):
+                self.invoke(
+                    manifest,
+                    result_path,
+                    env_file,
+                    "--send-preview",
+                    replacements={
+                        "upload_body_images": body_upload,
+                        "upload_cover": cover_upload,
+                        "create_draft": draft_add,
+                    },
+                )
+
+            body_upload.assert_not_called()
+            cover_upload.assert_not_called()
+            draft_add.assert_not_called()
+            self.assertFalse(result_path.exists())
+
+    def test_missing_increment_env_fails_before_draft_side_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            manifest, result_path, _env_file = self.make_inputs(root, include_issue=True)
+            missing_env = root / "missing.env"
+            body_upload = mock.Mock(return_value=("<p>正文第一段。</p>", []))
+            cover_upload = mock.Mock(return_value=self.fake_upload_cover({}, ""))
+            draft_add = mock.Mock(return_value="media-123")
+
+            with self.assertRaisesRegex(SystemExit, "env file"):
+                self.invoke(
+                    manifest,
+                    result_path,
+                    missing_env,
+                    "--increment-original-issue",
+                    replacements={
+                        "upload_body_images": body_upload,
+                        "upload_cover": cover_upload,
+                        "create_draft": draft_add,
+                    },
+                )
+
+            body_upload.assert_not_called()
+            cover_upload.assert_not_called()
+            draft_add.assert_not_called()
+            self.assertFalse(result_path.exists())
+
     def test_success_keeps_legacy_result_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             manifest, result_path, env_file = self.make_inputs(Path(tmp_dir), include_issue=True)

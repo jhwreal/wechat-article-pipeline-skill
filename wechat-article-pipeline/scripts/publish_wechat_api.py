@@ -768,6 +768,18 @@ def bind_side_effect_parameters(
         }
 
 
+def validate_new_run_side_effect_parameters(
+    args: argparse.Namespace,
+    manifest: dict[str, Any],
+    account: dict[str, str],
+    env_file: Path | None,
+) -> None:
+    if args.send_preview and not normalize_preview_target(args, manifest, account)["value"]:
+        raise SystemExit("Preview account is empty. Pass --preview-account or set manifest.preview.account.")
+    if args.increment_original_issue and (env_file is None or not env_file.expanduser().is_file()):
+        raise SystemExit("Cannot increment original issue: the resolved env file is missing.")
+
+
 def validate_resume_side_effect_parameters(
     run: dict[str, Any],
     args: argparse.Namespace,
@@ -983,6 +995,7 @@ def create_publish_run(
     content_html: str,
     validation: dict[str, Any],
 ) -> dict[str, Any]:
+    validate_new_run_side_effect_parameters(args, manifest, account, env_file)
     run = run_state.new_publish_run(
         base_result,
         manifest_sha256=manifest_fingerprint(args.manifest),
@@ -1070,7 +1083,7 @@ def main() -> None:
     dry_run = validate_execution_mode(args)
     args.manifest = args.manifest.expanduser().resolve()
     out = (args.out or args.manifest.with_suffix(".wechat-api-result.json")).expanduser().resolve()
-    if not dry_run and not args.resume and is_publish_journal(out):
+    if not args.resume and is_publish_journal(out):
         raise SystemExit(
             f"Refusing to overwrite existing publish receipt: {out}. Use --resume or choose a different --out path."
         )
