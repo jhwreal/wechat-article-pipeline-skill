@@ -201,9 +201,11 @@ class SkillP1ContractTest(unittest.TestCase):
             mode="no-image",
         )
 
-        self.assertEqual(payload["jobs"], [])
-        self.assertEqual(payload["image_slots"], [])
-        self.assertEqual(payload["visual_mode"], "no_image")
+        self.assertEqual(payload["kind"], "wechat-image-jobs")
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["slots"], [])
+        self.assertEqual(payload["generation_queue"], [])
+        self.assertEqual(payload["article"]["visual_mode"], "no_image")
 
     def test_image_jobs_fast_mode_caps_body_images(self) -> None:
         markdown = (
@@ -224,20 +226,18 @@ class SkillP1ContractTest(unittest.TestCase):
             max_body_images=1,
         )
 
-        self.assertEqual([job["name"] for job in payload["jobs"]], ["cover", "body-1", "closing"])
+        self.assertEqual([job["name"] for job in payload["slots"]], ["cover", "body-1", "closing"])
 
     def test_image_jobs_missing_only_filters_generation_queue(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             images_dir = Path(tmp_dir)
             (images_dir / "cover.png").write_bytes(b"ok")
             payload = {
-                "jobs": [{"name": "cover"}, {"name": "body-1"}],
-                "image_slots": [{"name": "cover"}, {"name": "body-1"}],
+                "slots": [{"name": "cover", "output":"cover.png"}, {"name": "body-1", "output":"body-1.png"}],
                 "generation_queue": [
-                    {"slot": "cover", "id": "01"},
-                    {"slot": "body-1", "id": "02"},
+                    {"slot": "cover", "output": "cover.png", "generation_prompt": "cover"},
+                    {"slot": "body-1", "output": "body-1.png", "generation_prompt": "body"},
                 ],
-                "image_plan": {"image_slots": [{"name": "cover"}, {"name": "body-1"}]},
             }
 
             filtered = image_jobs.filter_missing_jobs(payload, images_dir)
@@ -262,17 +262,14 @@ class SkillP1ContractTest(unittest.TestCase):
 
         queue = payload["generation_queue"]
         self.assertEqual(len(queue), 3)
-        self.assertEqual([item["id"] for item in queue], ["01", "02", "03"])
+        self.assertEqual([item["slot"] for item in queue], ["cover", "body-1", "closing"])
         self.assertEqual([item["output"] for item in queue], ["cover.png", "body-1.png", "closing.png"])
-        self.assertEqual(payload["jobs"][0]["generation_task"]["id"], "01")
-        self.assertEqual(payload["jobs"][0]["generation_task"]["output"], "cover.png")
-        self.assertNotIn("variants", payload["jobs"][0])
+        self.assertEqual(payload["generation_queue"][0]["output"], "cover.png")
+        self.assertNotIn("variants", payload["slots"][0])
         self.assertNotIn("candidate_output", payload["generation_queue"][0])
         self.assertNotIn("review_contract", payload["generation_queue"][0])
-        self.assertIn("material_name", payload["jobs"][0]["generation_task"])
-        self.assertIn("01", payload["image_plan_markdown"])
-        self.assertNotIn("01A", payload["image_plan_markdown"])
-        self.assertNotIn("01B", payload["image_plan_markdown"])
+        self.assertNotIn("generation_prompt", payload["slots"][0])
+        self.assertEqual(set(payload["generation_queue"][0]), {"slot", "output", "generation_prompt"})
 
     def test_image_jobs_split_short_generation_prompt_from_review_contract(self) -> None:
         markdown = (
@@ -292,41 +289,34 @@ class SkillP1ContractTest(unittest.TestCase):
             min_body_chars=120,
         )
 
-        for job in payload["jobs"]:
-            self.assertIn("generation_prompt", job)
-            self.assertIn("review_contract", job)
-            self.assertEqual(job["prompt"], job["generation_prompt"])
-            self.assertIn("视觉类型", job["generation_prompt"])
-            self.assertIn("文字预算", job["generation_prompt"])
-            self.assertIn("质感要求", job["generation_prompt"])
-            self.assertIn("高端中文杂志", job["generation_prompt"])
-            self.assertIn("光线方向", job["generation_prompt"])
-            self.assertIn("材质", job["generation_prompt"])
-            self.assertIn("手机窄屏", job["generation_prompt"])
-            self.assertIn("硬性限制", job["generation_prompt"])
-            self.assertNotIn("generic wallpaper", job["generation_prompt"])
-            self.assertNotIn("官网链接", job["generation_prompt"])
-            self.assertIn("selection_criteria", job["review_contract"])
-            self.assertIn("must_include", job["review_contract"])
-            self.assertIn("quality_gate", job["review_contract"])
-            self.assertIn("must_avoid", job["review_contract"])
-            self.assertIn("visual_type", job["review_contract"])
-            self.assertIn("text_budget", job["review_contract"])
-            self.assertIn("quality_floor", job["review_contract"])
+        for job in payload["slots"]:
+            self.assertNotIn("generation_prompt", job)
+            self.assertNotIn("review_contract", job)
+            self.assertIn("must_include", job)
+            self.assertIn("quality_gate", job)
 
-        cover = next(job for job in payload["jobs"] if job["name"] == "cover")
-        body = next(job for job in payload["jobs"] if job["name"] == "body-1")
-        closing = next(job for job in payload["jobs"] if job["name"] == "closing")
-        self.assertIn("钩子", cover["generation_prompt"])
-        self.assertIn("读者", body["generation_prompt"])
-        self.assertNotIn("正文图优先", cover["generation_prompt"])
-        self.assertRegex(closing["generation_prompt"], r"余韵|象征")
-        self.assertNotIn("正文图优先", closing["generation_prompt"])
+        prompts = {item["slot"]: item["generation_prompt"] for item in payload["generation_queue"]}
+        for prompt in prompts.values():
+            self.assertIn("视觉类型", prompt)
+            self.assertIn("文字预算", prompt)
+            self.assertIn("质感要求", prompt)
+            self.assertNotIn("generic wallpaper", prompt)
+            self.assertNotIn("官网链接", prompt)
+
+        cover = next(job for job in payload["slots"] if job["name"] == "cover")
+        body = next(job for job in payload["slots"] if job["name"] == "body-1")
+        closing = next(job for job in payload["slots"] if job["name"] == "closing")
+        prompts = {item["slot"]: item["generation_prompt"] for item in payload["generation_queue"]}
+        self.assertIn("钩子", prompts["cover"])
+        self.assertIn("读者", prompts["body-1"])
+        self.assertNotIn("正文图优先", prompts["cover"])
+        self.assertRegex(prompts["closing"], r"余韵|象征")
+        self.assertNotIn("正文图优先", prompts["closing"])
 
         for item in payload["generation_queue"]:
             self.assertIn("generation_prompt", item)
             self.assertNotIn("review_contract", item)
-            self.assertEqual(item["prompt"], item["generation_prompt"])
+            self.assertEqual(set(item), {"slot", "output", "generation_prompt"})
 
     def test_image_jobs_do_not_emit_candidate_variants(self) -> None:
         markdown = (
@@ -346,14 +336,11 @@ class SkillP1ContractTest(unittest.TestCase):
             min_body_chars=120,
         )
 
-        for job in payload["jobs"]:
+        for job in payload["slots"]:
             self.assertNotIn("variants", job)
-            task = job["generation_task"]
-            self.assertEqual(task["generation_prompt"], job["generation_prompt"])
-            self.assertEqual(task["prompt"], task["generation_prompt"])
-            self.assertEqual(task["output"], job["output"])
-            self.assertNotIn("review_contract", task)
-            self.assertIn("直接生成", task["direction"])
+            self.assertNotIn("generation_prompt", job)
+        for item in payload["generation_queue"]:
+            self.assertIn("generation_prompt", item)
 
     def test_image_rules_are_single_source_and_include_prompt_guardrails(self) -> None:
         rules_path = SKILL_DIR / "references" / "image-rules.json"
@@ -398,24 +385,12 @@ class SkillP1ContractTest(unittest.TestCase):
             min_body_chars=120,
         )
 
-        expected_avoids = payload["image_rules"]["avoid_rules"]
-        self.assertEqual(payload["image_rules"]["avoid_rules"], expected_avoids)
-        self.assertIn("## 当前生图规则", payload["image_rules_markdown"])
-        self.assertIn("## 当前避免规则", payload["image_rules_markdown"])
-        self.assertIn("## 当前文字预算", payload["image_rules_markdown"])
-        self.assertIn("## 当前视觉类型", payload["image_rules_markdown"])
-        self.assertIn("## 当前质感要求", payload["image_rules_markdown"])
-        self.assertIn("## 当前生成硬限制", payload["image_rules_markdown"])
-        self.assertIn("## 影响生成图片的规则", payload["image_rules_markdown"])
+        expected_avoids = payload["review_defaults"]["must_avoid"]
+        self.assertIn("must_avoid", payload["review_defaults"])
+        self.assertIn("quality_floor", payload["review_defaults"])
 
-        for job in payload["jobs"]:
-            self.assertEqual(job["must_avoid"], expected_avoids)
-            self.assertEqual(job["review_contract"]["must_avoid"], expected_avoids)
-            self.assertIn("小字墙", job["generation_prompt"])
-            self.assertIn("PPT", job["generation_prompt"])
-            self.assertNotIn("generic wallpaper", job["generation_prompt"])
-            self.assertTrue(any("generic wallpaper" in rule for rule in job["review_contract"]["must_avoid"]))
-            self.assertIn("text_budget", job)
+        for job in payload["slots"]:
+            self.assertNotIn("generation_prompt", job)
             self.assertIn("visual_type", job)
 
         for item in payload["generation_queue"]:
@@ -426,7 +401,7 @@ class SkillP1ContractTest(unittest.TestCase):
 
         self.assertIn("image-production.md", skill_md)
         self.assertIn("single-pass", skill_md)
-        self.assertIn("4 image worker subagents", skill_md)
+        self.assertIn("currently available worker slots", skill_md)
         self.assertNotIn("two candidates", skill_md)
 
     def test_skill_draft_creation_advances_original_issue(self) -> None:

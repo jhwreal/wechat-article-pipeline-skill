@@ -1,12 +1,12 @@
 {
-  "version": 5,
+  "version": 6,
   "print_before_generation": false,
   "generation_rules": [
     "先一次性生成全部单次直出提示词，再按 generation_queue[] 执行。",
     "每个图片位置默认只生成 1 张图，不做 A/B 候选、不做默认评审。",
-    "最多同时使用 4 个 image worker subagents 生图；图片更多时保持 4 个并发，任一完成后再启动下一张。",
+    "按当前可用 worker 槽位动态并发：同时运行 min(待生成图片数, 当前可用槽位数) 个 image worker；任一完成后立即补充下一张。",
     "generation_queue[] 只保留执行必需字段；只把 generation_prompt 发送给生图模型，review_contract 不进入 worker 任务，只在用户要求重生或返工时参考。",
-    "生成图直接保存为 jobs[].output：cover.png、body-*.png 或 closing.png。"
+    "生成图直接保存为 canonical slots[].output：cover.png、body-*.png 或 closing.png。"
   ],
   "avoid_rules": [
     "不要 PPT 信息卡、课件页、深色卡片堆叠、营销海报或大字报。",

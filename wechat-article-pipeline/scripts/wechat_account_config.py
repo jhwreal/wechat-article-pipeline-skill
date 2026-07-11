@@ -1,14 +1,38 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
+import os
 import re
 from pathlib import Path
+from typing import Iterator
+
+from atomic_files import atomic_write_text
 
 
 ACCOUNT_FIELD_RE = re.compile(
     r"^WECHAT_ACCOUNT_([A-Z0-9_]+?)_(SIGNATURE_AUTHOR|ORIGINAL_ISSUE|PREVIEW_ACCOUNT|APPSECRET|APPID|AUTHOR|NAME)$"
 )
+
+
+def env_lock_path(path: Path) -> Path:
+    path = path.expanduser()
+    return path.with_name(path.name + ".lock")
+
+
+@contextlib.contextmanager
+def env_file_lock(path: Path) -> Iterator[None]:
+    lock_path = env_lock_path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(fd, "a+b") as lock_handle:
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
 
 
 def read_env_file(path: Path | None) -> dict[str, str]:
@@ -32,6 +56,11 @@ def read_env_file(path: Path | None) -> dict[str, str]:
 
 def write_env_value(path: Path, key: str, value: str) -> None:
     path = path.expanduser()
+    with env_file_lock(path):
+        _write_env_value_unlocked(path, key, value)
+
+
+def _write_env_value_unlocked(path: Path, key: str, value: str) -> None:
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     output: list[str] = []
     replaced = False
@@ -45,8 +74,49 @@ def write_env_value(path: Path, key: str, value: str) -> None:
         if output and output[-1].strip():
             output.append("")
         output.append(f"{key}={value}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(output) + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(output) + "\n")
+
+
+def compare_and_set_env_value(path: Path, key: str, expected: str, value: str) -> str:
+    path = path.expanduser()
+    with env_file_lock(path):
+        return _compare_and_set_env_value_unlocked(path, key, expected, value)
+
+
+def _compare_and_set_env_value_unlocked(path: Path, key: str, expected: str, value: str) -> str:
+    if not path.exists():
+        raise ValueError(f"Environment value conflict for {key}: file does not exist: {path}")
+
+    original = path.read_bytes().decode("utf-8")
+    lines = original.splitlines(keepends=True)
+    matching_indexes: list[int] = []
+    current_values: set[str] = set()
+    for index, line in enumerate(lines):
+        content = line.rstrip("\r\n")
+        if "=" not in content:
+            continue
+        candidate_key, candidate_value = content.split("=", 1)
+        if candidate_key.strip() != key:
+            continue
+        matching_indexes.append(index)
+        current_values.add(candidate_value.strip().strip('"').strip("'"))
+
+    if not matching_indexes:
+        raise ValueError(f"Environment value conflict for {key}: key is missing")
+    if current_values == {value}:
+        return "already_applied"
+    if current_values != {expected}:
+        current = ", ".join(sorted(current_values))
+        raise ValueError(
+            f"Environment value conflict for {key}: expected {expected!r} or {value!r}, found {current!r}"
+        )
+
+    for index in matching_indexes:
+        line = lines[index]
+        ending = line[len(line.rstrip("\r\n")) :]
+        lines[index] = f"{key}={value}{ending}"
+    atomic_write_text(path, "".join(lines))
+    return "updated"
 
 
 def normalize_account_alias(alias: str) -> str:

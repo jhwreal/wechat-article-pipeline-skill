@@ -415,6 +415,7 @@
         <option value="18">18px</option>
       </select>
       <input id="themeColor" class="color" type="color" value="#17b394" title="主题色" />
+      <button id="saveArticle" class="btn">保存</button>
       <button id="copyWechat" class="btn primary">复制富文本</button>
     </div>
   </div>
@@ -433,6 +434,7 @@
       <div class="statusbar">
         <div class="status-left">
           <span><span class="dot"></span><span id="saveStatus">已就绪</span></span>
+          <span id="articleStatus">正文已保存</span><span id="manifestStatus">发布清单更新中</span><span id="assetsStatus">图片待复核</span>
           <span id="wordCount">0 字</span>
           <span id="lineCount">0 行</span>
         </div>
@@ -472,27 +474,18 @@
   </div>
 
   <!-- CLIPBOARD_ASSETS_SCRIPT -->
+  <script type="application/json" id="wechat-bootstrap">{{BOOTSTRAP_JSON}}</script>
+  <script>{{SAVE_CONTROLLER_JS}}</script>
   <script>
     window.WECHAT_CLIPBOARD_IMAGE_DATA = window.WECHAT_CLIPBOARD_IMAGE_DATA || {};
 
-    const DEFAULT_MARKDOWN = `# 探索 Markdown 的奇妙世界
+    const BOOTSTRAP = JSON.parse(document.getElementById('wechat-bootstrap').textContent);
+    const DEFAULT_MARKDOWN = BOOTSTRAP.markdown;
 
-欢迎来到 Markdown 的奇妙世界！无论你是写作爱好者、开发者、博主，还是想要简单记录点什么的人，Markdown 都能成为你新的好伙伴。
-
-Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简单、直观的语法而著称，可以快速地生成 HTML。
-
-## Markdown 基础语法
-
-### 1. 标题：让你的内容层次分明
-
-用 # 号来创建标题。标题从 # 开始，# 的数量表示标题的级别。
-
-#### h4 示例`;
-
-    const ARTICLE_METADATA = {};
-    const ARTICLE_SIGNATURE = {};
-    const STORAGE_KEY = 'wechat-md-workbench-template-v10';
-    const DEFAULT_WORKBENCH_STATE = {"themeColor":"#17b394","fontSize":"16","fontFamily":"-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Microsoft YaHei\", sans-serif"};
+    const ARTICLE_METADATA = BOOTSTRAP.metadata || {};
+    const ARTICLE_SIGNATURE = BOOTSTRAP.signature || {};
+    const STORAGE_KEY = BOOTSTRAP.storageKey;
+    const DEFAULT_WORKBENCH_STATE = BOOTSTRAP.workbenchState || {};
     const WORKBENCH_SAVE_ENDPOINT = '/__wechat_workbench/save';
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
@@ -501,12 +494,15 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     const fontSize = document.getElementById('fontSize');
     const fontFamily = document.getElementById('fontFamily');
     const saveStatus = document.getElementById('saveStatus');
+    const articleStatus = document.getElementById('articleStatus');
+    const manifestStatus = document.getElementById('manifestStatus');
+    const assetsStatus = document.getElementById('assetsStatus');
     const lastSavedLabel = document.getElementById('lastSavedLabel');
     const wordCount = document.getElementById('wordCount');
     const lineCount = document.getElementById('lineCount');
     const storageModeLabel = document.getElementById('storageModeLabel');
 
-    let saveTimer = null;
+    let initializing = true;
     let activeScrollSource = null;
     let scrollReleaseTimer = null;
     let caretSyncFrame = null;
@@ -947,18 +943,28 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       try {
         const response = await fetch(WORKBENCH_SAVE_ENDPOINT, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          headers: { 'Content-Type': 'application/json', 'X-Workbench-Token': window.__workbenchToken || '' },
+          body: JSON.stringify(Object.assign({}, data, {baseRevision: window.__workbenchRevision || 0, clientMutationId: 'client-' + Date.now()}))
         });
+        if (response.status === 409) { const latest = await response.json(); window.__workbenchRevision = latest.coreRevision || window.__workbenchRevision; return false; }
         if (!response.ok) return false;
         const result = await response.json();
-        if (!result.saved) return false;
+        if (!result.saved) throw new Error(result.error || 'save failed');
+        window.__workbenchRevision = result.revision || window.__workbenchRevision;
+        if (window.workbenchSaveController && window.workbenchSaveController.setServerRevision) window.workbenchSaveController.setServerRevision(window.__workbenchRevision);
+        updateServerStatus(result);
         storageModeLabel.textContent = '自动保存：HTML 文件 + localStorage';
         saveStatus.textContent = '已写入 HTML';
-        return true;
+        return result;
       } catch {
         return false;
       }
+    }
+    async function handshakeWorkbench() { if (!isLoopbackServer()) return; try { const r = await fetch('/__wechat_workbench/status'); if (!r.ok) throw new Error(); const s = await r.json(); window.__workbenchToken=s.token; window.__workbenchRevision=s.coreRevision||0; } catch (_) { window.__workbenchToken=null; } }
+    handshakeWorkbench();
+    function updateServerStatus(status) {
+      manifestStatus.textContent = status.manifest_updated ? '发布清单已更新' : '发布清单待刷新';
+      assetsStatus.textContent = status.manifest_status === 'ok' ? '图片状态已检查' : '图片状态待检查';
     }
 
     function updatePreview(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
@@ -971,31 +977,29 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
       syncAfterRender(preferredSource, editorAnchor);
     }
 
-    function saveState() {
-      const data = {
-        markdown: editor.value,
-        themeColor: themeColor.value,
-        fontSize: fontSize.value,
-        fontFamily: fontFamily.value,
-        savedAt: new Date().toISOString()
-      };
-      const saved = safeSetStorage(STORAGE_KEY, JSON.stringify(data));
-      saveStatus.textContent = saved ? '已自动保存' : '已加载';
-      lastSavedLabel.textContent = `最近保存：${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-      saveStateToServer(data);
-    }
-
     function scheduleSave() {
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(saveState, 500);
+      if (window.workbenchSaveController) window.workbenchSaveController.cacheAndSchedule();
     }
 
     function applySettings() {
       document.documentElement.style.setProperty('--primary', themeColor.value);
       document.documentElement.style.setProperty('--preview-font', fontFamily.value);
       updatePreview(activeScrollSource || 'editor');
-      scheduleSave();
+      if (!initializing) scheduleSave();
     }
+
+    window.workbenchSaveController = createWorkbenchSaveController({
+      storage: localStorage,
+      storageKey: STORAGE_KEY,
+      snapshot: () => ({ markdown: editor.value, themeColor: themeColor.value, fontSize: fontSize.value, fontFamily: fontFamily.value, savedAt: new Date().toISOString() }),
+      transport: data => saveStateToServer(data),
+      onStateChange: state => {
+        const labels = {cached:'已缓存到本机', saving:'正在保存正文…', saved:'正文已保存', error:'保存失败'};
+        if (labels[state]) { saveStatus.textContent = labels[state]; articleStatus.textContent = labels[state]; }
+        if (state === 'saved') lastSavedLabel.textContent = `最近保存：${new Date().toLocaleTimeString('zh-CN')}`;
+      }
+    });
+    document.getElementById('saveArticle').addEventListener('click', () => window.workbenchSaveController.saveNow());
 
     function loadState() {
       const raw = safeGetStorage(STORAGE_KEY);
@@ -1243,6 +1247,7 @@ Markdown 是一种轻量级标记语言，用于格式化纯文本。它以简�
     loadState();
     applySettings();
     updatePreview('editor');
+    initializing = false;
     saveStatus.textContent = '已加载';
   </script>
 </body>

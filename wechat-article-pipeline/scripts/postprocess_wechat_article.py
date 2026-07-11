@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from image_jobs_contract import normalize_image_jobs, filter_missing_image_jobs as contract_filter, render_image_plan_markdown
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -104,12 +105,12 @@ def existing_image(images_dir: Path, name: str) -> Path | None:
 
 def assert_images_ready(jobs_path: Path, images_dir: Path) -> None:
     plan = json.loads(jobs_path.read_text(encoding="utf-8"))
-    jobs = plan.get("jobs") or plan.get("image_slots") or []
+    plan = normalize_image_jobs(plan)
+    jobs = plan.get("slots", [])
     missing: list[str] = []
     for job in jobs:
-        name = str(job.get("name") or "").strip()
-        if name and not existing_image(images_dir, name):
-            missing.append(name)
+        output = str(job.get("output") or "").strip()
+        if output and not existing_image(images_dir, Path(output).stem): missing.append(output)
     if missing:
         image_dir_text = str(images_dir)
         names = ", ".join(missing)
@@ -121,7 +122,8 @@ def assert_images_ready(jobs_path: Path, images_dir: Path) -> None:
 
 def filter_jobs_for_missing_images(payload: dict, images_dir: Path) -> dict:
     result = copy.deepcopy(payload)
-    jobs = [job for job in result.get("jobs", []) if not existing_image(images_dir, str(job.get("name", "")).strip())]
+    result = contract_filter(result, lambda output: existing_image(images_dir, Path(output).stem) is not None)
+    jobs = result.get("slots", [])
     missing_names = {str(job.get("name", "")).strip() for job in jobs}
     result["jobs"] = jobs
     if isinstance(result.get("image_slots"), list):

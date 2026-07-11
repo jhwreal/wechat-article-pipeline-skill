@@ -116,6 +116,16 @@ class WorkbenchDocumentTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.WorkbenchDocument(html_path=outside_html, workspace=workspace)
 
+    def test_staged_transaction_replays_on_startup(self):
+        module = load_server_module()
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); html=root/'a.html'; html.write_text('old', encoding='utf-8')
+            support=root/'support'; staged=support/'.txn/1/a.html'; staged.parent.mkdir(parents=True)
+            staged.write_text('new', encoding='utf-8'); import hashlib, json
+            (support/'a.transaction.json').write_text(json.dumps({'revision':1,'files':[{'target':str(html),'staged':str(staged),'hash':hashlib.sha256(b'new').hexdigest()}]}), encoding='utf-8')
+            doc=module.WorkbenchDocument(html, root)
+            self.assertEqual(html.read_text(), 'new'); self.assertFalse((support/'a.transaction.json').exists())
+
 
 if __name__ == "__main__":
     unittest.main()

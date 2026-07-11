@@ -37,6 +37,7 @@ article.md
 !examples/*.html
 
 # Local Codex build/test artifacts
+.superpowers/
 .codex-skill-build*/
 .codex-skill-build.*
 test-runs/

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import unicodedata
@@ -1185,36 +1186,27 @@ def empty_image_payload(article_path: Path, article_slug: str, markdown: str) ->
     text_entries = [entry for entry in entries if entry["kind"] == "text"]
     article_summary = build_article_summary(title, text_entries) if text_entries else ""
     rules = load_image_rules()
+    rules_bytes = json.dumps(rules, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return {
-        "article_slug": article_slug,
-        "article_title": title,
-        "article_type": detect_article_type(title, text_entries) if text_entries else "general",
-        "visual_mode": "no_image",
-        "visual_intent": "none",
-        "article_summary": article_summary,
-        "article_essence": build_article_essence(title, text_entries) if text_entries else "",
-        "global_visual_style": "",
-        "source_article": str(article_path.resolve()),
-        "image_plan": {
-            "article_title": title,
-            "article_summary": article_summary,
-            "article_type": detect_article_type(title, text_entries) if text_entries else "general",
+        "kind": "wechat-image-jobs",
+        "schema_version": 2,
+        "article": {
+            "slug": article_slug,
+            "title": title,
+            "type": detect_article_type(title, text_entries) if text_entries else "general",
             "visual_mode": "no_image",
             "visual_intent": "none",
-            "global_visual_style": "",
-            "image_slots": [],
+            "summary": article_summary,
+            "essence": build_article_essence(title, text_entries) if text_entries else "",
+            "source": str(article_path.resolve()),
         },
-        "image_plan_markdown": "## 图片策划表\n\n- 当前模式：no-image\n",
-        "image_rules": rules,
-        "image_rules_markdown": image_rules_markdown(rules),
-        "image_slots": [],
-        "image_execution": {
-            "mode": "no_image",
-            "max_parallel_subagents": 0,
-            "review_policy": "none",
+        "rules": {"version": rules.get("version"), "sha256": hashlib.sha256(rules_bytes).hexdigest()},
+        "review_defaults": {
+            "must_avoid": list(rules.get("avoid_rules", [])),
+            "quality_floor": list(rules.get("quality_floor_rules", [])),
         },
+        "slots": [],
         "generation_queue": [],
-        "jobs": [],
     }
 
 
@@ -1435,9 +1427,21 @@ def build_jobs(
     }
     image_plan_markdown = build_plan_markdown(article_summary, global_visual_style, visual_intent, visual_mode, slots)
 
-    return {
-        "article_slug": article_slug,
-        "article_title": title,
+    # Canonical v2 contract: compatibility copies are intentionally omitted.
+    from image_jobs_contract import normalize_image_jobs
+    article_record = {"slug": article_slug, "title": title, "type": article_type}
+    canonical_slots = []
+    prompts = []
+    for slot in slots:
+        item = {k: slot[k] for k in ("index", "name") if k in slot}
+        item["output"] = slot.get("output") or f"{slot['name']}.png"
+        for k in ("position","role","image_type","target_effect","local_context","source_context","content_focus","visual_distance","composition","emotional_tone","abstraction_level","information_density","visual_type","text_budget","purpose","must_include","quality_gate","variation_note","selection_criteria"):
+            if k in slot: item[k] = slot[k]
+        canonical_slots.append(item); prompts.append(slot.get("generation_prompt") or slot.get("prompt") or "")
+    return normalize_image_jobs({"kind":"wechat-image-jobs", "schema_version":2, "article":article_record,
+        "rules":{"version":rules.get("version"), "sha256":""}, "review_defaults":{"must_avoid":rules.get("must_avoid",[]), "quality_floor":rules.get("quality_floor",[])},
+        "slots":canonical_slots, "generation_queue":[{"slot":s["name"],"output":s["output"],"generation_prompt":p} for s,p in zip(canonical_slots,prompts)]})
+    """
         "article_type": article_type,
         "visual_mode": visual_mode,
         "visual_intent": visual_intent,
@@ -1460,9 +1464,15 @@ def build_jobs(
         "generation_queue": generation_queue,
         "jobs": slots,
     }
+    """
 
 
 def existing_image(images_dir: Path, name: str) -> bool:
+    exact = images_dir / name
+    if exact.exists():
+        return True
+    if Path(name).suffix:
+        return False
     for suffix in (".png", ".jpg", ".jpeg", ".webp"):
         if (images_dir / f"{name}{suffix}").exists():
             return True
@@ -1470,27 +1480,8 @@ def existing_image(images_dir: Path, name: str) -> bool:
 
 
 def filter_missing_jobs(payload: dict[str, Any], images_dir: Path) -> dict[str, Any]:
-    jobs = [job for job in payload.get("jobs", []) if not existing_image(images_dir, str(job.get("name", "")).strip())]
-    missing_names = {str(job.get("name", "")).strip() for job in jobs}
-    payload["jobs"] = jobs
-    payload["image_slots"] = [
-        slot
-        for slot in payload.get("image_slots", [])
-        if str(slot.get("name", "")).strip() in missing_names
-    ]
-    payload["generation_queue"] = [
-        item
-        for item in payload.get("generation_queue", [])
-        if str(item.get("slot", "")).strip() in missing_names
-    ]
-    image_plan = payload.get("image_plan")
-    if isinstance(image_plan, dict):
-        image_plan["image_slots"] = [
-            slot
-            for slot in image_plan.get("image_slots", [])
-            if str(slot.get("name", "")).strip() in missing_names
-        ]
-    return payload
+    from image_jobs_contract import filter_missing_image_jobs, normalize_image_jobs
+    return filter_missing_image_jobs(normalize_image_jobs(payload), lambda output: existing_image(images_dir, output))
 
 
 def main() -> None:
@@ -1515,8 +1506,9 @@ def main() -> None:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Wrote {args.out.resolve()}")
-    if args.debug_plan and payload.get("image_plan_markdown"):
-        print(payload["image_plan_markdown"])
+    if args.debug_plan:
+        from image_jobs_contract import render_image_plan_markdown
+        print(render_image_plan_markdown(payload))
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import publish_wechat_api as publisher
+from image_jobs_contract import normalize_image_jobs
 
 
 VISUAL_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
@@ -77,10 +78,15 @@ def verify_image_jobs(report: dict[str, Any], image_jobs_path: Path | None, imag
     add_check(report, "image_jobs_exists", True, str(image_jobs_path))
     if not images_dir:
         return
-    payload = read_json(image_jobs_path)
+    try:
+        payload = normalize_image_jobs(read_json(image_jobs_path))
+    except ValueError as exc:
+        add_check(report, "image_jobs_valid", False, str(exc))
+        return
+    add_check(report, "image_jobs_valid", True, "canonical v2")
     missing: list[str] = []
-    for job in payload.get("jobs", []):
-        output = str(job.get("output") or f"{job.get('name', '')}.png").strip()
+    for job in payload.get("slots", []):
+        output = str(job.get("output", "")).strip()
         if output and not existing_image(images_dir, output):
             missing.append(output)
     add_check(report, "image_jobs_outputs_exist", not missing, ", ".join(missing))

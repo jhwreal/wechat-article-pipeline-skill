@@ -15,6 +15,7 @@ from urllib.parse import unquote_to_bytes
 
 DEFAULT_TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "templates" / "wechat-md-workbench.template.v3.html"
 PLACEHOLDER_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
+BOOTSTRAP_RE = re.compile(r'<script[^>]+id=["\']wechat-bootstrap["\'][^>]*>(.*?)</script>', re.S | re.I)
 FRONT_MATTER_RE = re.compile(r"\A---[ \t]*\n(?P<body>.*?)[ \t]*\n---[ \t]*(?:\n|$)", re.S)
 
 
@@ -40,6 +41,27 @@ def parse_args() -> argparse.Namespace:
 
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+def html_safe_json(value: Any) -> str:
+    return (json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+def read_bootstrap(html_text: str) -> dict[str, Any]:
+    matches = BOOTSTRAP_RE.findall(html_text)
+    if len(matches) == 1: return json.loads(matches[0])
+    def grab(pattern, default):
+        m = re.search(pattern, html_text, re.S)
+        return json.loads(m.group(1)) if m else default
+    return {"markdown": grab(r"const DEFAULT_MARKDOWN = `([\s\S]*?)`;", ""), "metadata": grab(r"const ARTICLE_METADATA = (.*?);", {}), "signature": grab(r"const ARTICLE_SIGNATURE = (.*?);", {}), "storageKey": grab(r"const STORAGE_KEY = (.*?);", "wechat-md-workbench-generated"), "workbenchState": grab(r"const DEFAULT_WORKBENCH_STATE = (.*?);", {})}
+
+def replace_bootstrap(html_text: str, updates: dict[str, Any]) -> str:
+    matches = list(BOOTSTRAP_RE.finditer(html_text))
+    if len(matches) > 1: raise ValueError("duplicate wechat-bootstrap nodes")
+    if len(matches) == 1:
+        current = json.loads(matches[0].group(1)); current.update(updates)
+        return html_text[:matches[0].start(1)] + html_safe_json(current) + html_text[matches[0].end(1):]
+    return html_text
 
 
 def escape_for_js_template(text: str) -> str:
@@ -258,12 +280,7 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     html_text = replace_first(r'<div class="brand-sub">.*?</div>', f'<div class="brand-sub">{html.escape(brand_subtitle)}</div>', html_text)
     html_text = replace_first(r'(<input id="themeColor"[^>]*value=")[^"]+(")', rf"\g<1>{html.escape(theme_color, quote=True)}\2", html_text)
     html_text = replace_first(r"const STORAGE_KEY = .*?;", f"const STORAGE_KEY = {json.dumps(storage_key, ensure_ascii=False)};", html_text)
-    html_text = replace_default_markdown(html_text, markdown)
-    html_text = replace_default_metadata(html_text, article_metadata if isinstance(article_metadata, dict) else {})
-    html_text = replace_article_signature(html_text, job.get("article_signature") or {})
-    html_text = replace_default_workbench_state(
-        html_text,
-        {
+    state = {
             "themeColor": theme_color,
             "fontSize": str(job.get("font_size", "16")),
             "fontFamily": str(
@@ -272,8 +289,14 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
                     '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif',
                 )
             ),
-        },
-    )
+        }
+    bootstrap = {"markdown": markdown, "metadata": article_metadata if isinstance(article_metadata, dict) else {}, "signature": job.get("article_signature") or {}, "storageKey": storage_key, "workbenchState": state}
+    if html_text.count("{{BOOTSTRAP_JSON}}") != 1: raise ValueError("expected exactly one {{BOOTSTRAP_JSON}} placeholder")
+    html_text = html_text.replace("{{BOOTSTRAP_JSON}}", html_safe_json(bootstrap), 1)
+    controller_path = Path(__file__).resolve().parents[1] / "assets" / "workbench-save-controller.js"
+    controller_source = controller_path.read_text(encoding="utf-8")
+    if html_text.count("{{SAVE_CONTROLLER_JS}}") != 1: raise ValueError("expected exactly one {{SAVE_CONTROLLER_JS}} placeholder")
+    html_text = html_text.replace("{{SAVE_CONTROLLER_JS}}", controller_source, 1)
     html_text = replace_clipboard_assets_script(html_text, str(job.get("clipboard_assets_script", "")).strip())
     return html_text
 

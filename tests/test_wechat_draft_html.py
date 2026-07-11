@@ -111,6 +111,17 @@ PROJECTS.md
         self.assertEqual(validation["body_data_image_count"], 0)
         self.assertTrue(validation["cover_is_data_uri"])
 
+    def test_publisher_rejects_stale_source_state(self) -> None:
+        manifest = {"title": "标题", "digest": "摘要", "cover": {"src": PNG_1X1},
+                    "source_state": {"core_revision": 3, "manifest_revision": 2,
+                                      "asset_state": "ready", "stale_visuals": [], "missing_visuals": []}}
+        with self.assertRaises(SystemExit):
+            publisher.validate_manifest(manifest, "<p>正文</p>")
+
+    def test_publisher_accepts_legacy_manifest_without_source_state(self) -> None:
+        result = publisher.validate_manifest({"title": "标题", "digest": "摘要", "cover": {"src": PNG_1X1}}, "<p>正文</p>")
+        self.assertTrue(result["cover_is_data_uri"])
+
     def test_publish_manifest_can_use_cover_visual_outside_article_body(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
