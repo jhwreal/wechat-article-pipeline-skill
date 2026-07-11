@@ -37,6 +37,20 @@ class WorkbenchTemplateTests(unittest.TestCase):
         self.assertIn("localhost", source)
         self.assertIn("catch", source)
 
+    def test_save_button_belongs_to_markdown_topbar_group_and_matches_primary_action(self):
+        source = TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn('<div class="topbar-primary">', source)
+        left = source.split('<div class="topbar-primary">', 1)[1].split('<div class="toolbar">', 1)[0]
+        right = source.split('<div class="toolbar">', 1)[1].split('<div class="main">', 1)[0]
+        self.assertIn('<button id="saveArticle" class="btn primary">保存</button>', left)
+        self.assertNotIn('id="copyWechat"', left)
+        self.assertIn('id="fontFamily"', right)
+        self.assertIn('id="fontSize"', right)
+        self.assertIn('id="themeColor"', right)
+        self.assertIn('<button id="copyWechat" class="btn primary">复制富文本</button>', right)
+        self.assertNotIn('id="saveArticle"', right)
+        self.assertIn('grid-template-columns: 1.05fr .95fr', source)
+
 
 class WorkbenchDocumentTests(unittest.TestCase):
     def test_rendered_image_paths_are_restored_to_visual_placeholders(self):

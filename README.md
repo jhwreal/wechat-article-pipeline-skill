@@ -13,11 +13,13 @@ wechat-article-pipeline/
 ## 一、功能特性
 
 - 面向微信公众号/公众号风格的长文创作流程
+- 支持“秘书模式”：忠实整理用户已经口述出的文章主线，保留原有观点、顺序、例子、语气和节奏，不擅自改写成新的 AI 大纲
 - 支持方法类、分析类、情绪/故事类视觉模式
 - 情绪/故事类内容使用插画逻辑，而不是步骤图或流程图
 - 可根据正文自动规划题图、正文配图和尾图
-- 输出可编辑 HTML 工作台，图片保留在独立目录，工作台 Markdown 使用相对路径引用，复制富文本时临时内嵌图片
-- 可通过微信官方 API 上传正文图片、上传封面素材、创建草稿箱草稿并验证草稿
+- 输出可持续编辑的本地 HTML 工作台，可将修改写回 Markdown、HTML 和发布数据；图片保留在独立目录，复制富文本时临时内嵌图片
+- 支持无配图排版、只补缺失图片、单张图片重做，以及只修改标题、正文或配图等增量处理路径
+- 可通过微信官方 API 上传正文图片、上传封面素材、创建并验证草稿；中断后可保留进度继续处理，并可在成功创建新草稿后安全递增原创篇号
 - 只有明确要求时才发送预览；不会自动发布或群发
 
 ## 二、安装
@@ -56,6 +58,12 @@ rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 
 如果已有初稿，可以直接粘贴正文，并说明目标风格、读者、是否需要压缩篇幅。若没有初稿，可以只描述主题，例如“写一篇面向普通读者的公众号文章，解释某个新趋势/方法/产品”。
 
+### 秘书模式
+
+当你已经通过口述或长段文字给出了文章的核心判断、叙述顺序、例子和表达节奏，可以明确说“打开秘书模式”。该模式只整理你已经说出的文章主线，保留开头、结论、例子顺序、重复锚点、情绪力度和说话习惯，主要修正断句、段落、明显口误、重复口头语和局部衔接。
+
+秘书模式不会自行扩大主题、补写一套更完整的观点、增加平衡框架，或把文章改造成更像报告的 AI 大纲。原素材存在关键缺口时，Codex 会指出缺口或询问，而不是替你发明新的主张。
+
 ### 配图方式
 
 配图也可以来自两种方式：
@@ -65,11 +73,21 @@ rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 
 默认情况下，该 skill 会先写完文章，再根据正文内容生成图片计划，避免先出图再硬套文章。
 
+### 增量处理和快速路径
+
+不必每次都重新生成完整文章包。该 skill 会根据你的要求只处理发生变化的部分：
+
+1. 如果要求“不配图”“只排版”，只生成正文和工作台，不规划正文图片。
+2. 如果已有文章只缺少部分图片，只生成缺失的图片，不重做已经完成的素材。
+3. 如果只对某一张图片不满意，只重新生成并替换对应位置的图片。
+4. 如果只要求修改标题、正文、排版或配图，只更新对应资产，不重跑无关阶段。
+5. 如果正文不需要配图但仍要导入公众号草稿箱，可以只准备微信接口必需的封面图，封面不会被插入正文。
+
 ### 审稿和发布
 
 审稿有两种方式：
 
-1. 输出 HTML 工作台，你在浏览器里打开检查标题、正文、配图和排版；图片文件保留在项目的 `image/<slug>/` 目录，复制富文本时工作台会临时把本地图片转成剪贴板 HTML 里的图片数据。
+1. 输出 HTML 工作台。通过 Codex 启动的本地工作台地址打开后，可以继续修改 Markdown，并将最新内容写回 HTML、源 Markdown、任务数据和发布清单；输入内容会先保存到浏览器缓存，停止编辑后自动写入，也可以点击“保存”立即写入。直接打开独立 HTML 时仍可使用 `localStorage`，但不会写回项目文件。图片文件保留在项目的 `image/<slug>/` 目录，复制富文本时工作台会临时把本地图片转成剪贴板 HTML 里的图片数据。
 2. 在已绑定公众号凭据的情况下，让 Codex 调用微信官方 API 直接创建公众号草稿，然后到公众号草稿箱里检查。
 
 该 skill 只负责创建草稿和可选发送预览，不会自动群发或发布。
@@ -98,7 +116,7 @@ https://developers.weixin.qq.com/platform
 
 如果只绑定一个公众号，后续导入草稿时通常不需要再指定公众号名称。如果绑定了多个公众号，导入草稿前需要告诉 Codex 要导入到哪一个公众号。
 
-正文题图下方的“某某的第 N 篇原创”使用独立字段：默认账号为 `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE`，命名账号为 `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE`。它和草稿箱 API 使用的 `WECHAT_AUTHOR` 不是同一个字段。
+正文题图下方的“某某的第 N 篇原创”使用独立字段：默认账号为 `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE`，命名账号为 `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE`。它和草稿箱 API 使用的 `WECHAT_AUTHOR` 不是同一个字段。正常创建一篇全新草稿时，可以在草稿创建成功后安全递增原创篇号；重新创建或修复旧稿时可以不递增，避免错误占用新篇号。
 
 命名账号的 `<ALIAS>` 建议只使用大写英文、数字和下划线，并避免以 `_SIGNATURE`、`_ORIGINAL`、`_PREVIEW` 结尾；这些后缀和 `AUTHOR`、`ISSUE`、`ACCOUNT` 等字段组合后会形成保留字段名。公众号展示名请放在 `WECHAT_ACCOUNT_<ALIAS>_NAME`。
 
@@ -113,6 +131,8 @@ https://developers.weixin.qq.com/platform
 5. 上传封面图到永久素材接口
 6. 调用草稿箱接口创建草稿
 7. 可选调用 `draft/get` 验证草稿标题和条目数
+
+草稿导入会把关键步骤和远端返回结果写入本地结果文件。如果草稿已经创建，但后续验证、预览或原创篇号更新失败，可以从已保存的结果继续完成剩余步骤，避免重新上传素材或重复创建草稿。对于无法确认微信端是否已经成功执行的中断，流程会停止并明确提示，而不会贸然再创建一份草稿。
 
 发送预览需要额外明确要求，并传入 `--send-preview` 及预览账号参数。正式发布/群发不属于默认自动化范围。
 
@@ -166,11 +186,13 @@ wechat-article-pipeline/
 ## 1. Features
 
 - WeChat/official-account style long-form article workflow
+- Secretary Mode for faithfully organizing an already-spoken article mainline while preserving the user's judgments, order, examples, voice, and cadence instead of replacing them with a new AI outline
 - Method, analysis, and emotional/story visual modes
 - Emotional/story content uses illustration logic instead of step diagrams
 - Automatic cover/body/closing image planning based on the finished article
-- Editable HTML workbench output with images kept in a separate folder, referenced by relative paths in Markdown, and temporarily inlined when copying rich HTML
-- Official API workflow for body image upload, cover material upload, draft creation, and draft verification
+- Persistent local HTML workbench editing that can write changes back to Markdown, HTML, and publishing data, while keeping images separate and inlining them only when copying rich HTML
+- Incremental paths for no-image formatting, missing-image repair, single-image regeneration, and title/body/layout/image-only changes
+- Official API workflow for image upload, draft creation, and verification, with recoverable interrupted runs and safe original-issue increment after a new draft succeeds
 - Preview is sent only when explicitly requested; publishing and mass sending are never automatic
 
 ## 2. Install
@@ -209,6 +231,12 @@ The article can start in either of two ways:
 
 If you already have a draft, paste the text and describe the target style, audience, and whether it should be shortened. If you do not have a draft, describe the topic directly.
 
+### Secretary Mode
+
+If you have already supplied the article's main judgment, narrative order, examples, and speaking rhythm through dictation or a long rough passage, explicitly say `打开秘书模式` (Open Secretary Mode). The mode organizes what you already said while preserving the opening, conclusion, example order, repeated anchors, emotional pressure, and speaking cadence. It mainly fixes sentence breaks, paragraphs, obvious slips, duplicated filler, and local transitions.
+
+Secretary Mode does not broaden the thesis, invent a more complete argument, add a balancing framework, or replace your structure with a report-like AI outline. If the source has a material gap, Codex identifies or asks about it instead of inventing a new claim.
+
 ### Images
 
 Images can also come from either of two ways:
@@ -218,11 +246,21 @@ Images can also come from either of two ways:
 
 By default, the skill writes the article first and plans images from the finished content, so the visuals match the article rather than forcing the article around pre-made images.
 
+### Incremental And Fast Paths
+
+You do not need to rebuild the complete article package for every change. The skill can limit work to the affected layer:
+
+1. For “no images” or “format only,” produce the article and workbench without planning body images.
+2. If an existing article is missing only some images, generate only those missing assets.
+3. If one image is unsatisfactory, regenerate and replace only that slot.
+4. For a title-, body-, layout-, or image-only request, update the corresponding assets without rerunning unrelated stages.
+5. For draft delivery without body images, provide only the cover required by the WeChat API and keep it out of the article body.
+
 ### Review And Publishing
 
 There are two review paths:
 
-1. Output an editable HTML workbench, open it in a browser, and review the title/body/images/layout. Image files stay in the local `image/<slug>/` folder; the copy button temporarily embeds local images in clipboard HTML.
+1. Output an editable HTML workbench. When opened through the local workbench URL started by Codex, Markdown edits can be written back to the HTML, source Markdown, job data, and publishing manifest. Input is cached in the browser immediately, saved to project files after editing pauses, and can also be persisted immediately with the Save button. Opening the standalone HTML directly still provides `localStorage`, but does not write back to project files. Image files stay in `image/<slug>/`; the copy button temporarily embeds them in clipboard HTML.
 2. After binding Official Account credentials, ask Codex to create a WeChat draft through the official API, then review it in the WeChat draft box.
 
 The skill creates drafts and can optionally send previews. It does not automatically publish or mass-send.
@@ -251,7 +289,7 @@ After you have the `AppID` and `AppSecret`, give them to Codex and include the O
 
 If only one Official Account is bound, future draft imports usually do not need an account name. If multiple accounts are bound, tell Codex which Official Account to use before importing a draft.
 
-The visible "author's Nth original article" label below the cover image uses separate fields: `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. It is separate from `WECHAT_AUTHOR`, which is only for the draft API author field.
+The visible "author's Nth original article" label below the cover image uses separate fields: `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. It is separate from `WECHAT_AUTHOR`, which is only for the draft API author field. For a normal new article, the issue number can be advanced safely after draft creation succeeds; recreating or repairing an older draft can leave the counter unchanged so it does not consume a new issue number.
 
 For named accounts, keep `<ALIAS>` to uppercase ASCII letters, numbers, and underscores, and avoid aliases ending in `_SIGNATURE`, `_ORIGINAL`, or `_PREVIEW`; those suffixes combine with field names such as `AUTHOR`, `ISSUE`, and `ACCOUNT` into reserved keys. Store the public display name in `WECHAT_ACCOUNT_<ALIAS>_NAME`.
 
@@ -266,6 +304,8 @@ When importing a draft, Codex will:
 5. Upload the cover image as permanent material
 6. Create the draft through the draft-box API
 7. Optionally verify the created draft with `draft/get`
+
+Draft delivery records important steps and remote results in a local result file. If the draft was created but a later verification, preview, or issue-number update fails, the remaining work can continue from the saved result instead of uploading assets again or creating another draft. If an interruption leaves the remote outcome unknowable, the workflow stops and reports the uncertainty rather than risking a duplicate draft.
 
 Preview sending requires a separate explicit request plus `--send-preview` and preview-account parameters. Final publishing and mass sending are out of scope by default.
 

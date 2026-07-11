@@ -35,15 +35,21 @@
       background: rgba(255,255,255,.92);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--line);
-      display: flex;
+      display: grid;
+      grid-template-columns: 1.05fr .95fr;
       align-items: center;
-      justify-content: space-between;
-      padding: 10px 18px;
+      padding: 10px 16px;
       gap: 16px;
-      flex-wrap: wrap;
       position: sticky;
       top: 0;
       z-index: 20;
+    }
+    .topbar-primary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-width: 0;
     }
     .brand {
       display: flex;
@@ -69,7 +75,7 @@
       justify-content: flex-end;
       gap: 10px;
       flex-wrap: wrap;
-      flex: 1;
+      min-width: 0;
     }
     .btn, .field, .select, .color {
       border: 1px solid var(--line);
@@ -387,6 +393,9 @@
     }
 
     @media (max-width: 1080px) {
+      .topbar { grid-template-columns: 1fr; }
+      .topbar-primary, .toolbar { width: 100%; }
+      .toolbar { justify-content: flex-start; }
       .main { grid-template-columns: 1fr; }
       #editor { min-height: 42vh; }
       .preview-shell { min-height: 50vh; }
@@ -395,12 +404,15 @@
 </head>
 <body>
   <div class="topbar">
-    <div class="brand">
-      <div class="brand-badge"></div>
-      <div class="brand-text">
-        <div class="brand-title">公众号 Markdown 工作台</div>
-        <div class="brand-sub">HTML 工作台 · 相对路径配图 · 自动保存</div>
+    <div class="topbar-primary">
+      <div class="brand">
+        <div class="brand-badge"></div>
+        <div class="brand-text">
+          <div class="brand-title">公众号 Markdown 工作台</div>
+          <div class="brand-sub">HTML 工作台 · 相对路径配图 · 自动保存</div>
+        </div>
       </div>
+      <button id="saveArticle" class="btn primary">保存</button>
     </div>
     <div class="toolbar">
       <select id="fontFamily" class="select">
@@ -415,7 +427,6 @@
         <option value="18">18px</option>
       </select>
       <input id="themeColor" class="color" type="color" value="#17b394" title="主题色" />
-      <button id="saveArticle" class="btn">保存</button>
       <button id="copyWechat" class="btn primary">复制富文本</button>
     </div>
   </div>
