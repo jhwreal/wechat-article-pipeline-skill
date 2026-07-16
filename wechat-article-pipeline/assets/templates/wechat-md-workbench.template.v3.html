@@ -766,8 +766,16 @@
 
       root.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(heading => {
         const p = document.createElement('p');
-        p.innerHTML = heading.innerHTML;
-        p.setAttribute('style', heading.getAttribute('style') || '');
+        if (heading.tagName === 'H2') {
+          const badge = document.createElement('span');
+          badge.innerHTML = heading.innerHTML;
+          badge.setAttribute('style', `display:inline-block; max-width:100%; box-sizing:border-box; font-size:19px; line-height:1.6; font-weight:700; color:#fff; background:${color}; padding:8px 20px; border-radius:7px; box-shadow:0 4px 10px rgba(15,23,42,.16); text-align:center;`);
+          p.appendChild(badge);
+          p.setAttribute('style', `font-family:${safeFont}; margin:30px 8px 18px; font-size:${size}px; line-height:1.75; color:#222; word-break:break-word; text-align:center;`);
+        } else {
+          p.innerHTML = heading.innerHTML;
+          p.setAttribute('style', heading.getAttribute('style') || '');
+        }
         heading.replaceWith(p);
       });
 
@@ -1123,7 +1131,7 @@
       box.style.width = getComputedStyle(preview).width || '430px';
       box.style.maxWidth = getComputedStyle(preview).width || '430px';
       box.style.background = '#fff';
-      box.innerHTML = preview.innerHTML;
+      box.innerHTML = buildInlineWechatHtml();
       return box;
     }
 

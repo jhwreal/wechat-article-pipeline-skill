@@ -328,7 +328,10 @@ def markdown_to_wechat_html(markdown: str) -> str:
             if level == 1:
                 style = BASE_TEXT_STYLE + f";margin:26px 8px 16px;font-size:19px;line-height:1.75;font-weight:700;color:#111827;padding-bottom:8px;border-bottom:2px solid {color};text-align:center"
             elif level == 2:
-                style = BASE_TEXT_STYLE + f";margin:30px 8px 18px;font-size:19px;line-height:1.6;font-weight:700;color:#fff;background:{color};padding:8px 20px;border-radius:7px;box-shadow:0 4px 10px rgba(15,23,42,.16);text-align:center"
+                outer_style = BASE_TEXT_STYLE + ";margin:30px 8px 18px;text-align:center"
+                badge_style = f"display:inline-block;max-width:100%;box-sizing:border-box;font-size:19px;line-height:1.6;font-weight:700;color:#fff;background:{color};padding:8px 20px;border-radius:7px;box-shadow:0 4px 10px rgba(15,23,42,.16);text-align:center"
+                html_blocks.append(paragraph(f'<span style="{badge_style}">{text}</span>', outer_style))
+                continue
             elif level == 3:
                 style = BASE_TEXT_STYLE + f";margin:24px 8px 14px;font-size:17px;line-height:1.75;font-weight:700;color:#111827;padding:0 0 3px 10px;border-left:4px solid {color};border-bottom:1px dashed {color}"
             else:

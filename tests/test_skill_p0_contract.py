@@ -71,6 +71,8 @@ class SkillP0ContractTest(unittest.TestCase):
         self.assertIn("canvas.toDataURL", template)
         self.assertIn("ClipboardItem", template)
         self.assertIn("data:image", template)
+        self.assertIn("box.innerHTML = buildInlineWechatHtml();", template)
+        self.assertIn("display:inline-block; max-width:100%; box-sizing:border-box", template)
         for stale_phrase in (
             "单文件",
             "复制到公众号",

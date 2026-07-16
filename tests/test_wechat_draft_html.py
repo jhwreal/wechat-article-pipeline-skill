@@ -86,6 +86,20 @@ PROJECTS.md
         self.assertIn("AGENTS.md<br>&nbsp;<br>PROJECTS.md", html)
         self.assertIn("• 第一项<br>• 第二项", html)
 
+    def test_h2_badge_background_stays_on_text_width(self) -> None:
+        html = manifest_builder.markdown_to_wechat_html("## 那封回信，比授权本身更暖")
+
+        opening_paragraph = html.split(">", 1)[0]
+        self.assertIn("text-align:center", opening_paragraph)
+        self.assertNotIn("background:#17b394", opening_paragraph)
+        self.assertIn(
+            '<span style="display:inline-block;max-width:100%;box-sizing:border-box;',
+            html,
+        )
+        self.assertIn("background:#17b394", html)
+        self.assertIn(">那封回信，比授权本身更暖</span>", html)
+        self.assertNotIn("width:fit-content", html)
+
     def test_publisher_rejects_unstable_draft_tags(self) -> None:
         manifest = {
             "title": "标题",
