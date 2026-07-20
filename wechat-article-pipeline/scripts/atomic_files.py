@@ -10,9 +10,44 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None:
+def fsync_directory(path: Path) -> None:
+    """Best-effort durability barrier for directory entry changes."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        # Some filesystems do not support fsync on directories. The file data
+        # has still been fsynced before replacement, so keep this best-effort.
+        pass
+    finally:
+        os.close(fd)
+
+
+def atomic_replace(
+    source: Path,
+    target: Path,
+    *,
+    preserve_target_mode: bool = False,
+) -> None:
+    """Replace target and durably record the affected directory entries."""
+    source = source.expanduser()
+    target = target.expanduser()
+    source_parent = source.parent
+    target_parent = target.parent
+    if preserve_target_mode and target.exists():
+        os.chmod(source, stat.S_IMODE(target.stat().st_mode))
+    os.replace(source, target)
+    fsync_directory(target_parent)
+    if source_parent != target_parent:
+        fsync_directory(source_parent)
+
+
+def atomic_write_bytes(path: Path, payload: bytes, *, mode: int | None = None) -> None:
     path = path.expanduser()
-    payload = text.encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
     target_mode = mode
     if target_mode is None and path.exists():
@@ -26,10 +61,14 @@ def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None
             os.fsync(handle.fileno())
         if target_mode is not None:
             os.chmod(temp_name, target_mode)
-        os.replace(temp_name, path)
+        atomic_replace(Path(temp_name), path)
     finally:
         if os.path.exists(temp_name):
             os.unlink(temp_name)
+
+
+def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None:
+    atomic_write_bytes(path, text.encode("utf-8"), mode=mode)
 
 
 def atomic_write_json(path: Path, data: Mapping[str, Any], *, mode: int | None = None) -> None:

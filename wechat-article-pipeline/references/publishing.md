@@ -29,7 +29,7 @@ Known coverage:
 
 ## Local config
 
-Publisher defaults and Official API credentials live in a local `.env` copied from `.env.example`. The GitHub package includes `.env.example`, but `.env` is ignored by Git and must never be committed.
+Publisher defaults and Official API credentials live in a local `.env` copied from the skill-local `.env.example`. The installable skill includes that template; `.env` is ignored by Git and must never be committed.
 
 ```text
 .env
@@ -55,17 +55,17 @@ WECHAT_ACCOUNT_JUZI_APPID=
 WECHAT_ACCOUNT_JUZI_APPSECRET=
 WECHAT_ACCOUNT_JUZI_AUTHOR=
 WECHAT_ACCOUNT_JUZI_SIGNATURE_AUTHOR=
-WECHAT_ACCOUNT_JUZI_ORIGINAL_ISSUE=1
+WECHAT_ACCOUNT_JUZI_ORIGINAL_ISSUE=
 WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
 ```
 
 Keep `<ALIAS>` to uppercase ASCII letters, numbers, and underscores. Avoid aliases ending in `_SIGNATURE`, `_ORIGINAL`, or `_PREVIEW`, because those suffixes combine with reserved fields such as `AUTHOR`, `ISSUE`, and `ACCOUNT`.
 
-`WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; packaging does not advance `.env` by default. Prefer `publish_wechat_api.py --create-draft --increment-original-issue` after a successful draft creation, or use the package script's explicit `--increment-original-issue` only when that is really intended.
+`WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; packaging does not advance `.env` by default. When `publish_wechat_api.py --create-draft` receives a manifest containing `article_signature.issue_env_key` and `article_signature.issue`, it automatically advances the matching `.env` counter only after draft creation succeeds. Before any upload, it also requires the current counter to equal the manifest issue and refuses an already-consumed or stale manifest. `--increment-original-issue` remains accepted for compatibility but is unnecessary for a signed manifest. Use the package script's explicit `--increment-original-issue` only in a workflow that will not subsequently create the draft from that same manifest.
 
 `NAME` is the account selector. `AUTHOR` is only the official draft API author and must not be used to identify credentials or the visible article signature.
 
-When no `--account` is provided, a single named account is selected automatically. If multiple named accounts are configured, ask the user which public account name to use, then pass that value with `--account`.
+When no `--account` is provided, exactly one configured account (default or named) is selected automatically. If both the default account and any named account are configured, or multiple named accounts exist, ask which public account to use. Pass its name/alias with `--account`; use `--account default` to choose the unprefixed `WECHAT_*` fields explicitly.
 
 If `.env` is missing or lacks credentials for the selected account, ask the user for the account name, AppID, and AppSecret, then generate the file locally with restrictive permissions. Do not echo AppSecret in final answers or logs.
 
@@ -79,7 +79,7 @@ Never commit `.env` or token cache files.
 
 ## Manifest
 
-`package_wechat_article_bundle.py` writes `<html-stem>.publish-manifest.json` by default, so each HTML output gets its own manifest instead of reusing a fixed filename. It contains title, author, digest, rendered HTML, text, cover image, image candidates, optional preview account, and safety flags. It must not contain original declaration, reward account, or collection fields.
+Local packaging skips the publish manifest by default. Pass `--publish-manifest` to write `<html-stem>.publish-manifest.json` for an explicitly requested API handoff. It contains title, author, digest, rendered HTML, text, embedded cover/body images, image candidates, a source fingerprint, optional preview account, and safety flags. Verification recomputes the fingerprint from the current job and image bytes so a leftover manifest cannot silently describe older content. External image URLs are rejected because WeChat filters them and the uploader only accepts embedded images. The manifest must not contain original declaration, reward account, or collection fields.
 
 `content_html` is generated as a paragraph-only draft-safe stream. Do not wrap the article body in `section` / `div`, and do not use `blockquote`, `pre`, `ul`, or `ol` in the API manifest. The WeChat draft editor can normalize those tags into extra blank editable lines around badges and code blocks. Inline black code blocks keep their internal padding inside a styled `<p>`; fenced code blocks may contain blank lines, but the full fenced block must stay together before conversion so closing backticks never leak into draft-box body text.
 
@@ -118,7 +118,7 @@ python3 scripts/publish_wechat_api.py output.publish-manifest.json \
   --verify-draft
 ```
 
-Omit `--account` only for the default `WECHAT_APPID` / `WECHAT_APPSECRET` pair or when `.env` contains exactly one named account.
+Omit `--account` only when `.env` contains exactly one configured credential profile in total. If default and named credentials coexist, select one explicitly; use `--account default` for the unprefixed pair.
 
 Send a preview only when explicitly requested:
 

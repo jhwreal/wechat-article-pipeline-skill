@@ -1,14 +1,15 @@
 [project]
 name = "wechat-article-pipeline-skill"
-version = "1.1.0"
+version = "1.5.0"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
 dev = [
+  "Pillow>=10",
   "pytest>=8",
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "wechat-article-pipeline/tests"]
 pythonpath = ["wechat-article-pipeline/scripts"]

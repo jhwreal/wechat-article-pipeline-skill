@@ -36,3 +36,22 @@ test('keeps only newest pending snapshot during an in-flight save', async () => 
   assert.notEqual(states.at(-1), 'saved'); await new Promise(r=>setTimeout(r,0)); await Promise.resolve();
   assert.equal(calls.length, 2); assert.equal(calls[1].value, 21);
 });
+
+test('failed transport never reports saved and resolves as an error state', async () => {
+  const states = [];
+  const context = {setTimeout, clearTimeout};
+  vm.runInNewContext(source + '\nthis.createWorkbenchSaveController = createWorkbenchSaveController;', context);
+  const controller = context.createWorkbenchSaveController({
+    storage: {setItem() {}},
+    snapshot: () => ({value: 1}),
+    transport: () => Promise.resolve(false),
+    onStateChange: state => states.push(state),
+  });
+
+  controller.saveNow();
+  const result = await controller.flush();
+
+  assert.equal(result.saved, false);
+  assert.equal(states.includes('saved'), false);
+  assert.equal(states.at(-1), 'error');
+});

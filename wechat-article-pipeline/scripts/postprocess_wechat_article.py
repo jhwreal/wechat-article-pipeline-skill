@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import subprocess
 import sys
 from pathlib import Path
-from image_jobs_contract import normalize_image_jobs, filter_missing_image_jobs as contract_filter, render_image_plan_markdown
+from atomic_files import atomic_write_text
+from image_jobs_contract import normalize_image_jobs, filter_missing_image_jobs as contract_filter
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -64,7 +64,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--publish-manifest",
         action="store_true",
-        help="With --no-images, also write a publish manifest. By default no-image formatting skips it.",
+        help="Also write a WeChat API publish manifest. Local packaging skips it by default.",
+    )
+    parser.add_argument("--publish-manifest-out", type=Path, help="Optional publish manifest output path.")
+    parser.add_argument("--publisher-config", type=Path, help="Local publisher config path.")
+    parser.add_argument("--publisher-env-file", type=Path, help="Local .env with account defaults.")
+    parser.add_argument("--publisher-account", help="Official Account selector used for signature and manifest defaults.")
+    parser.add_argument("--author", help="Author override for the publish manifest.")
+    parser.add_argument("--preview-account", help="Preview account override for the publish manifest.")
+    parser.add_argument("--signature-author", help="Visible signature author shown below the cover.")
+    parser.add_argument("--original-issue", type=int, help="Visible original article issue number.")
+    parser.add_argument(
+        "--remember-publisher-config",
+        action="store_true",
+        help="Persist supplied author/preview values when building a publish manifest.",
     )
     parser.add_argument(
         "--missing-only",
@@ -95,10 +108,38 @@ def infer_article_slug(article: Path) -> str:
     return stem or "wechat-article"
 
 
+def validate_article_slug(value: str) -> str:
+    slug = value.strip()
+    path = Path(slug)
+    if (
+        not slug
+        or path.is_absolute()
+        or path.name != slug
+        or "/" in slug
+        or "\\" in slug
+        or slug in {".", ".."}
+        or any(ord(char) < 32 for char in slug)
+        or any(char in '<>:"|?*' for char in slug)
+        or slug.casefold() in {
+            "con",
+            "prn",
+            "aux",
+            "nul",
+            *(f"com{index}" for index in range(1, 10)),
+            *(f"lpt{index}" for index in range(1, 10)),
+        }
+    ):
+        raise SystemExit("--article-slug must be one portable directory name without path separators.")
+    return slug
+
+
 def existing_image(images_dir: Path, name: str) -> Path | None:
+    exact = images_dir / name
+    if Path(name).suffix:
+        return exact if exact.is_file() else None
     for suffix in IMAGE_SUFFIXES:
         path = images_dir / f"{name}{suffix}"
-        if path.exists():
+        if path.is_file():
             return path
     return None
 
@@ -110,7 +151,8 @@ def assert_images_ready(jobs_path: Path, images_dir: Path) -> None:
     missing: list[str] = []
     for job in jobs:
         output = str(job.get("output") or "").strip()
-        if output and not existing_image(images_dir, Path(output).stem): missing.append(output)
+        if output and not existing_image(images_dir, output):
+            missing.append(output)
     if missing:
         image_dir_text = str(images_dir)
         names = ", ".join(missing)
@@ -121,45 +163,59 @@ def assert_images_ready(jobs_path: Path, images_dir: Path) -> None:
 
 
 def filter_jobs_for_missing_images(payload: dict, images_dir: Path) -> dict:
-    result = copy.deepcopy(payload)
-    result = contract_filter(result, lambda output: existing_image(images_dir, Path(output).stem) is not None)
-    jobs = result.get("slots", [])
-    missing_names = {str(job.get("name", "")).strip() for job in jobs}
-    result["jobs"] = jobs
-    if isinstance(result.get("image_slots"), list):
-        result["image_slots"] = [
-            slot
-            for slot in result["image_slots"]
-            if str(slot.get("name", "")).strip() in missing_names
-        ]
-    if isinstance(result.get("generation_queue"), list):
-        result["generation_queue"] = [
-            item
-            for item in result["generation_queue"]
-            if str(item.get("slot", "")).strip() in missing_names
-        ]
-    image_plan = result.get("image_plan")
-    if isinstance(image_plan, dict) and isinstance(image_plan.get("image_slots"), list):
-        image_plan["image_slots"] = [
-            slot
-            for slot in image_plan["image_slots"]
-            if str(slot.get("name", "")).strip() in missing_names
-        ]
-    return result
+    return contract_filter(
+        payload,
+        lambda output: existing_image(images_dir, output) is not None,
+    )
 
 
-def verify_package(out: Path, job_out: Path | None = None) -> None:
+def extend_package_command(
+    command: list[str], args: argparse.Namespace, publish_manifest: bool
+) -> None:
+    if publish_manifest:
+        command.append("--publish-manifest")
+    path_options = (
+        ("--publish-manifest-out", args.publish_manifest_out),
+        ("--publisher-config", args.publisher_config),
+        ("--publisher-env-file", args.publisher_env_file),
+    )
+    for flag, value in path_options:
+        if value:
+            command.extend([flag, str(value.expanduser().resolve())])
+    text_options = (
+        ("--publisher-account", args.publisher_account),
+        ("--author", args.author),
+        ("--preview-account", args.preview_account),
+        ("--signature-author", args.signature_author),
+    )
+    for flag, value in text_options:
+        if value is not None:
+            command.extend([flag, str(value)])
+    if args.original_issue is not None:
+        command.extend(["--original-issue", str(args.original_issue)])
+    if args.remember_publisher_config:
+        command.append("--remember-publisher-config")
+
+
+def verify_package(
+    out: Path,
+    job_out: Path | None = None,
+    manifest_out: Path | None = None,
+) -> None:
     command = [sys.executable, str(VERIFY), str(out)]
     if job_out:
         command.extend(["--job", str(job_out)])
+    if manifest_out:
+        command.extend(["--manifest", str(manifest_out), "--require-manifest"])
     run(command)
 
 
 def main() -> None:
     args = parse_args()
+    publish_manifest = bool(args.publish_manifest or args.publish_manifest_out)
     if args.no_images and args.missing_only:
         raise SystemExit("--no-images and --missing-only cannot be used together.")
-    if args.no_images and args.publish_manifest and not args.cover_image:
+    if args.no_images and publish_manifest and not args.cover_image:
         raise SystemExit(
             "--no-images --publish-manifest requires --cover-image <path> because WeChat draft/add "
             "requires a cover thumb_media_id even when the article body has no images."
@@ -169,7 +225,7 @@ def main() -> None:
 
     source_article = args.article.resolve()
     out = args.out.resolve()
-    article_slug = args.article_slug or infer_article_slug(source_article)
+    article_slug = validate_article_slug(args.article_slug or infer_article_slug(source_article))
     jobs_out = (args.jobs_out or out.with_suffix(".image-jobs.json")).resolve()
     workspace = args.workspace.resolve()
     images_dir = (args.images_dir or (workspace / "image" / article_slug)).resolve()
@@ -203,14 +259,18 @@ def main() -> None:
         ]
         if args.cover_image:
             package_cmd.extend(["--cover-image", str(args.cover_image.resolve())])
-        if not args.publish_manifest:
-            package_cmd.append("--no-publish-manifest")
         if args.job_out:
             package_cmd.extend(["--job-out", str(args.job_out.resolve())])
         if args.support_dir:
             package_cmd.extend(["--support-dir", str(args.support_dir.resolve())])
+        extend_package_command(package_cmd, args, publish_manifest)
         run(package_cmd)
-        verify_package(out, args.job_out.resolve() if args.job_out else None)
+        manifest_out = (
+            (args.publish_manifest_out or out.with_suffix(".publish-manifest.json")).resolve()
+            if publish_manifest
+            else None
+        )
+        verify_package(out, args.job_out.resolve() if args.job_out else None, manifest_out)
         return
 
     make_jobs_cmd = [
@@ -232,7 +292,7 @@ def main() -> None:
     if args.missing_only:
         payload = json.loads(jobs_out.read_text(encoding="utf-8"))
         filtered = filter_jobs_for_missing_images(payload, images_dir)
-        jobs_out.write_text(json.dumps(filtered, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        atomic_write_text(jobs_out, json.dumps(filtered, ensure_ascii=False, indent=2) + "\n")
 
     if args.plan_only:
         print(f"Wrote image jobs to {jobs_out}")
@@ -255,8 +315,14 @@ def main() -> None:
         package_cmd.extend(["--job-out", str(args.job_out.resolve())])
     if args.support_dir:
         package_cmd.extend(["--support-dir", str(args.support_dir.resolve())])
+    extend_package_command(package_cmd, args, publish_manifest)
     run(package_cmd)
-    verify_package(out, args.job_out.resolve() if args.job_out else None)
+    manifest_out = (
+        (args.publish_manifest_out or out.with_suffix(".publish-manifest.json")).resolve()
+        if publish_manifest
+        else None
+    )
+    verify_package(out, args.job_out.resolve() if args.job_out else None, manifest_out)
 
 
 if __name__ == "__main__":

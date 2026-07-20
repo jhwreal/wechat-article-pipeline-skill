@@ -96,11 +96,23 @@
       transition: .16s ease;
     }
     .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(16,24,40,.08); }
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: .5;
+      transform: none;
+      box-shadow: none;
+    }
     .btn.primary {
       background: var(--primary);
       color: #fff;
       border-color: transparent;
       min-width: 128px;
+    }
+    #saveArticle.save-click-feedback:not(:disabled) {
+      opacity: .68;
+      filter: saturate(.62) brightness(1.12);
+      transform: translateY(1px);
+      box-shadow: none;
     }
     .field, .select { min-width: 110px; }
     .color { padding: 6px; width: 44px; }
@@ -392,6 +404,48 @@
       margin-right: 6px;
     }
 
+    .persistence-warning {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, .58);
+      backdrop-filter: blur(5px);
+    }
+    .persistence-warning[hidden] { display: none; }
+    .persistence-warning-card {
+      width: min(520px, 100%);
+      padding: 24px;
+      border: 1px solid #fecaca;
+      border-radius: 18px;
+      background: #fff;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, .25);
+    }
+    .persistence-warning-card h2 {
+      margin: 0 0 12px;
+      color: #b42318;
+      font-size: 21px;
+    }
+    .persistence-warning-card p {
+      margin: 10px 0;
+      color: #475467;
+      font-size: 14px;
+      line-height: 1.75;
+    }
+    .persistence-warning-card code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #f2f4f7;
+      color: #344054;
+    }
+    .persistence-warning-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 18px;
+    }
+
     @media (max-width: 1080px) {
       .topbar { grid-template-columns: 1fr; }
       .topbar-primary, .toolbar { width: 100%; }
@@ -431,6 +485,18 @@
     </div>
   </div>
 
+  <div id="persistenceWarning" class="persistence-warning" role="alertdialog" aria-modal="true" aria-labelledby="persistenceWarningTitle" hidden>
+    <div class="persistence-warning-card">
+      <h2 id="persistenceWarningTitle">文件保存功能加载失败</h2>
+      <p id="persistenceWarningMessage">当前页面没有连接本地保存服务，不能把修改写回文章文件。</p>
+      <p><strong>请关闭本页，改用 Codex 提供的 <code>http://127.0.0.1:端口/...</code> 工作台地址访问。</strong></p>
+      <p>你仍可关闭提示后查看预览、复制富文本或复制编辑区中的现有内容；为避免误以为已经保存，编辑和保存功能已停用。</p>
+      <div class="persistence-warning-actions">
+        <button id="dismissPersistenceWarning" class="btn">仅查看与复制</button>
+      </div>
+    </div>
+  </div>
+
   <div class="main">
     <section class="panel">
       <div class="panel-head">
@@ -444,7 +510,7 @@
       </div>
       <div class="statusbar">
         <div class="status-left">
-          <span><span class="dot"></span><span id="saveStatus">已就绪</span></span>
+          <span><span class="dot"></span><span id="saveStatus" role="status" aria-live="polite">已就绪</span></span>
           <span id="articleStatus">正文已保存</span><span id="manifestStatus">发布清单更新中</span><span id="assetsStatus">图片待复核</span>
           <span id="wordCount">0 字</span>
           <span id="lineCount">0 行</span>
@@ -512,11 +578,36 @@
     const wordCount = document.getElementById('wordCount');
     const lineCount = document.getElementById('lineCount');
     const storageModeLabel = document.getElementById('storageModeLabel');
+    const saveArticleButton = document.getElementById('saveArticle');
+    const persistenceWarning = document.getElementById('persistenceWarning');
+    const persistenceWarningMessage = document.getElementById('persistenceWarningMessage');
+    const dismissPersistenceWarning = document.getElementById('dismissPersistenceWarning');
 
     let initializing = true;
+    let persistenceReady = false;
     let activeScrollSource = null;
     let scrollReleaseTimer = null;
     let caretSyncFrame = null;
+    let saveFeedbackTimer = null;
+    let saveFeedbackPointerType = 'keyboard';
+
+    function clearSaveButtonFeedback() {
+      if (saveFeedbackTimer !== null) clearTimeout(saveFeedbackTimer);
+      saveFeedbackTimer = null;
+      saveArticleButton.classList.remove('save-click-feedback');
+    }
+
+    function showSaveButtonFeedback() {
+      if (saveArticleButton.disabled) return;
+      if (saveFeedbackTimer !== null) clearTimeout(saveFeedbackTimer);
+      saveFeedbackTimer = null;
+      saveArticleButton.classList.add('save-click-feedback');
+    }
+
+    function brieflyShowSaveButtonFeedback() {
+      showSaveButtonFeedback();
+      saveFeedbackTimer = setTimeout(clearSaveButtonFeedback, 260);
+    }
 
     function clamp(value, min, max) {
       return Math.min(Math.max(value, min), max);
@@ -531,10 +622,26 @@
         .replace(/'/g, '&#39;');
     }
 
+    function isSafeMarkdownUrl(value, image) {
+      const candidate = String(value || '').trim();
+      const schemeProbe = candidate.replace(/[\u0000-\u0020\u007f]+/g, '').toLowerCase();
+      const scheme = schemeProbe.match(/^([a-z][a-z0-9+.-]*):/);
+      if (!scheme) return true;
+      if (scheme[1] === 'http' || scheme[1] === 'https') return true;
+      if (!image && scheme[1] === 'mailto') return true;
+      return image && scheme[1] === 'data' && schemeProbe.startsWith('data:image' + '/');
+    }
+
     function inlineFormat(text) {
       return text
-        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" />')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, url) => (
+          isSafeMarkdownUrl(url, true) ? `<img alt="${alt}" src="${url}" />` : alt
+        ))
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => (
+          isSafeMarkdownUrl(url, false)
+            ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+            : label
+        ))
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/==([^=\n]+)==/g, '<span class="inline-accent">$1</span>')
@@ -957,16 +1064,59 @@
         && (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
     }
 
+    function setEditingEnabled(enabled) {
+      editor.readOnly = !enabled;
+      saveArticleButton.disabled = !enabled;
+      if (!enabled) clearSaveButtonFeedback();
+      themeColor.disabled = !enabled;
+      fontSize.disabled = !enabled;
+      fontFamily.disabled = !enabled;
+    }
+
+    function showPersistenceWarning(message) {
+      persistenceReady = false;
+      setEditingEnabled(false);
+      persistenceWarningMessage.textContent = message;
+      persistenceWarning.hidden = false;
+      saveStatus.textContent = '文件保存不可用';
+      articleStatus.textContent = '正文只读';
+      manifestStatus.textContent = '发布清单不会更新';
+      storageModeLabel.textContent = '只读：未连接保存服务';
+    }
+
+    function markPersistenceReady(status) {
+      persistenceReady = true;
+      setEditingEnabled(true);
+      persistenceWarning.hidden = true;
+      articleStatus.textContent = '保存服务已连接';
+      storageModeLabel.textContent = '自动保存：HTML 文件 + localStorage';
+      if (status) updateServerStatus(status);
+    }
+
     async function saveStateToServer(data) {
-      if (!isLoopbackServer()) return false;
+      if (!isLoopbackServer() || !persistenceReady) {
+        showPersistenceWarning('当前工作台没有连接本地保存服务，不能把修改写回文章文件。');
+        return false;
+      }
       try {
         const response = await fetch(WORKBENCH_SAVE_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Workbench-Token': window.__workbenchToken || '' },
           body: JSON.stringify(Object.assign({}, data, {baseRevision: window.__workbenchRevision || 0, clientMutationId: 'client-' + Date.now()}))
         });
-        if (response.status === 409) { const latest = await response.json(); window.__workbenchRevision = latest.coreRevision || window.__workbenchRevision; return false; }
-        if (!response.ok) return false;
+        if (response.status === 409) {
+          const latest = await response.json();
+          window.__workbenchRevision = latest.coreRevision || window.__workbenchRevision;
+          showPersistenceWarning('文章文件已经被其他页面修改。为避免覆盖新版本，本页已停止编辑；请关闭后重新打开服务地址。');
+          return false;
+        }
+        if (response.status === 423) {
+          const blocked = await response.json();
+          window.__workbenchRevision = blocked.coreRevision || window.__workbenchRevision;
+          showPersistenceWarning('检测到上次保存事务没有完整恢复。为避免覆盖文章文件，本页已停止编辑；请让 Codex 检查 support 目录中的事务日志。');
+          return false;
+        }
+        if (!response.ok) throw new Error(`save request failed: ${response.status}`);
         const result = await response.json();
         if (!result.saved) throw new Error(result.error || 'save failed');
         window.__workbenchRevision = result.revision || window.__workbenchRevision;
@@ -976,14 +1126,53 @@
         saveStatus.textContent = '已写入 HTML';
         return result;
       } catch {
+        showPersistenceWarning('本地保存服务连接已经中断，文件无法继续保存。请关闭本页，让 Codex 重新启动工作台服务后再打开。');
         return false;
       }
     }
-    async function handshakeWorkbench() { if (!isLoopbackServer()) return; try { const r = await fetch('/__wechat_workbench/status'); if (!r.ok) throw new Error(); const s = await r.json(); window.__workbenchToken=s.token; window.__workbenchRevision=s.coreRevision||0; } catch (_) { window.__workbenchToken=null; } }
-    handshakeWorkbench();
+
+    async function handshakeWorkbench() {
+      if (!isLoopbackServer()) {
+        window.__workbenchToken = null;
+        showPersistenceWarning('当前工作台是以本地文件方式打开的，文件保存功能没有加载。请改用 Codex 提供的本地服务地址访问。');
+        return false;
+      }
+      try {
+        const response = await fetch('/__wechat_workbench/status');
+        if (!response.ok) throw new Error(`status request failed: ${response.status}`);
+        const status = await response.json();
+        window.__workbenchToken = status.token;
+        window.__workbenchRevision = status.coreRevision || 0;
+        if (status.recovery_required) {
+          updateServerStatus(status);
+          showPersistenceWarning('检测到上次保存事务没有完整恢复。为避免覆盖文章文件，本页已停止编辑；请让 Codex 检查 support 目录中的事务日志。');
+          return false;
+        }
+        markPersistenceReady(status);
+        return true;
+      } catch {
+        window.__workbenchToken = null;
+        showPersistenceWarning('本地保存服务没有连接或已经停止，文件保存功能无法加载。请关闭本页，让 Codex 重新启动工作台服务后再打开。');
+        return false;
+      }
+    }
     function updateServerStatus(status) {
-      manifestStatus.textContent = status.manifest_updated ? '发布清单已更新' : '发布清单待刷新';
-      assetsStatus.textContent = status.manifest_status === 'ok' ? '图片状态已检查' : '图片状态待检查';
+      const manifest = status && status.manifest ? status.manifest : {};
+      const assets = status && status.assets ? status.assets : {};
+      const manifestLabels = {
+        ready: '发布清单已更新',
+        pending: '发布清单正在刷新',
+        failed: '发布清单刷新失败',
+        not_configured: '未配置发布清单'
+      };
+      const assetLabels = {
+        ready: '图片状态正常',
+        stale: `有 ${(assets.staleVisuals || []).length} 张图片待重做`,
+        missing: `有 ${(assets.missingVisuals || []).length} 张图片缺失`,
+        failed: '图片状态检查失败'
+      };
+      manifestStatus.textContent = manifestLabels[manifest.state] || '发布清单状态未知';
+      assetsStatus.textContent = assetLabels[assets.state] || '图片状态未知';
     }
 
     function updatePreview(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
@@ -1015,10 +1204,45 @@
       onStateChange: state => {
         const labels = {cached:'已缓存到本机', saving:'正在保存正文…', saved:'正文已保存', error:'保存失败'};
         if (labels[state]) { saveStatus.textContent = labels[state]; articleStatus.textContent = labels[state]; }
+        if (state === 'error' && !persistenceReady) { saveStatus.textContent = '文件保存不可用'; articleStatus.textContent = '正文只读'; }
         if (state === 'saved') lastSavedLabel.textContent = `最近保存：${new Date().toLocaleTimeString('zh-CN')}`;
       }
     });
-    document.getElementById('saveArticle').addEventListener('click', () => window.workbenchSaveController.saveNow());
+    saveArticleButton.addEventListener('pointerdown', event => {
+      saveFeedbackPointerType = event.pointerType || 'mouse';
+      showSaveButtonFeedback();
+    });
+    saveArticleButton.addEventListener('pointerleave', clearSaveButtonFeedback);
+    saveArticleButton.addEventListener('pointercancel', clearSaveButtonFeedback);
+    saveArticleButton.addEventListener('pointerup', event => {
+      if ((event.pointerType || saveFeedbackPointerType) !== 'mouse') {
+        brieflyShowSaveButtonFeedback();
+      }
+    });
+    saveArticleButton.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        saveFeedbackPointerType = 'keyboard';
+        showSaveButtonFeedback();
+      }
+    });
+    saveArticleButton.addEventListener('keyup', event => {
+      if (event.key === 'Enter' || event.key === ' ') brieflyShowSaveButtonFeedback();
+    });
+    saveArticleButton.addEventListener('blur', clearSaveButtonFeedback);
+    saveArticleButton.addEventListener('click', event => {
+      if (event.detail === 0) {
+        saveFeedbackPointerType = 'keyboard';
+        brieflyShowSaveButtonFeedback();
+      } else if (saveFeedbackPointerType === 'mouse') {
+        showSaveButtonFeedback();
+      }
+      if (!persistenceReady) {
+        showPersistenceWarning('当前工作台没有连接本地保存服务，不能把修改写回文章文件。');
+        return;
+      }
+      window.workbenchSaveController.saveNow();
+    });
+    dismissPersistenceWarning.addEventListener('click', () => { persistenceWarning.hidden = true; });
 
     function loadState() {
       const raw = safeGetStorage(STORAGE_KEY);
@@ -1267,7 +1491,10 @@
     applySettings();
     updatePreview('editor');
     initializing = false;
+    setEditingEnabled(false);
+    articleStatus.textContent = '正在连接保存服务…';
     saveStatus.textContent = '已加载';
+    handshakeWorkbench();
   </script>
 </body>
 </html>

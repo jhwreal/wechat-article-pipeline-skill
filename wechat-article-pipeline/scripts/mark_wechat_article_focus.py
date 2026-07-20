@@ -5,6 +5,8 @@ import argparse
 import re
 from pathlib import Path
 
+from atomic_files import atomic_write_text
+
 
 CHINESE_RE = re.compile(r"[\u4e00-\u9fff]")
 SENTENCE_RE = re.compile(r"[^。！？!?；;\n]+[。！？!?；;]?")
@@ -325,8 +327,7 @@ def main() -> None:
     out = article if args.in_place else args.out.resolve()
     markdown = article.read_text(encoding="utf-8")
     marked = mark_article(markdown, args.target_chars, args.max_bold_per_zone)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(marked, encoding="utf-8")
+    atomic_write_text(out, marked)
     print(f"Wrote {out}")
 
 

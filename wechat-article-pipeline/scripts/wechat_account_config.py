@@ -134,9 +134,9 @@ def collect_account_profiles(env: dict[str, str]) -> dict[str, dict[str, str]]:
     return groups
 
 
-def default_account_profile(env: dict[str, str]) -> dict[str, str]:
+def default_account_profile(env: dict[str, str], selector: str = "") -> dict[str, str]:
     return {
-        "selector": "",
+        "selector": selector,
         "alias": "",
         "name": env.get("WECHAT_ACCOUNT_NAME", "").strip(),
         "appid": env.get("WECHAT_APPID", "").strip(),
@@ -163,7 +163,16 @@ def normalize_profile(alias: str, profile: dict[str, str], selector: str = "") -
 
 
 def account_label(alias: str, profile: dict[str, str]) -> str:
-    return f"{profile.get('name', '').strip() or alias} ({alias})"
+    display_alias = alias or "DEFAULT"
+    return f"{profile.get('name', '').strip() or display_alias} ({display_alias})"
+
+
+def profile_has_credentials(profile: dict[str, str]) -> bool:
+    return bool(profile.get("appid") or profile.get("appsecret"))
+
+
+def profile_has_signature(profile: dict[str, str]) -> bool:
+    return bool(profile.get("signature_author") or profile.get("original_issue"))
 
 
 def find_account_profile(
@@ -174,43 +183,74 @@ def find_account_profile(
     include_signature: bool = False,
 ) -> dict[str, str]:
     groups = collect_account_profiles(env)
+    default = default_account_profile(env)
 
     if not selector:
         if include_credentials:
-            credential_groups = {
-                alias: profile for alias, profile in groups.items() if profile.get("appid") or profile.get("appsecret")
-            }
-            if len(credential_groups) == 1:
-                alias, profile = next(iter(credential_groups.items()))
-                return normalize_profile(alias, profile)
-            if len(credential_groups) > 1:
-                available = sorted(account_label(alias, profile) for alias, profile in credential_groups.items())
+            credential_profiles: list[tuple[str, dict[str, str]]] = [
+                (alias, normalize_profile(alias, profile))
+                for alias, profile in groups.items()
+                if profile_has_credentials(profile)
+            ]
+            if profile_has_credentials(default):
+                credential_profiles.append(("", default))
+            if len(credential_profiles) == 1:
+                return credential_profiles[0][1]
+            if len(credential_profiles) > 1:
+                available = sorted(
+                    account_label(alias, profile) for alias, profile in credential_profiles
+                )
                 raise SystemExit(
                     "Multiple WeChat accounts are configured. Ask the user which account to use, then pass --account. "
                     f"Available accounts: {', '.join(available)}."
                 )
         if include_signature:
-            signature_groups = {
-                alias: profile
+            signature_profiles: list[tuple[str, dict[str, str]]] = [
+                (alias, normalize_profile(alias, profile))
                 for alias, profile in groups.items()
-                if profile.get("signature_author") or profile.get("original_issue")
-            }
-            if len(signature_groups) == 1:
-                alias, profile = next(iter(signature_groups.items()))
-                return normalize_profile(alias, profile)
-        return default_account_profile(env)
+                if profile_has_signature(profile)
+            ]
+            if profile_has_signature(default):
+                signature_profiles.append(("", default))
+            if len(signature_profiles) == 1:
+                return signature_profiles[0][1]
+            if len(signature_profiles) > 1:
+                available = sorted(
+                    account_label(alias, profile) for alias, profile in signature_profiles
+                )
+                raise SystemExit(
+                    "Multiple WeChat account signatures are configured. Ask the user which account to use, then pass --account. "
+                    f"Available accounts: {', '.join(available)}."
+                )
+        return default
 
     selector = selector.strip()
     selector_alias = normalize_account_alias(selector)
+    if selector_alias == "DEFAULT":
+        return default_account_profile(env, selector)
     matches: list[tuple[str, dict[str, str]]] = []
+    if default.get("name") and default.get("name") == selector:
+        matches.append(("", default_account_profile(env, selector)))
     for alias, profile in groups.items():
         if profile.get("name") == selector or (selector_alias and alias == selector_alias):
-            matches.append((alias, profile))
+            matches.append((alias, normalize_profile(alias, profile, selector)))
 
     if not matches:
-        profiles = groups.items()
+        profiles: list[tuple[str, dict[str, str]]] = [
+            (alias, normalize_profile(alias, profile)) for alias, profile in groups.items()
+        ]
         if include_credentials:
-            profiles = ((alias, profile) for alias, profile in groups.items() if profile.get("appid") or profile.get("appsecret"))
+            profiles = [
+                (alias, profile) for alias, profile in profiles if profile_has_credentials(profile)
+            ]
+            if profile_has_credentials(default):
+                profiles.append(("", default))
+        elif include_signature:
+            profiles = [
+                (alias, profile) for alias, profile in profiles if profile_has_signature(profile)
+            ]
+            if profile_has_signature(default):
+                profiles.append(("", default))
         available = sorted(account_label(alias, profile) for alias, profile in profiles)
         suffix = f" Available accounts: {', '.join(available)}." if available else ""
         credential_hint = " plus APPID/APPSECRET" if include_credentials else ""
@@ -219,11 +259,10 @@ def find_account_profile(
             + suffix
         )
     if len(matches) > 1:
-        aliases = ", ".join(alias for alias, _ in matches)
+        aliases = ", ".join(alias or "DEFAULT" for alias, _ in matches)
         raise SystemExit(f"WeChat account selector {selector} matches multiple aliases: {aliases}. Use the alias explicitly.")
 
-    alias, profile = matches[0]
-    return normalize_profile(alias, profile, selector)
+    return matches[0][1]
 
 
 def account_token_cache_path(default_path: Path, profile: dict[str, str]) -> Path:

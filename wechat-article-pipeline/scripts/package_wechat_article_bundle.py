@@ -14,6 +14,7 @@ from pathlib import Path
 
 import build_wechat_article_workbench as builder
 import wechat_account_config as account_config
+from atomic_files import atomic_write_text
 from image_jobs_contract import normalize_image_jobs, derive_image_plan, render_image_plan_markdown
 
 
@@ -23,6 +24,9 @@ DEFAULT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 MAKE_PUBLISH_MANIFEST = Path(__file__).resolve().parent / "make_wechat_publish_manifest.py"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
+PLANNED_VISUAL_IMAGE_RE = re.compile(
+    r"!\[[^\]]*\]\(\s*\{\{visual:([a-zA-Z0-9_-]+)\}\}\s*\)"
+)
 WORKBENCH_STORAGE_VERSION = "v9"
 WECHAT_COVER_TARGETS = {
     "pic_crop_235_1": {
@@ -103,10 +107,16 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional path to save the WeChat API draft manifest. Defaults to <html-stem>.publish-manifest.json.",
     )
-    parser.add_argument(
+    manifest_group = parser.add_mutually_exclusive_group()
+    manifest_group.add_argument(
+        "--publish-manifest",
+        action="store_true",
+        help="Also write a WeChat API draft manifest. Local workbench packaging skips it by default.",
+    )
+    manifest_group.add_argument(
         "--no-publish-manifest",
         action="store_true",
-        help="Skip writing the WeChat API draft manifest.",
+        help="Deprecated compatibility flag; local packaging already skips the publish manifest by default.",
     )
     parser.add_argument(
         "--publisher-config",
@@ -241,6 +251,19 @@ def find_image(images_dir: Path, name: str) -> Path:
         joined = ", ".join(str(path) for path in matches)
         raise SystemExit(f"Multiple image files match placeholder '{name}': {joined}")
     return matches[0].resolve()
+
+
+def find_slot_image(images_dir: Path, name: str, slot: dict | None) -> Path:
+    output = str((slot or {}).get("output", "")).strip()
+    if not output:
+        return find_image(images_dir, name)
+    candidate = (images_dir / output).resolve()
+    if not candidate.is_file():
+        raise SystemExit(
+            f"Missing planned image for slot '{name}': {candidate}. "
+            "Generate the exact slots[].output file before packaging."
+        )
+    return candidate
 
 
 def resolve_cover_image(path: Path) -> Path:
@@ -425,6 +448,26 @@ def read_plan(path: Path | None) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def remove_visual_placeholders(markdown: str, names: set[str]) -> str:
+    if not names:
+        return markdown
+    markdown = PLANNED_VISUAL_IMAGE_RE.sub(
+        lambda match: "" if match.group(1) in names else match.group(0),
+        markdown,
+    )
+    for name in names:
+        markdown = markdown.replace(f"{{{{visual:{name}}}}}", "")
+    return re.sub(r"\n{3,}", "\n\n", markdown).strip() + "\n"
+
+
+def remove_intentionally_skipped_visuals(markdown: str, plan: dict | None) -> str:
+    if not plan:
+        return markdown
+    article = plan.get("article", {})
+    skipped = article.get("skipped_visuals", []) if isinstance(article, dict) else []
+    return remove_visual_placeholders(markdown, set(skipped))
+
+
 def signature_issue_key(account: dict[str, str]) -> str:
     alias = account.get("alias", "").strip()
     return f"WECHAT_ACCOUNT_{alias}_ORIGINAL_ISSUE" if alias else "WECHAT_ORIGINAL_ISSUE"
@@ -501,7 +544,7 @@ def build_job(
             raise SystemExit("Article markdown does not contain any {{visual:name}} placeholders")
         visuals = {
             name: {
-                "path": str(find_image(images_dir, name)),
+                "path": str(find_slot_image(images_dir, name, slot_map.get(name))),
                 **{
                     key: slot_map[name][key]
                     for key in ("role", "image_type", "source_context", "target_effect", "content_focus")
@@ -575,8 +618,7 @@ def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, 
     html = builder.apply_template(job, template, markdown)
     validate_workbench_html(html, expected_visual_count)
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(html, encoding="utf-8")
+    atomic_write_text(out_path, html)
 
     if support_dir:
         rendered_job = dict(job)
@@ -647,21 +689,41 @@ def validate_workbench_html(html: str, expected_visual_count: int) -> None:
 
 def main() -> None:
     args = parse_args()
-    if args.no_images and not args.no_publish_manifest and not args.cover_image:
+    if args.increment_original_issue and args.no_increment_original_issue:
+        raise SystemExit(
+            "--increment-original-issue and --no-increment-original-issue cannot be used together."
+        )
+    if args.publish_manifest_out and args.no_publish_manifest:
+        raise SystemExit("--publish-manifest-out cannot be combined with --no-publish-manifest.")
+    publish_manifest = bool(args.publish_manifest or args.publish_manifest_out)
+    if args.no_images and publish_manifest and not args.cover_image:
         raise SystemExit(
             "WeChat draft publishing requires a cover image even when --no-images is used. "
-            "Pass --cover-image <path> or add --no-publish-manifest for local formatting only."
+            "Pass --cover-image <path> or omit --publish-manifest for local formatting only."
         )
 
     source_markdown = args.article.read_text(encoding="utf-8")
     markdown, article_metadata = builder.split_front_matter(source_markdown)
     plan = read_plan(args.plan_json.resolve() if args.plan_json else None)
+    if plan is not None:
+        try:
+            plan = normalize_image_jobs(plan)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid image jobs: {exc}") from exc
+        markdown = remove_intentionally_skipped_visuals(markdown, plan)
+    if args.no_images:
+        markdown = remove_visual_placeholders(
+            markdown,
+            {match.group(1) for match in builder.PLACEHOLDER_RE.finditer(markdown)},
+        )
     env_file = (args.publisher_env_file or DEFAULT_ENV_FILE).expanduser()
     publisher_env = account_config.read_env_file(env_file)
     signature_account = account_config.find_account_profile(
         publisher_env,
         args.publisher_account,
-        include_signature=True,
+        include_signature=not (
+            args.signature_author is not None and args.original_issue is not None
+        ),
     )
     article_signature = resolve_signature_metadata(
         env_file=env_file,
@@ -698,8 +760,7 @@ def main() -> None:
     )
     job["storage_key"] = args.storage_key or make_content_storage_key(page_title or slug_source, markdown, job["visuals"])
 
-    job_out.parent.mkdir(parents=True, exist_ok=True)
-    job_out.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(job_out, json.dumps(job, ensure_ascii=False, indent=2) + "\n")
 
     render_html(
         job=job,
@@ -709,15 +770,7 @@ def main() -> None:
         support_dir=args.support_dir.resolve() if args.support_dir else None,
     )
 
-    if (
-        article_signature.get("author")
-        and args.original_issue is None
-        and args.increment_original_issue
-        and not args.no_increment_original_issue
-    ):
-        account_config.write_env_value(env_file, str(article_signature["issue_env_key"]), str(int(article_signature["issue"]) + 1))
-
-    if not args.no_publish_manifest:
+    if publish_manifest:
         manifest_out = (args.publish_manifest_out or default_publish_manifest_path(args.out)).resolve()
         write_publish_manifest(
             job_path=job_out,
@@ -732,9 +785,27 @@ def main() -> None:
             remember=args.remember_publisher_config,
         )
 
+    # Keep this compatibility option after every requested artifact has been
+    # produced successfully, so a failed manifest build never advances issue.
+    if (
+        article_signature.get("author")
+        and args.original_issue is None
+        and args.increment_original_issue
+        and not args.no_increment_original_issue
+    ):
+        try:
+            account_config.compare_and_set_env_value(
+                env_file,
+                str(article_signature["issue_env_key"]),
+                str(article_signature["issue"]),
+                str(int(article_signature["issue"]) + 1),
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+
     print(f"Wrote {job_out}")
     print(f"Wrote {args.out.resolve()}")
-    if not args.no_publish_manifest:
+    if publish_manifest:
         print(f"Wrote {(args.publish_manifest_out or default_publish_manifest_path(args.out)).resolve()}")
     if args.support_dir:
         print(f"Wrote support files to {args.support_dir.resolve()}")

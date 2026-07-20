@@ -52,6 +52,55 @@ class WeChatAccountConfigTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             account_config.find_account_profile(env, None, include_credentials=True)
 
+    def test_default_and_named_credential_accounts_require_selector(self) -> None:
+        env = {
+            "WECHAT_ACCOUNT_NAME": "默认号",
+            "WECHAT_APPID": "default-appid",
+            "WECHAT_APPSECRET": "default-secret",
+            "WECHAT_ACCOUNT_JUZI_NAME": "橘子",
+            "WECHAT_ACCOUNT_JUZI_APPID": "juzi-appid",
+            "WECHAT_ACCOUNT_JUZI_APPSECRET": "juzi-secret",
+        }
+
+        with self.assertRaisesRegex(SystemExit, "Multiple WeChat accounts"):
+            account_config.find_account_profile(env, None, include_credentials=True)
+
+        selected = account_config.find_account_profile(
+            env, "default", include_credentials=True
+        )
+        self.assertEqual(selected["name"], "默认号")
+        self.assertEqual(selected["appid"], "default-appid")
+        self.assertEqual(selected["alias"], "")
+        self.assertEqual(selected["selector"], "default")
+
+    def test_default_selector_always_means_unprefixed_account(self) -> None:
+        env = {
+            "WECHAT_ACCOUNT_NAME": "默认号",
+            "WECHAT_APPID": "unprefixed",
+            "WECHAT_ACCOUNT_DEFAULT_NAME": "命名号",
+            "WECHAT_ACCOUNT_DEFAULT_APPID": "named-default",
+        }
+
+        selected = account_config.find_account_profile(
+            env, "default", include_credentials=True
+        )
+
+        self.assertEqual(selected["appid"], "unprefixed")
+        self.assertEqual(selected["alias"], "")
+
+    def test_default_and_named_signatures_require_selector(self) -> None:
+        env = {
+            "WECHAT_ACCOUNT_NAME": "默认号",
+            "WECHAT_SIGNATURE_AUTHOR": "默认作者",
+            "WECHAT_ORIGINAL_ISSUE": "8",
+            "WECHAT_ACCOUNT_JUZI_NAME": "橘子",
+            "WECHAT_ACCOUNT_JUZI_SIGNATURE_AUTHOR": "橘子作者",
+            "WECHAT_ACCOUNT_JUZI_ORIGINAL_ISSUE": "12",
+        }
+
+        with self.assertRaisesRegex(SystemExit, "Multiple WeChat account signatures"):
+            account_config.find_account_profile(env, None, include_signature=True)
+
     def test_issue_increment_is_idempotent_and_never_rolls_back(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             env_file = Path(tmp_dir) / ".env"

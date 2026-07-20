@@ -25,6 +25,117 @@ PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFg
 
 
 class PackageWechatArticleBundleTest(unittest.TestCase):
+    def test_verifier_requires_the_exact_planned_image_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            html = root / "article.html"
+            images = root / "images"
+            image_jobs = root / "article.image-jobs.json"
+            images.mkdir()
+            html.write_text("<html>article</html>", encoding="utf-8")
+            (images / "diagram.png").write_bytes(base64.b64decode(PNG_1X1))
+            image_jobs.write_text(
+                json.dumps(
+                    {
+                        "kind": "wechat-image-jobs",
+                        "schema_version": 2,
+                        "article": {},
+                        "rules": {},
+                        "review_defaults": {},
+                        "slots": [{"name": "diagram", "output": "diagram.webp"}],
+                        "generation_queue": [
+                            {
+                                "slot": "diagram",
+                                "output": "diagram.webp",
+                                "generation_prompt": "diagram",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = verifier.verify_package(
+                html, image_jobs_path=image_jobs, images_dir=images
+            )
+
+            output_check = next(
+                item for item in report["checks"] if item["name"] == "image_jobs_outputs_exist"
+            )
+            self.assertFalse(output_check["ok"])
+            self.assertIn("diagram.webp", output_check["detail"])
+
+    def test_verifier_reports_invalid_job_and_manifest_json_without_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            html = root / "article.html"
+            job = root / "article.job.json"
+            manifest = root / "article.publish-manifest.json"
+            html.write_text("<html>article</html>", encoding="utf-8")
+            job.write_text("{broken", encoding="utf-8")
+            manifest.write_text("[]", encoding="utf-8")
+
+            report = verifier.verify_package(
+                html,
+                job_path=job,
+                manifest_path=manifest,
+                require_manifest=True,
+            )
+
+            self.assertEqual(report["status"], "failed")
+            self.assertTrue(
+                any(item["name"] == "job_valid" and not item["ok"] for item in report["checks"])
+            )
+            self.assertTrue(
+                any(
+                    item["name"] == "manifest_json_valid" and not item["ok"]
+                    for item in report["checks"]
+                )
+            )
+
+    def test_verifier_detects_manifest_staleness_after_source_asset_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            html = root / "article.html"
+            job_path = root / "article.job.json"
+            manifest_path = root / "article.publish-manifest.json"
+            cover = root / "cover.png"
+            html.write_text("<html>article</html>", encoding="utf-8")
+            cover.write_bytes(base64.b64decode(PNG_1X1))
+            job = {
+                "article_markdown": "# 标题\n\n正文。",
+                "visuals": {"cover": {"path": str(cover)}},
+            }
+            job_path.write_text(json.dumps(job), encoding="utf-8")
+            manifest = {
+                "title": "标题",
+                "digest": "摘要",
+                "content_html": "<p>正文。</p>",
+                "cover": {"src": f"data:image/png;base64,{PNG_1X1}"},
+                "workbench_html": str(html),
+                "source_fingerprint": manifest_builder.compute_source_fingerprint(
+                    job, root
+                ),
+            }
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            initial = verifier.verify_package(
+                html, job_path=job_path, manifest_path=manifest_path
+            )
+            cover.write_bytes(base64.b64decode(PNG_1X1) + b"changed")
+            stale = verifier.verify_package(
+                html, job_path=job_path, manifest_path=manifest_path
+            )
+
+            self.assertEqual(initial["status"], "ok")
+            match_check = next(
+                item
+                for item in stale["checks"]
+                if item["name"] == "manifest_source_matches_job"
+            )
+            self.assertFalse(match_check["ok"])
+            self.assertEqual(stale["status"], "failed")
+
     def test_default_env_file_lives_in_skill_directory(self) -> None:
         expected = ROOT / "wechat-article-pipeline" / ".env"
 
@@ -58,7 +169,6 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 str(article),
                 str(out),
                 "--no-images",
-                "--no-publish-manifest",
             ]
             try:
                 packager.main()
@@ -69,6 +179,75 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
             html = out.read_text(encoding="utf-8")
             self.assertIn("正文第一段", html)
             self.assertNotIn("{{visual:", html)
+            self.assertFalse(out.with_suffix(".publish-manifest.json").exists())
+
+    def test_no_image_packaging_removes_existing_visual_placeholders(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            article = root / "article.md"
+            out = root / "article.html"
+            article.write_text(
+                "# 标题\n\n![题图]({{visual:cover}})\n\n正文。\n\n"
+                "![配图]({{visual:body-1}})\n\n![尾图]({{visual:closing}})\n",
+                encoding="utf-8",
+            )
+            old_argv = sys.argv
+            sys.argv = [
+                "package_wechat_article_bundle.py",
+                str(article),
+                str(out),
+                "--no-images",
+            ]
+            try:
+                packager.main()
+            finally:
+                sys.argv = old_argv
+
+            html = out.read_text(encoding="utf-8")
+            job = json.loads(out.with_suffix(".job.json").read_text(encoding="utf-8"))
+
+            self.assertNotIn("{{visual:", html)
+            self.assertNotIn("{{visual:", job["article_markdown"])
+            self.assertEqual(job["visuals"], {})
+
+    def test_explicit_signature_bypasses_ambiguous_saved_signatures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            article = root / "article.md"
+            out = root / "article.html"
+            env_file = root / ".env"
+            article.write_text("# 标题\n\n正文第一段。\n", encoding="utf-8")
+            env_file.write_text(
+                "WECHAT_SIGNATURE_AUTHOR=默认作者\n"
+                "WECHAT_ORIGINAL_ISSUE=2\n"
+                "WECHAT_ACCOUNT_SECOND_NAME=第二个号\n"
+                "WECHAT_ACCOUNT_SECOND_SIGNATURE_AUTHOR=第二作者\n"
+                "WECHAT_ACCOUNT_SECOND_ORIGINAL_ISSUE=5\n",
+                encoding="utf-8",
+            )
+            old_argv = sys.argv
+            sys.argv = [
+                "package_wechat_article_bundle.py",
+                str(article),
+                str(out),
+                "--no-images",
+                "--publisher-env-file",
+                str(env_file),
+                "--signature-author",
+                "明确作者",
+                "--original-issue",
+                "7",
+            ]
+            try:
+                packager.main()
+            finally:
+                sys.argv = old_argv
+
+            job = json.loads(out.with_suffix(".job.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(job["article_signature"]["author"], "明确作者")
+            self.assertEqual(job["article_signature"]["issue"], 7)
+            self.assertEqual(job["article_signature"]["account"]["alias"], "")
 
     def test_workbench_markdown_uses_relative_image_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -89,7 +268,6 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 str(out),
                 "--images-dir",
                 str(images_dir),
-                "--no-publish-manifest",
             ]
             try:
                 packager.main()
@@ -102,6 +280,135 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
             self.assertIn("![题图](../image/article/cover.png)", html)
             self.assertNotIn("data:image/", html)
             self.assertEqual(report["status"], "ok")
+
+    def test_packager_uses_exact_output_filename_from_image_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            files_dir = root / "files"
+            images_dir = root / "image" / "article"
+            files_dir.mkdir()
+            images_dir.mkdir(parents=True)
+            article = files_dir / "article.md"
+            out = files_dir / "article.html"
+            plan = files_dir / "article.image-jobs.json"
+            article.write_text(
+                "# 标题\n\n![题图]({{visual:cover}})\n\n正文。\n", encoding="utf-8"
+            )
+            (images_dir / "hero-custom.png").write_bytes(base64.b64decode(PNG_1X1))
+            plan.write_text(
+                json.dumps(
+                    {
+                        "kind": "wechat-image-jobs",
+                        "schema_version": 2,
+                        "article": {"slug": "article"},
+                        "rules": {},
+                        "review_defaults": {},
+                        "slots": [{"name": "cover", "output": "hero-custom.png"}],
+                        "generation_queue": [
+                            {
+                                "slot": "cover",
+                                "output": "hero-custom.png",
+                                "generation_prompt": "cover",
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            old_argv = sys.argv
+            sys.argv = [
+                "package_wechat_article_bundle.py",
+                str(article),
+                str(out),
+                "--images-dir",
+                str(images_dir),
+                "--plan-json",
+                str(plan),
+            ]
+            try:
+                packager.main()
+            finally:
+                sys.argv = old_argv
+
+            job = json.loads(out.with_suffix(".job.json").read_text(encoding="utf-8"))
+            html = out.read_text(encoding="utf-8")
+
+        self.assertTrue(job["visuals"]["cover"]["path"].endswith("hero-custom.png"))
+        self.assertIn("![题图](../image/article/hero-custom.png)", html)
+
+    def test_packager_removes_only_visuals_explicitly_skipped_by_fast_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            files_dir = root / "files"
+            images_dir = root / "image" / "article"
+            files_dir.mkdir()
+            images_dir.mkdir(parents=True)
+            article = files_dir / "article.md"
+            out = files_dir / "article.html"
+            plan = files_dir / "article.image-jobs.json"
+            article.write_text(
+                "# 标题\n\n"
+                "![题图]({{visual:cover}})\n\n"
+                "第一段。\n\n![配图1]({{visual:body-1}})\n\n"
+                "第二段。\n\n![配图2]({{visual:body-2}})\n\n"
+                "结尾。\n\n![尾图]({{visual:closing}})\n",
+                encoding="utf-8",
+            )
+            for name in ("cover", "body-1", "closing"):
+                (images_dir / f"{name}.png").write_bytes(base64.b64decode(PNG_1X1))
+            slots = [
+                {"name": name, "output": f"{name}.png"}
+                for name in ("cover", "body-1", "closing")
+            ]
+            plan.write_text(
+                json.dumps(
+                    {
+                        "kind": "wechat-image-jobs",
+                        "schema_version": 2,
+                        "article": {
+                            "slug": "article",
+                            "planning_mode": "fast",
+                            "skipped_visuals": ["body-2"],
+                        },
+                        "rules": {},
+                        "review_defaults": {},
+                        "slots": slots,
+                        "generation_queue": [
+                            {
+                                "slot": slot["name"],
+                                "output": slot["output"],
+                                "generation_prompt": slot["name"],
+                            }
+                            for slot in slots
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            old_argv = sys.argv
+            sys.argv = [
+                "package_wechat_article_bundle.py",
+                str(article),
+                str(out),
+                "--images-dir",
+                str(images_dir),
+                "--plan-json",
+                str(plan),
+            ]
+            try:
+                packager.main()
+            finally:
+                sys.argv = old_argv
+
+            html = out.read_text(encoding="utf-8")
+            job = json.loads(out.with_suffix(".job.json").read_text(encoding="utf-8"))
+
+            self.assertNotIn("{{visual:body-2}}", html)
+            self.assertNotIn("配图2", html)
+            self.assertNotIn("{{visual:body-2}}", job["article_markdown"])
+            self.assertIn("{{visual:body-1}}", job["article_markdown"])
 
     def test_direct_workbench_materializes_inline_visuals_as_relative_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -160,6 +467,7 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 "作者",
                 "--publisher-env-file",
                 str(root / "empty.env"),
+                "--publish-manifest",
             ]
             try:
                 packager.main()
@@ -198,6 +506,7 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 "作者",
                 "--publisher-env-file",
                 str(root / "empty.env"),
+                "--publish-manifest",
             ]
             try:
                 with self.assertRaises(SystemExit) as raised:
@@ -230,6 +539,7 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 "作者",
                 "--publisher-env-file",
                 str(root / "empty.env"),
+                "--publish-manifest",
             ]
             try:
                 packager.main()

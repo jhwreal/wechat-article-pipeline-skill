@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import re
@@ -10,6 +11,7 @@ from typing import Any
 
 import build_wechat_article_workbench as builder
 import wechat_account_config as account_config
+from atomic_files import atomic_write_json
 
 
 DEFAULT_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "publisher-config.json"
@@ -28,6 +30,11 @@ CODE_STYLE = "background:#f2f4f7;border:1px solid #eaecf0;border-radius:6px;padd
 CODE_BLOCK_STYLE = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.7;color:#e5e7eb;background:#111827;border-radius:10px;margin:16px 8px;padding:14px 16px;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere"
 SIGNATURE_STYLE = BASE_TEXT_STYLE + ";margin:21px 8px;color:#fff;font-size:14px;line-height:1.45;font-weight:400;text-align:center"
 SIGNATURE_TEXT_STYLE = "display:inline;padding:1px 5px 2px;background:#17b394;color:#fff;font-size:14px;line-height:1.45;font-weight:400"
+DATA_IMAGE_PREFIX = "data:image/"
+
+
+def is_data_image_uri(value: str) -> bool:
+    return value[: len(DATA_IMAGE_PREFIX)].lower() == DATA_IMAGE_PREFIX
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,12 +55,28 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--author", help="Author override. Also used for this manifest without persisting.")
     parser.add_argument("--preview-account", help="Preview WeChat account override without persisting.")
+    parser.add_argument(
+        "--source-state-json",
+        help="Internal workbench source-state JSON to embed without a second manifest rewrite.",
+    )
     parser.add_argument("--remember", action="store_true", help="Persist provided author/preview values to config.")
     return parser.parse_args()
 
 
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def parse_source_state_json(value: str | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    try:
+        source_state = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid --source-state-json: {exc}") from exc
+    if not isinstance(source_state, dict):
+        raise SystemExit("--source-state-json must decode to a JSON object.")
+    return source_state
 
 
 def read_config(path: Path) -> dict[str, str]:
@@ -67,8 +90,7 @@ def read_config(path: Path) -> dict[str, str]:
 
 
 def write_config(path: Path, config: dict[str, str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_json(path, config, mode=0o600)
 
 
 def author_env_key(account: dict[str, str]) -> str:
@@ -167,6 +189,75 @@ def image_candidates(markdown: str, visuals: dict[str, Any]) -> list[dict[str, s
     return candidates
 
 
+def validate_publish_image_sources(markdown: str, cover: dict[str, str]) -> None:
+    for match in IMAGE_RE.finditer(markdown):
+        source = match.group(2).strip()
+        if not is_data_image_uri(source):
+            raise SystemExit(
+                "Publish manifest body images must resolve to embedded data:image URIs; "
+                f"unsupported source: {source!r}. Use a local path/data URI or omit publish-manifest generation."
+            )
+    cover_source = str(cover.get("src", "")).strip()
+    if cover_source and not is_data_image_uri(cover_source):
+        raise SystemExit(
+            "Publish manifest cover must resolve to an embedded data:image URI; "
+            f"unsupported source: {cover_source!r}."
+        )
+
+
+def compute_source_fingerprint(
+    job: dict[str, Any],
+    job_dir: Path,
+    rendered_visuals: dict[str, str] | None = None,
+) -> str:
+    canonical_job = json.loads(json.dumps(job, ensure_ascii=False))
+    canonical_visuals = canonical_job.get("visuals", {}) or {}
+    if not isinstance(canonical_visuals, dict):
+        raise ValueError("job visuals must be an object")
+    for spec in canonical_visuals.values():
+        if not isinstance(spec, dict) or not str(spec.get("path", "")).strip():
+            continue
+        raw_path = Path(str(spec["path"]))
+        spec["path"] = str(
+            raw_path.resolve()
+            if raw_path.is_absolute()
+            else (job_dir / raw_path).resolve()
+        )
+    digest = hashlib.sha256()
+    digest.update(b"wechat-publish-source-v1\0")
+    digest.update(
+        json.dumps(
+            canonical_job,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    visuals = job.get("visuals", {}) or {}
+    if not isinstance(visuals, dict):
+        raise ValueError("job visuals must be an object")
+    resolved = dict(rendered_visuals or {})
+    for raw_name in sorted(visuals, key=str):
+        name = str(raw_name)
+        spec = visuals[raw_name]
+        if not isinstance(spec, dict):
+            raise ValueError(f"visual {name!r} must be an object")
+        source = resolved.get(name)
+        if source is None:
+            source, _audit = builder.resolve_image_asset(spec, job_dir)
+        digest.update(b"\0visual\0")
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        if source.startswith("data:image/"):
+            payload, mime_type = builder.decode_data_uri(source)
+            digest.update(mime_type.lower().encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(payload)
+        else:
+            digest.update(source.encode("utf-8"))
+    return digest.hexdigest()
+
+
 def visual_candidate(name: str, spec: Any, job_dir: Path, alt: str) -> dict[str, str]:
     if not isinstance(spec, dict):
         return {}
@@ -237,12 +328,33 @@ def inline_format(text: str) -> str:
         return code_token(len(code_spans) - 1)
 
     escaped = re.sub(r"`([^`]+)`", protect_code, escaped)
-    escaped = re.sub(
-        r"!\[([^\]]*)\]\(([^)]+)\)",
-        rf'<img alt="\1" src="\2" style="{IMAGE_STYLE}" />',
-        escaped,
-    )
-    escaped = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", rf'<a href="\2" style="{LINK_STYLE}">\1</a>', escaped)
+    def safe_url(value: str, *, image: bool) -> bool:
+        candidate = html.unescape(value).strip()
+        scheme_probe = re.sub(r"[\x00-\x20\x7f]+", "", candidate).lower()
+        scheme_match = re.match(r"^([a-z][a-z0-9+.-]*):", scheme_probe)
+        if not scheme_match:
+            return True
+        scheme = scheme_match.group(1)
+        if scheme in {"http", "https"}:
+            return True
+        if not image and scheme == "mailto":
+            return True
+        return image and scheme == "data" and scheme_probe.startswith("data:image/")
+
+    def replace_image(match: re.Match[str]) -> str:
+        alt, url = match.groups()
+        if not safe_url(url, image=True):
+            return alt
+        return f'<img alt="{alt}" src="{url}" style="{IMAGE_STYLE}" />'
+
+    def replace_link(match: re.Match[str]) -> str:
+        label, url = match.groups()
+        if not safe_url(url, image=False):
+            return label
+        return f'<a href="{url}" style="{LINK_STYLE}">{label}</a>'
+
+    escaped = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", replace_image, escaped)
+    escaped = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", replace_link, escaped)
     escaped = re.sub(r"\*\*([^*]+)\*\*", rf'<strong style="{STRONG_STYLE}">\1</strong>', escaped)
     escaped = re.sub(r"==([^=\n]+)==", rf'<span style="{ACCENT_STYLE}">\1</span>', escaped)
     escaped = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", escaped)
@@ -419,24 +531,43 @@ def main() -> None:
     draft_markdown = markdown_for_draft_body(markdown, title)
     visuals = job.get("visuals", {}) if isinstance(job.get("visuals"), dict) else {}
     cover, candidates = select_cover_candidate(markdown, visuals, args.job.resolve().parent)
+    validate_publish_image_sources(markdown, cover)
     wechat_cover = build_wechat_cover_manifest(job, cover, args.job.resolve().parent)
     article_slug = args.article_slug or str(job.get("article_slug", "")).strip() or args.job.stem
+    account_manifest = {
+        "selector": account.get("selector", ""),
+        "alias": account.get("alias", ""),
+        "name": account.get("name", ""),
+    }
+    preview_manifest = {
+        "method": "message/mass/preview",
+        "account": config.get("preview_account", ""),
+    }
+    env_file_manifest = str(args.env_file.expanduser())
 
     manifest = {
         "schema_version": 1,
+        "workbench_refresh": {
+            "article_slug": article_slug,
+            "author": author,
+            "env_file": env_file_manifest,
+            "account": account_manifest,
+            "preview": {"account": preview_manifest["account"]},
+        },
         "article_slug": article_slug,
         "title": title,
         "author": author,
         "digest": extract_digest(markdown, title),
         "content_html": inject_signature_html(markdown_to_wechat_html(draft_markdown), signature_label(job)),
         "content_text": strip_markdown(draft_markdown),
+        "source_fingerprint": compute_source_fingerprint(
+            job,
+            args.job.resolve().parent,
+            rendered_visuals,
+        ),
         "workbench_html": str(args.workbench_html.resolve()) if args.workbench_html else "",
         "article_signature": job.get("article_signature", {}) if isinstance(job.get("article_signature"), dict) else {},
-        "account": {
-            "selector": account.get("selector", ""),
-            "alias": account.get("alias", ""),
-            "name": account.get("name", ""),
-        },
+        "account": account_manifest,
         "cover": cover,
         "wechat_cover": wechat_cover,
         "image_candidates": candidates,
@@ -452,11 +583,8 @@ def main() -> None:
             "reward": "Not present in the official draft/add article fields.",
             "auto_selected_comments": "The official mark-elect comment API requires a published msg_data_id and a concrete user_comment_id, so it cannot be configured at draft creation.",
         },
-        "preview": {
-            "method": "message/mass/preview",
-            "account": config.get("preview_account", ""),
-        },
-        "env_file": str(args.env_file.expanduser()),
+        "preview": preview_manifest,
+        "env_file": env_file_manifest,
         "token_cache_path": str(account_config.account_token_cache_path(DEFAULT_TOKEN_CACHE, account)),
         "safety": {
             "use_official_api_only": True,
@@ -466,8 +594,10 @@ def main() -> None:
         },
     }
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    source_state = parse_source_state_json(args.source_state_json)
+    if source_state is not None:
+        manifest["source_state"] = source_state
+    atomic_write_json(args.out, manifest)
     print(f"Wrote {args.out.resolve()}")
 
 

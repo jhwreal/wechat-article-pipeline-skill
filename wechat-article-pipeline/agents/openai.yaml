@@ -1,0 +1,4 @@
+interface:
+  display_name: "微信公众号文章流水线"
+  short_description: "撰写、配图、打包，并安全同步到微信草稿或今日头条"
+  default_prompt: "Use $wechat-article-pipeline to turn this topic or draft into a publish-ready Chinese article package and deliver it to WeChat or Toutiao when requested."

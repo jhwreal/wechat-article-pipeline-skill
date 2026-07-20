@@ -336,14 +336,16 @@ class PublishWechatReceiptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             manifest, result_path, original_env = self.make_inputs(root, include_issue=True)
-            original_env.write_text("WECHAT_ORIGINAL_ISSUE=11\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "conflict"):
+            def fail_increment(_manifest: dict[str, Any], _env_file: Path | None) -> dict[str, str]:
+                raise RuntimeError("increment stopped")
+
+            with self.assertRaisesRegex(RuntimeError, "increment stopped"):
                 self.invoke(
                     manifest,
                     result_path,
                     original_env,
-                    "--increment-original-issue",
+                    replacements={"increment_original_issue": fail_increment},
                 )
 
             other_env = root / "other.env"
@@ -355,6 +357,44 @@ class PublishWechatReceiptTest(unittest.TestCase):
 
             self.assertEqual(original_env.read_bytes(), before_original)
             self.assertEqual(other_env.read_bytes(), before_other)
+
+    def test_resume_completes_automatic_issue_increment_without_recreating_draft(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir), include_issue=True)
+
+            def fail_increment(_manifest: dict[str, Any], _env_file: Path | None) -> dict[str, str]:
+                raise RuntimeError("increment stopped")
+
+            with self.assertRaisesRegex(RuntimeError, "increment stopped"):
+                self.invoke(
+                    manifest,
+                    result_path,
+                    env_file,
+                    replacements={"increment_original_issue": fail_increment},
+                )
+
+            skipped_upload = mock.Mock(side_effect=self.forbidden)
+            skipped_cover = mock.Mock(side_effect=self.forbidden)
+            skipped_draft_add = mock.Mock(side_effect=self.forbidden)
+            self.invoke(
+                manifest,
+                result_path,
+                env_file,
+                "--resume",
+                replacements={
+                    "upload_body_images": skipped_upload,
+                    "upload_cover": skipped_cover,
+                    "create_draft": skipped_draft_add,
+                },
+            )
+
+            skipped_upload.assert_not_called()
+            skipped_cover.assert_not_called()
+            skipped_draft_add.assert_not_called()
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt["status"], "success")
+            self.assertEqual(receipt["original_issue_increment"]["next_issue"], "10")
+            self.assertIn("WECHAT_ORIGINAL_ISSUE=10", env_file.read_text(encoding="utf-8"))
 
     def test_draft_add_without_media_id_cannot_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -481,6 +521,46 @@ class PublishWechatReceiptTest(unittest.TestCase):
                     result_path,
                     missing_env,
                     "--increment-original-issue",
+                    replacements={
+                        "upload_body_images": body_upload,
+                        "upload_cover": cover_upload,
+                        "create_draft": draft_add,
+                    },
+                )
+
+            body_upload.assert_not_called()
+            cover_upload.assert_not_called()
+            draft_add.assert_not_called()
+            self.assertFalse(result_path.exists())
+
+    def test_signed_manifest_advances_issue_without_explicit_increment_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir), include_issue=True)
+
+            self.invoke(manifest, result_path, env_file)
+
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt["status"], "success")
+            self.assertEqual(
+                receipt["operation_state"]["increment_original_issue"]["state"],
+                "succeeded",
+            )
+            self.assertEqual(receipt["original_issue_increment"]["next_issue"], "10")
+            self.assertIn("WECHAT_ORIGINAL_ISSUE=10", env_file.read_text(encoding="utf-8"))
+
+    def test_consumed_signed_manifest_fails_before_draft_side_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir), include_issue=True)
+            env_file.write_text("WECHAT_ORIGINAL_ISSUE=10\n", encoding="utf-8")
+            body_upload = mock.Mock(return_value=("<p>正文第一段。</p>", []))
+            cover_upload = mock.Mock(return_value=self.fake_upload_cover({}, ""))
+            draft_add = mock.Mock(return_value="media-123")
+
+            with self.assertRaisesRegex(SystemExit, "already been consumed"):
+                self.invoke(
+                    manifest,
+                    result_path,
+                    env_file,
                     replacements={
                         "upload_body_images": body_upload,
                         "upload_cover": cover_upload,

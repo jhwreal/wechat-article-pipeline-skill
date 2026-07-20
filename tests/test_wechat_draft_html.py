@@ -20,6 +20,25 @@ PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
 
 
 class WeChatDraftHtmlTest(unittest.TestCase):
+    def test_source_state_json_requires_an_object(self) -> None:
+        state = manifest_builder.parse_source_state_json(
+            '{"core_revision":2,"manifest_revision":2,"asset_state":"ready"}'
+        )
+        self.assertEqual(state["core_revision"], 2)
+        with self.assertRaisesRegex(SystemExit, "JSON object"):
+            manifest_builder.parse_source_state_json("[]")
+
+    def test_draft_renderer_drops_executable_markdown_urls(self) -> None:
+        rendered = manifest_builder.inline_format(
+            "[危险链接](java\tscript:evil) 与 ![危险图片](javascript:evil)"
+        )
+        safe = manifest_builder.inline_format("[官网](https://example.com)")
+
+        self.assertNotIn("href=", rendered)
+        self.assertNotIn("src=", rendered)
+        self.assertIn("危险链接", rendered)
+        self.assertIn('href="https://example.com"', safe)
+
     def test_draft_body_omits_leading_title_before_cover_and_signature(self) -> None:
         markdown = """# 标题
 
@@ -152,6 +171,13 @@ PROJECTS.md
         self.assertEqual(selected["alt"], "题图")
         self.assertTrue(selected["src"].startswith("data:image/png;base64,"))
         self.assertEqual(candidates[0], selected)
+
+    def test_publish_manifest_rejects_external_body_image_sources(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "must resolve to embedded data:image"):
+            manifest_builder.validate_publish_image_sources(
+                "# 标题\n\n![外链图](https://example.com/image.png)\n",
+                {"src": PNG_1X1},
+            )
 
     def test_inline_code_is_not_reparsed_as_markdown_emphasis(self) -> None:
         html = manifest_builder.markdown_to_wechat_html("这里有 `**literal**` 和 `a*b`。")

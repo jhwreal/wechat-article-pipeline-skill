@@ -87,7 +87,7 @@ rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 
 审稿有两种方式：
 
-1. 输出 HTML 工作台。通过 Codex 启动的本地工作台地址打开后，可以继续修改 Markdown，并将最新内容写回 HTML、源 Markdown、任务数据和发布清单；输入内容会先保存到浏览器缓存，停止编辑后自动写入，也可以点击“保存”立即写入。直接打开独立 HTML 时仍可使用 `localStorage`，但不会写回项目文件。图片文件保留在项目的 `image/<slug>/` 目录，复制富文本时工作台会临时把本地图片转成剪贴板 HTML 里的图片数据。
+1. 输出 HTML 工作台。通过 Codex 启动的本地工作台地址打开后，可以继续修改 Markdown，并将最新内容写回 HTML、源 Markdown、任务数据和已配置的发布清单；输入内容会先保存到浏览器缓存，停止编辑后自动写入，也可以点击“保存”立即写入。直接打开独立 HTML 时为预览/复制只读模式，工作台会明确提示改用本地服务地址。图片文件保留在项目的 `image/<slug>/` 目录，复制富文本时工作台会临时把本地图片转成剪贴板 HTML 里的图片数据。
 2. 在已绑定公众号凭据的情况下，让 Codex 调用微信官方 API 直接创建公众号草稿，然后到公众号草稿箱里检查。
 
 该 skill 只负责创建草稿和可选发送预览，不会自动群发或发布。
@@ -151,7 +151,9 @@ https://developers.weixin.qq.com/platform
 │   ├── method-article.clipboard-assets.js
 │   └── emotion-article.clipboard-assets.js
 └── wechat-article-pipeline/
+    ├── .env.example
     ├── SKILL.md
+    ├── agents/openai.yaml
     ├── assets/templates/
     ├── references/
     └── scripts/
@@ -162,11 +164,12 @@ https://developers.weixin.qq.com/platform
 - Codex 内置图片工具通常会把生成图片保存到 `$CODEX_HOME/generated_images`；打包前请将选中的图片复制到项目的图片目录。
 - 打包脚本会校验生成的 HTML 没有未解析的 `{{visual:*}}` 占位符，并确认工作台里的图片引用已经落成相对路径；工作台复制按钮会在复制时临时内嵌图片，不会污染左侧 Markdown。
 - 非 macOS 环境运行图片打包/发布流程前请安装 Pillow；macOS 对部分封面裁剪预览可使用系统 `sips`，但 Pillow 仍建议用于发布前正文图片压缩。
-- CI 目前只跑语法检查、单元测试和 skill zip 打包，不集成完整“文章 + 图片打包 + API dry-run” smoke test；修改图片或打包流程后，发布前应在本地手动跑一次完整 smoke test。
+- CI 会运行 Python/Node 测试、Skill 结构校验、完整“图片规划 + 工作台打包 + 发布清单 + API dry-run”冒烟测试，并在测试通过后验证安装包。
 - `.env`、token cache、生成的文章包和图片都不应提交到 GitHub。
 
 ## 七、版本说明
 
+- `V 1.5.0（当前版本）`：新增今日头条 Chrome 草稿与发布流程；强化工作台事务恢复和路径边界，发布清单改为显式生成，收紧图片任务/草稿校验，并补齐完整 CI 冒烟测试与安装元数据。
 - `V 1.1.0`：增加接入多个公众号的能力。
 - `V 1.0.0`：支持调用微信官方 API，直接导入微信公众号草稿箱。
 - `V 0.5.0`：支持将文稿和配图打包成可编辑 HTML，需手工复制到微信公众号后台。
@@ -260,7 +263,7 @@ You do not need to rebuild the complete article package for every change. The sk
 
 There are two review paths:
 
-1. Output an editable HTML workbench. When opened through the local workbench URL started by Codex, Markdown edits can be written back to the HTML, source Markdown, job data, and publishing manifest. Input is cached in the browser immediately, saved to project files after editing pauses, and can also be persisted immediately with the Save button. Opening the standalone HTML directly still provides `localStorage`, but does not write back to project files. Image files stay in `image/<slug>/`; the copy button temporarily embeds them in clipboard HTML.
+1. Output an editable HTML workbench. When opened through the local workbench URL started by Codex, Markdown edits can be written back to the HTML, source Markdown, job data, and any configured publishing manifest. Input is cached immediately, saved to project files after editing pauses, and can also be persisted with Save. Opening the standalone HTML directly is preview/copy-only; it locks editing and points back to the loopback service URL. Image files stay in `image/<slug>/`; the copy button temporarily embeds them in clipboard HTML.
 2. After binding Official Account credentials, ask Codex to create a WeChat draft through the official API, then review it in the WeChat draft box.
 
 The skill creates drafts and can optionally send previews. It does not automatically publish or mass-send.
@@ -324,7 +327,9 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 │   ├── method-article.clipboard-assets.js
 │   └── emotion-article.clipboard-assets.js
 └── wechat-article-pipeline/
+    ├── .env.example
     ├── SKILL.md
+    ├── agents/openai.yaml
     ├── assets/templates/
     ├── references/
     └── scripts/
@@ -335,11 +340,12 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 - Codex's built-in image tool normally saves generated files under `$CODEX_HOME/generated_images`; copy accepted images into the project image directory before packaging.
 - The packager validates that generated HTML has no unresolved `{{visual:*}}` placeholders and that workbench image references have been resolved to relative paths. The workbench copy button inlines images only in clipboard HTML, not in the editable Markdown.
 - Install Pillow before running image packaging/publishing workflows on non-macOS systems. macOS can use the built-in `sips` fallback for some cover-crop previews, but Pillow is still recommended for pre-upload body-image compression.
-- CI currently runs syntax checks, unit tests, and skill zip packaging only. It intentionally does not run the full article + image packaging + API dry-run smoke test; run that smoke test locally before releases that change image or packaging behavior.
+- CI runs Python and Node tests, validates the installable skill, executes the full image-plan + package + manifest + API dry-run smoke path, and then verifies the distributable archive.
 - `.env`, token cache files, generated article packages, and generated images should not be committed to GitHub.
 
 ## 7. Release Notes
 
+- `V 1.5.0 (current version)`: Added the Chrome-based Toutiao draft and publishing workflow; hardened workbench recovery and path boundaries, made publish manifests opt-in, tightened image-job/draft validation, and added full CI smoke coverage plus install metadata.
 - `V 1.1.0`: Added support for connecting multiple WeChat Official Accounts.
 - `V 1.0.0`: Added official WeChat API import for creating Official Account drafts directly.
 - `V 0.5.0`: Supported packaging article text and images into editable HTML for manual copy-paste into WeChat.

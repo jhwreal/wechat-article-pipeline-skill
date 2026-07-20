@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import unicodedata
@@ -10,9 +9,23 @@ from pathlib import Path
 from typing import Any
 
 import build_wechat_article_workbench as builder
+from atomic_files import atomic_write_text
+from image_jobs_contract import (
+    filter_missing_image_jobs,
+    normalize_image_jobs,
+    render_image_plan_markdown,
+    rules_fingerprint,
+)
+from image_planning_catalog import (
+    BODY_ROLE_LIBRARY,
+    EMOTIONAL_VISUAL_ROLES,
+    SIGNAL_PATTERNS,
+    STRUCTURAL_VISUAL_ROLES,
+)
 
 
 PLACEHOLDER_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
+BODY_PLACEHOLDER_RE = re.compile(r"^body-[1-9][0-9]*$")
 TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 REFERENCE_HEADING_RE = re.compile(
     r"^\s*#{1,6}\s*(资料参考|参考来源|参考资料|参考信息|信息来源|官方链接|参考|references?)\s*$",
@@ -24,202 +37,6 @@ REFERENCE_INTRO_RE = re.compile(
 CHINESE_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
 RULES_PATH = Path(__file__).resolve().parents[1] / "references" / "image-rules.json"
 _IMAGE_RULES_CACHE: dict[str, Any] | None = None
-
-
-# 通用视觉信号：只判断“文章修辞功能”，不绑定某一个具体行业或题材。
-SIGNAL_PATTERNS: dict[str, re.Pattern[str]] = {
-    "problem": re.compile(r"问题|痛点|难点|风险|危机|代价|误区|陷阱|焦虑|压力|冲突|失败|困境|瓶颈|挑战|担心|不安|损失|低效|混乱|被动|淘汰|替代|取代|冲击"),
-    "promise": re.compile(r"如何|怎么|方法|步骤|指南|清单|路径|建议|方案|策略|技巧|避坑|提升|解决|做好|学会|掌握|快速|高效"),
-    "process": re.compile(r"第一|第二|第三|首先|其次|然后|接着|最后|先|再|下一步|步骤|流程|路径|路线|阶段|环节|闭环|链路"),
-    "list": re.compile(r"哪些|几个|清单|盘点|类型|分类|包括|分为|主要有|这几类|维度|因素|原因|场景|环节|模块|要点|关键词"),
-    "compare": re.compile(r"以前|过去|现在|不再|不是.+而是|对比|区别|差异|从.+到|传统|新旧|前后|左右|相比|变化|升级|转向|替换"),
-    "evidence": re.compile(r"数据|比例|增长|下降|案例|报告|研究|调查|统计|成本|效率|收入|规模|数量|趋势|证据|事实|样本|指标|%|％|倍|亿|万"),
-    "mechanism": re.compile(r"本质|核心|关键|原因|因为|机制|逻辑|为什么|意味着|真正|底层|原理|规律|决定|影响"),
-    "emotion": re.compile(r"焦虑|恐惧|兴奋|震撼|失落|希望|无奈|愤怒|安心|安全感|压迫|孤独|豁然|共鸣|扎心|残酷|委屈|疲惫|沉默|遗憾|勇气|释然|崩溃|倔强|温柔|清醒"),
-    "story": re.compile(r"故事|人物|采访|经历|一天|现场|案例|客户|团队|老板|员工|朋友|普通人|一家|一次|亲历|父母|孩子|年轻人|中年人|夜里|路上|饭桌|办公室|出租屋"),
-    "principle": re.compile(r"道理|人生|成长|关系|情绪|选择|告别|和解|成熟|清醒|底气|边界|热爱|困住|松弛|内耗|自洽|命运|生活|普通人"),
-}
-
-EMOTIONAL_VISUAL_ROLES = {
-    "inline_tension",
-    "inline_scene",
-    "inline_metaphor",
-    "inline_emotion",
-    "inline_silence",
-    "inline_symbolic_scene",
-    "inline_human_moment",
-}
-
-STRUCTURAL_VISUAL_ROLES = {
-    "inline_steps",
-    "inline_checklist",
-    "inline_light_explainer",
-    "inline_data_card",
-    "inline_evidence",
-}
-
-BODY_ROLE_LIBRARY: dict[str, dict[str, str]] = {
-    "inline_light_explainer": {
-        "role": "inline_light_explainer",
-        "image_type": "light_explainer_illustration",
-        "target_effect": "用一个具体场景加少量结构，把这一段的一个判断讲得有用但不拥挤",
-        "visual_distance": "中景 / 场景中带少量解释元素",
-        "composition": "一个主场景或主对象 + 2到3个短标注、关系线、图标或小节点；最多一条主箭头链",
-        "emotional_tone": "清楚、有用、有一点现场感",
-        "abstraction_level": "低到中等抽象",
-        "information_density": "中等偏轻",
-    },
-    "inline_explanation": {
-        "role": "inline_explanation",
-        "image_type": "clean_visual_explanation",
-        "target_effect": "把这一段的关键机制讲清楚",
-        "visual_distance": "中景 / 单焦点",
-        "composition": "一个主对象 + 2到3个辅助元素；可用少量箭头、关系线或简洁标注",
-        "emotional_tone": "冷静、清楚、可信",
-        "abstraction_level": "低到中等抽象",
-        "information_density": "中等",
-    },
-        "inline_scene": {
-        "role": "inline_scene",
-        "image_type": "specific_scene",
-        "target_effect": "把这一段的真实场景、人物处境或使用现场画出来",
-        "visual_distance": "中景或中远景 / 有环境信息",
-        "composition": "真实场景驱动，有明确动作、关系或处境",
-        "emotional_tone": "有在场感、有代入感",
-        "abstraction_level": "低抽象",
-        "information_density": "中低",
-    },
-    "inline_tension": {
-        "role": "inline_tension",
-        "image_type": "emotional_tension_scene",
-        "target_effect": "把这一段的压力、矛盾、风险、选择困难或情绪冲突画出来",
-        "visual_distance": "中景 / 人物与压力源或矛盾关系同框",
-        "composition": "人物、压力源、后果或选择必须形成一眼可见的关系",
-        "emotional_tone": "有张力、有代入、有传播感",
-        "abstraction_level": "低到中等抽象",
-        "information_density": "中等",
-    },
-    "inline_contrast": {
-        "role": "inline_contrast",
-        "image_type": "before_after_or_side_by_side_comparison",
-        "target_effect": "把这一段的新旧差异、强弱差异、路线差异或判断差异拉开",
-        "visual_distance": "正视角或中景 / 对比式构图",
-        "composition": "左右分区、前后对比或上下对照；差异必须一眼看懂",
-        "emotional_tone": "理性、有张力",
-        "abstraction_level": "中等抽象",
-        "information_density": "中等到中高",
-    },
-    "inline_steps": {
-        "role": "inline_steps",
-        "image_type": "step_by_step_process_graphic",
-        "target_effect": "把这一段的方法、流程、路径或先后顺序画成清楚步骤",
-        "visual_distance": "正视角 / 流程视角",
-        "composition": "3到5个步骤节点，清晰箭头连接，每步一个短标签或图标",
-        "emotional_tone": "清楚、可执行、有掌控感",
-        "abstraction_level": "中等抽象",
-        "information_density": "中高",
-    },
-    "inline_checklist": {
-        "role": "inline_checklist",
-        "image_type": "structured_checklist_or_taxonomy",
-        "target_effect": "把这一段的类别、清单、要点、场景或环节归纳成一张图",
-        "visual_distance": "正视角 / 分类卡片视角",
-        "composition": "3到6个清晰分类卡片或勾选项，每项有图标和极短标签",
-        "emotional_tone": "清楚、直接、有收获感",
-        "abstraction_level": "中等抽象",
-        "information_density": "中高",
-    },
-    "inline_data_card": {
-        "role": "inline_data_card",
-        "image_type": "compact_concept_explainer",
-        "target_effect": "用克制的概念图，把这一段的结构、判断和关系讲清楚",
-        "visual_distance": "概念图 / 轻量解释视角",
-        "composition": "一个主对象或主场景 + 2到3个关系模块 + 简洁箭头、图标或关系线",
-        "emotional_tone": "理性、有洞察、信息量强",
-        "abstraction_level": "中等抽象",
-        "information_density": "高但可读",
-    },
-    "inline_evidence": {
-        "role": "inline_evidence",
-        "image_type": "evidence_or_data_visual",
-        "target_effect": "把这一段的数据、案例、证据或趋势画得可信、清楚",
-        "visual_distance": "图表与场景结合 / 编辑图解视角",
-        "composition": "一个证据中心，例如趋势线、对比柱、案例卡或文件证据",
-        "emotional_tone": "可信、扎实、有判断依据",
-        "abstraction_level": "中等抽象",
-        "information_density": "中高",
-    },
-    "inline_detail": {
-        "role": "inline_detail",
-        "image_type": "focused_detail",
-        "target_effect": "放大这一段里最具体的一个动作、对象、界面、材料或局部细节",
-        "visual_distance": "近景 / 特写",
-        "composition": "细节放大，背景克制，画面只保留一个核心动作或对象",
-        "emotional_tone": "专注、具体、可执行",
-        "abstraction_level": "低抽象",
-        "information_density": "低到中等",
-    },
-    "inline_metaphor": {
-        "role": "inline_metaphor",
-        "image_type": "conceptual_metaphor",
-        "target_effect": "用一个克制但明确的隐喻延展这一段判断",
-        "visual_distance": "中景或远景 / 明确隐喻中心",
-        "composition": "单个隐喻主视觉",
-        "emotional_tone": "有想象力，但克制",
-        "abstraction_level": "中高抽象",
-        "information_density": "低",
-    },
-    "inline_extension": {
-        "role": "inline_extension",
-        "image_type": "future_or_next_step_scene",
-        "target_effect": "顺着这一段观点往前推一步，画出下一步可能发生的场景",
-        "visual_distance": "中远景 / 带纵深",
-        "composition": "未来感或延展场景，但仍围绕一个中心动作或变化",
-        "emotional_tone": "打开感、前瞻感",
-        "abstraction_level": "中等抽象",
-        "information_density": "中低",
-    },
-    "inline_emotion": {
-        "role": "inline_emotion",
-        "image_type": "emotional_pause_visual",
-        "target_effect": "让读者在这一段停一下，感受到情绪或判断的分量",
-        "visual_distance": "远景或安静中景",
-        "composition": "留白更多，节奏放慢，但必须有明确情绪来源",
-        "emotional_tone": "沉静、震撼、豁然或有余味",
-        "abstraction_level": "中高抽象",
-        "information_density": "低",
-    },
-    "inline_silence": {
-        "role": "inline_silence",
-        "image_type": "quiet_editorial_illustration",
-        "target_effect": "把这一段的余味、迟疑、孤独、释然或没有说出口的情绪画出来",
-        "visual_distance": "远景或安静中景 / 留白明显",
-        "composition": "一个人物或一个关键物件处在有情绪的空间里；光线、阴影、距离感承担叙事",
-        "emotional_tone": "克制、沉静、有余味",
-        "abstraction_level": "中等抽象",
-        "information_density": "低",
-    },
-    "inline_symbolic_scene": {
-        "role": "inline_symbolic_scene",
-        "image_type": "symbolic_story_illustration",
-        "target_effect": "把这一段的道理变成一个有冲击力但不说教的象征性场景",
-        "visual_distance": "中远景 / 强主视觉",
-        "composition": "一个清晰象征物或空间关系承载判断",
-        "emotional_tone": "有冲击力、有隐喻感、符合文章调性",
-        "abstraction_level": "中高抽象",
-        "information_density": "低到中等",
-    },
-    "inline_human_moment": {
-        "role": "inline_human_moment",
-        "image_type": "cinematic_human_moment",
-        "target_effect": "把这一段落到一个具体人的瞬间，让读者先代入再理解道理",
-        "visual_distance": "中景或近景 / 人物瞬间",
-        "composition": "一个具体动作、表情或停顿，配合真实空间和少量关键物件",
-        "emotional_tone": "真实、有温度、有故事感",
-        "abstraction_level": "低到中等抽象",
-        "information_density": "低",
-    },
-}
 
 
 def parse_args() -> argparse.Namespace:
@@ -286,23 +103,6 @@ def load_image_rules() -> dict[str, Any]:
     if _IMAGE_RULES_CACHE is None:
         _IMAGE_RULES_CACHE = json.loads(RULES_PATH.read_text(encoding="utf-8"))
     return _IMAGE_RULES_CACHE
-
-
-def image_rules_markdown(rules: dict[str, Any] | None = None) -> str:
-    rules = rules or load_image_rules()
-
-    def section(title: str, values: list[str]) -> list[str]:
-        return [f"## {title}", *[f"- {value}" for value in values], ""]
-
-    lines: list[str] = []
-    lines.extend(section("当前生图规则", list(rules.get("generation_rules", []))))
-    lines.extend(section("当前避免规则", list(rules.get("avoid_rules", []))))
-    lines.extend(section("当前文字预算", list(rules.get("text_budget_rules", {}).values())))
-    lines.extend(section("当前视觉类型", list(rules.get("visual_type_rules", {}).values())))
-    lines.extend(section("当前质感要求", list(rules.get("quality_floor_rules", []))))
-    lines.extend(section("当前生成硬限制", list(rules.get("prompt_hard_limits", []))))
-    lines.extend(section("影响生成图片的规则", list(rules.get("influencing_rules", []))))
-    return "\n".join(lines).strip()
 
 
 def slot_kind_for_rules(slot: dict[str, Any]) -> str:
@@ -968,10 +768,6 @@ def build_variation_note(previous_slots: list[dict[str, Any]], slot: dict[str, A
     )
 
 
-def format_bullets(lines: list[str]) -> str:
-    return "\n".join(f"- {line}" for line in lines if line)
-
-
 def prompt_line(label: str, value: str, max_chars: int) -> str:
     clean = truncate_text(value, max_chars)
     return f"{label}：{clean}" if clean else ""
@@ -1085,108 +881,12 @@ def build_closing_prompt(slot: dict[str, Any], article_summary: str, article_ess
     ])
 
 
-def build_plan_markdown(article_summary: str, global_visual_style: str, visual_intent: str, visual_mode: str, slots: list[dict[str, Any]]) -> str:
-    def main_content(slot: dict[str, Any]) -> str:
-        focus = str(slot.get("content_focus", "")).strip()
-        if "：" in focus:
-            focus = focus.split("：", 1)[1].strip()
-        return truncate_text(focus or str(slot.get("target_effect", "")), 34)
-
-    def plan_avoids(slot: dict[str, Any]) -> str:
-        return truncate_text("；".join(slot.get("must_avoid", [])[:2]), 30)
-
-    lines = [
-        "## 图片策划表",
-        "",
-        f"- 文章摘要：{article_summary}",
-        f"- 视觉模式：{visual_mode}",
-        f"- 视觉意图：{visual_intent}",
-        f"- 整体视觉风格：{global_visual_style}",
-        "",
-        "| 序号 | 位置 | 角色 | 图片类型 | 主要内容 | 避免事项 |",
-        "| --- | --- | --- | --- | --- | --- |",
-    ]
-    for slot in slots:
-        lines.append(
-            f"| {slot['index']} | {slot['position']} | {slot['role']} | {slot['image_type']} | {main_content(slot)} | {plan_avoids(slot)} |"
-        )
-        task = slot.get("generation_task")
-        if isinstance(task, dict):
-            lines.append(
-                f"| {task['id']} | {slot['position']} | {slot['role']} | {task['output']} | {truncate_text(task.get('direction', ''), 34)} | {plan_avoids(slot)} |"
-            )
-    return "\n".join(lines)
-
-
-def material_slug(slot: dict[str, Any]) -> str:
-    raw = str(slot.get("role") or slot.get("image_type") or slot.get("name") or "visual")
-    return slugify(raw, "visual")
-
-
-def build_generation_prompt_for_route(slot: dict[str, Any], route: str) -> str:
-    if slot.get("role") == "hero_cover":
-        return build_cover_prompt(slot, slot.get("article_summary", ""), slot.get("article_essence", ""), route=route)
-    if slot.get("role") == "closing_image":
-        return build_closing_prompt(slot, slot.get("article_summary", ""), slot.get("article_essence", ""), route=route)
-    return build_body_prompt(slot, slot.get("article_summary", ""), int(slot.get("target_body_chars", 200)), route=route)
-
-
-def build_variant_direction(slot: dict[str, Any], route: str) -> str:
-    objectives = load_image_rules()["slot_objectives"]
-    kind = slot_kind_for_rules(slot)
-    objective = objectives[kind]
-    if kind == "closing" and route == "B":
-        key = "route_b_method_direction" if is_method_or_collectible(slot) else "route_b_symbolic_direction"
-        return objective[key]
-    return objective[f"route_{route.lower()}_direction"]
-
-
-def single_pass_prompt(prompt: str) -> str:
-    return prompt.replace("创意路线 A｜", "单次直出｜", 1)
-
-
-def build_single_pass_direction(slot: dict[str, Any]) -> str:
-    route_direction = build_variant_direction(slot, "A")
-    route_direction = route_direction.replace("创意路线 A：", "").strip()
-    return f"直接生成：{route_direction}"
-
-
-def build_generation_task(slot: dict[str, Any]) -> dict[str, Any]:
-    material = material_slug(slot)
-    index = int(slot.get("index", 0))
-    name = str(slot.get("name", f"slot-{index}"))
-    prompt = single_pass_prompt(build_generation_prompt_for_route(slot, "A"))
-    output = str(slot.get("output", f"{name}.png"))
-    return {
-        "id": f"{index:02d}",
-        "slot": name,
-        "material_name": material,
-        "output": output,
-        "final_output": output,
-        "direction": build_single_pass_direction(slot),
-        "generation_prompt": prompt,
-        "prompt": prompt,
-    }
-
-
-def attach_generation_tasks(slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    queue: list[dict[str, Any]] = []
-    for slot in slots:
-        task = build_generation_task(slot)
-        slot["generation_task"] = task
-        slot["generation_prompt"] = task["generation_prompt"]
-        slot["prompt"] = task["prompt"]
-        queue.append(task)
-    return queue
-
-
 def empty_image_payload(article_path: Path, article_slug: str, markdown: str) -> dict[str, Any]:
     title = extract_title(markdown, article_path.stem)
     entries = parse_article_entries(markdown)
     text_entries = [entry for entry in entries if entry["kind"] == "text"]
     article_summary = build_article_summary(title, text_entries) if text_entries else ""
     rules = load_image_rules()
-    rules_bytes = json.dumps(rules, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return {
         "kind": "wechat-image-jobs",
         "schema_version": 2,
@@ -1199,8 +899,10 @@ def empty_image_payload(article_path: Path, article_slug: str, markdown: str) ->
             "summary": article_summary,
             "essence": build_article_essence(title, text_entries) if text_entries else "",
             "source": str(article_path.resolve()),
+            "planning_mode": "no-image",
+            "skipped_visuals": [],
         },
-        "rules": {"version": rules.get("version"), "sha256": hashlib.sha256(rules_bytes).hexdigest()},
+        "rules": {"version": rules.get("version"), "sha256": rules_fingerprint(rules)},
         "review_defaults": {
             "must_avoid": list(rules.get("avoid_rules", [])),
             "quality_floor": list(rules.get("quality_floor_rules", [])),
@@ -1219,12 +921,16 @@ def build_jobs(
     mode: str = "full",
     max_body_images: int | None = None,
 ) -> dict[str, Any]:
+    if target_body_chars < 1:
+        raise SystemExit("--target-body-chars must be a positive integer.")
+    if min_body_chars < 1:
+        raise SystemExit("--min-body-chars must be a positive integer.")
+    if max_body_images is not None and max_body_images < 0:
+        raise SystemExit("--max-body-images must be zero or greater.")
     if mode == "no-image":
         return empty_image_payload(article_path, article_slug, markdown)
     if mode not in {"fast", "full"}:
         raise SystemExit(f"Unknown image planning mode: {mode}")
-    if max_body_images is not None and max_body_images < 0:
-        raise SystemExit("--max-body-images must be zero or greater.")
     if mode == "fast" and max_body_images is None:
         max_body_images = 1
 
@@ -1235,19 +941,35 @@ def build_jobs(
             "Write the article with cover/body/closing placeholders before generating images."
         )
 
-    body_placeholders = sorted(
-        [name for name in placeholders if name.startswith("body-")],
+    unsupported_placeholders = [
+        name
+        for name in placeholders
+        if name not in {"cover", "closing"} and not BODY_PLACEHOLDER_RE.fullmatch(name)
+    ]
+    if unsupported_placeholders:
+        raise SystemExit(
+            "Unsupported visual placeholders: "
+            + ", ".join(unsupported_placeholders)
+            + ". Use cover, body-N (starting at body-1), or closing."
+        )
+
+    all_body_placeholders = sorted(
+        [name for name in placeholders if BODY_PLACEHOLDER_RE.fullmatch(name)],
         key=body_placeholder_key,
     )
+    body_placeholders = list(all_body_placeholders)
     if max_body_images is not None:
         body_placeholders = body_placeholders[:max_body_images]
+    skipped_visuals = [
+        name for name in all_body_placeholders if name not in set(body_placeholders)
+    ]
     has_cover = "cover" in placeholders
     has_closing = "closing" in placeholders
     if not has_cover or not has_closing:
         raise SystemExit(
             "Article markdown must include both {{visual:cover}} and {{visual:closing}} placeholders before image generation."
         )
-    if not body_placeholders and mode == "full":
+    if not body_placeholders and mode == "full" and max_body_images is None:
         raise SystemExit(
             "Article markdown must include at least one {{visual:body-N}} placeholder before image generation."
         )
@@ -1307,6 +1029,7 @@ def build_jobs(
     cover_slot["text_budget"] = text_budget_key_for_slot(cover_slot)
     cover_slot["must_include"] = build_must_include(cover_slot)
     cover_slot["quality_gate"] = build_quality_gate(cover_slot)
+    cover_slot["selection_criteria"] = build_selection_criteria(cover_slot)
     cover_slot["variation_note"] = build_variation_note(slots, cover_slot)
     cover_slot["beat_summary"] = truncate_text(intro_context or article_summary, 180)
     cover_slot["review_contract"] = build_review_contract(cover_slot)
@@ -1352,6 +1075,7 @@ def build_jobs(
         slot["text_budget"] = text_budget_key_for_slot(slot)
         slot["must_include"] = build_must_include(slot)
         slot["quality_gate"] = build_quality_gate(slot)
+        slot["selection_criteria"] = build_selection_criteria(slot)
         slot["variation_note"] = build_variation_note(slots, slot)
         slot["beat_summary"] = truncate_text(local_context, 180)
         slot["review_contract"] = build_review_contract(slot)
@@ -1389,82 +1113,85 @@ def build_jobs(
     closing_slot["text_budget"] = text_budget_key_for_slot(closing_slot)
     closing_slot["must_include"] = build_must_include(closing_slot)
     closing_slot["quality_gate"] = build_quality_gate(closing_slot)
+    closing_slot["selection_criteria"] = build_selection_criteria(closing_slot)
     closing_slot["variation_note"] = build_variation_note(slots, closing_slot)
     closing_slot["beat_summary"] = truncate_text(closing_context or article_summary, 180)
     closing_slot["review_contract"] = build_review_contract(closing_slot)
     closing_slot["generation_prompt"] = build_closing_prompt(closing_slot, article_summary, article_essence)
     closing_slot["prompt"] = closing_slot["generation_prompt"]
     slots.append(closing_slot)
-    generation_queue = attach_generation_tasks(slots)
-
-    image_plan = {
-        "article_title": title,
-        "article_summary": article_summary,
-        "article_type": article_type,
-        "visual_mode": visual_mode,
-        "visual_intent": visual_intent,
-        "global_visual_style": global_visual_style,
-        "image_slots": [
-            {
-                "index": slot["index"],
-                "name": slot["name"],
-                "position": slot["position"],
-                "role": slot["role"],
-                "visual_mode": slot.get("visual_mode", visual_mode),
-                "target_effect": slot["target_effect"],
-                "local_context": slot["local_context"],
-                "source_context": slot["source_context"],
-                "image_type": slot["image_type"],
-                "visual_type": slot.get("visual_type", ""),
-                "text_budget": slot.get("text_budget", ""),
-                "content_focus": slot["content_focus"],
-                "must_include": slot.get("must_include", []),
-                "quality_gate": slot.get("quality_gate", []),
-                "must_avoid": slot["must_avoid"],
-            }
-            for slot in slots
-        ],
-    }
-    image_plan_markdown = build_plan_markdown(article_summary, global_visual_style, visual_intent, visual_mode, slots)
 
     # Canonical v2 contract: compatibility copies are intentionally omitted.
-    from image_jobs_contract import normalize_image_jobs
-    article_record = {"slug": article_slug, "title": title, "type": article_type}
-    canonical_slots = []
-    prompts = []
-    for slot in slots:
-        item = {k: slot[k] for k in ("index", "name") if k in slot}
-        item["output"] = slot.get("output") or f"{slot['name']}.png"
-        for k in ("position","role","image_type","target_effect","local_context","source_context","content_focus","visual_distance","composition","emotional_tone","abstraction_level","information_density","visual_type","text_budget","purpose","must_include","quality_gate","variation_note","selection_criteria"):
-            if k in slot: item[k] = slot[k]
-        canonical_slots.append(item); prompts.append(slot.get("generation_prompt") or slot.get("prompt") or "")
-    return normalize_image_jobs({"kind":"wechat-image-jobs", "schema_version":2, "article":article_record,
-        "rules":{"version":rules.get("version"), "sha256":""}, "review_defaults":{"must_avoid":rules.get("must_avoid",[]), "quality_floor":rules.get("quality_floor",[])},
-        "slots":canonical_slots, "generation_queue":[{"slot":s["name"],"output":s["output"],"generation_prompt":p} for s,p in zip(canonical_slots,prompts)]})
-    """
-        "article_type": article_type,
+    article_record = {
+        "slug": article_slug,
+        "title": title,
+        "type": article_type,
         "visual_mode": visual_mode,
         "visual_intent": visual_intent,
-        "article_summary": article_summary,
-        "article_essence": article_essence,
+        "summary": article_summary,
+        "essence": article_essence,
         "global_visual_style": global_visual_style,
-        "source_article": str(article_path.resolve()),
-        "image_plan": image_plan,
-        "image_plan_markdown": image_plan_markdown,
-        "image_rules": rules,
-        "image_rules_markdown": image_rules_markdown(rules),
-        "image_slots": image_plan["image_slots"],
-        "image_execution": {
-            "mode": "single_pass",
-            "max_parallel_subagents": 4,
-            "scheduling_policy": "concurrent_batches_up_to_4_then_queue",
-            "review_policy": "no_agent_visual_review_user_decides_after_generation",
-            "regeneration_policy": "rerun_same_generation_prompt_for_user_requested_slots",
-        },
-        "generation_queue": generation_queue,
-        "jobs": slots,
+        "source": str(article_path.resolve()),
+        "planning_mode": mode,
+        "skipped_visuals": skipped_visuals,
     }
-    """
+    canonical_slots: list[dict[str, Any]] = []
+    generation_queue: list[dict[str, str]] = []
+    for slot in slots:
+        item = {key: slot[key] for key in ("index", "name") if key in slot}
+        item["output"] = slot.get("output") or f"{slot['name']}.png"
+        for key in (
+            "position",
+            "role",
+            "image_type",
+            "target_effect",
+            "local_context",
+            "source_context",
+            "content_focus",
+            "visual_distance",
+            "composition",
+            "emotional_tone",
+            "abstraction_level",
+            "information_density",
+            "visual_type",
+            "text_budget",
+            "purpose",
+            "must_avoid",
+            "must_include",
+            "quality_gate",
+            "beat_summary",
+            "variation_note",
+            "selection_criteria",
+        ):
+            if key in slot:
+                item[key] = slot[key]
+        canonical_slots.append(item)
+        generation_queue.append(
+            {
+                "slot": item["name"],
+                "output": item["output"],
+                "generation_prompt": str(
+                    slot.get("generation_prompt") or slot.get("prompt") or ""
+                ).strip(),
+            }
+        )
+    return normalize_image_jobs(
+        {
+            "kind": "wechat-image-jobs",
+            "schema_version": 2,
+            "article": article_record,
+            "rules": {
+                "version": rules.get("version"),
+                "sha256": rules_fingerprint(rules),
+            },
+            "review_defaults": {
+                "must_avoid": list(rules.get("avoid_rules", [])),
+                "quality_floor": list(rules.get("quality_floor_rules", [])),
+            },
+            "slots": canonical_slots,
+            "generation_queue": generation_queue,
+        }
+    )
 
 
 def existing_image(images_dir: Path, name: str) -> bool:
@@ -1480,7 +1207,6 @@ def existing_image(images_dir: Path, name: str) -> bool:
 
 
 def filter_missing_jobs(payload: dict[str, Any], images_dir: Path) -> dict[str, Any]:
-    from image_jobs_contract import filter_missing_image_jobs, normalize_image_jobs
     return filter_missing_image_jobs(normalize_image_jobs(payload), lambda output: existing_image(images_dir, output))
 
 
@@ -1504,10 +1230,9 @@ def main() -> None:
     if args.missing_only:
         payload = filter_missing_jobs(payload, args.images_dir.resolve())
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(args.out, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     print(f"Wrote {args.out.resolve()}")
     if args.debug_plan:
-        from image_jobs_contract import render_image_plan_markdown
         print(render_image_plan_markdown(payload))
 
 

@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote_to_bytes
 
+from atomic_files import atomic_write_bytes, atomic_write_text
+
 
 DEFAULT_TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "templates" / "wechat-md-workbench.template.v3.html"
 PLACEHOLDER_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
@@ -142,7 +144,7 @@ def materialize_data_uri(data_uri: str, asset_name: str, out_dir: Path) -> Path:
     payload, mime_type = decode_data_uri(data_uri)
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{safe_asset_name(asset_name)}{extension_for_mime_type(mime_type)}"
-    out.write_bytes(payload)
+    atomic_write_bytes(out, payload)
     return out
 
 
@@ -310,29 +312,31 @@ def write_support_files(
     quality_report: dict[str, Any],
 ) -> None:
     support_dir.mkdir(parents=True, exist_ok=True)
-    (support_dir / "article.md").write_text(markdown, encoding="utf-8")
-    (support_dir / "job.rendered.json").write_text(
+    atomic_write_text(support_dir / "article.md", markdown)
+    atomic_write_text(
+        support_dir / "job.rendered.json",
         json.dumps(rendered_job, ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
-    (support_dir / "job.source.json").write_text(job_path.read_text(encoding="utf-8"), encoding="utf-8")
-    (support_dir / "quality-report.json").write_text(
+    atomic_write_text(
+        support_dir / "job.source.json", job_path.read_text(encoding="utf-8")
+    )
+    atomic_write_text(
+        support_dir / "quality-report.json",
         json.dumps(quality_report, ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
-    (support_dir / "resolved-assets.json").write_text(
+    atomic_write_text(
+        support_dir / "resolved-assets.json",
         json.dumps(resolved_assets, ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
     if rendered_job.get("image_plan"):
-        (support_dir / "image-plan.json").write_text(
+        atomic_write_text(
+            support_dir / "image-plan.json",
             json.dumps(rendered_job["image_plan"], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
     if rendered_job.get("image_plan_markdown"):
-        (support_dir / "image-plan.md").write_text(
+        atomic_write_text(
+            support_dir / "image-plan.md",
             str(rendered_job["image_plan_markdown"]),
-            encoding="utf-8",
         )
 
 
@@ -361,11 +365,11 @@ def write_clipboard_assets(
         return ""
     out = clipboard_assets_path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(
+    atomic_write_text(
+        out,
         "window.WECHAT_CLIPBOARD_IMAGE_DATA = "
         + json.dumps(assets, ensure_ascii=False, separators=(",", ":"))
         + ";\n",
-        encoding="utf-8",
     )
     return Path(os.path.relpath(out.resolve(), start=out_path.resolve().parent)).as_posix()
 
@@ -434,7 +438,7 @@ def main() -> None:
     html = apply_template(job, template, markdown)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(html, encoding="utf-8")
+    atomic_write_text(args.out, html)
 
     if args.support_dir:
         rendered_job = dict(job)

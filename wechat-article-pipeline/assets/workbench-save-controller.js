@@ -31,10 +31,14 @@
       const item = pending; pending = null;
       const request = Object.assign({}, item.value, {baseRevision: serverRevision});
       inFlight = Promise.resolve(transport(request)).then(result => {
+        if (!result || result.saved !== true) throw new Error('save failed');
         if (result && result.revision != null) serverRevision = Number(result.revision);
         if (item.id === mutation) emit('saved');
         return result;
-      }).then(result => { if (!result || result.saved !== true) throw new Error('save failed'); return result; }).catch(error => { if (item.id === mutation) emit('error'); throw error; }).finally(() => { inFlight = null; if (pending) flush(); });
+      }).catch(error => {
+        if (item.id === mutation) emit('error');
+        return {saved:false, error:String(error && error.message ? error.message : error)};
+      }).finally(() => { inFlight = null; if (pending) flush(); });
       return inFlight;
     }
     return { cacheAndSchedule, saveNow, flush, setServerRevision: r => { serverRevision = Number(r || 0); }, getState: () => ({state, mutation, pending: !!pending, inFlight: !!inFlight, serverRevision}) };

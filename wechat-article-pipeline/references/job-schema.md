@@ -57,7 +57,7 @@ Each `visuals` entry supports one of these source forms:
 - `path` - local image file path, relative to the job file or absolute
 - `data_uri` - already embedded image payload
 - `base64` plus `mime_type` - raw image bytes returned by the generator
-- `url` - external image URL; this is allowed and is kept as a direct reference in the workbench
+- `url` - external image URL; allowed only for the local workbench. Publish-manifest generation rejects non-embedded body and cover images.
 
 Recommended contract:
 - image meaning comes from the finished article, not from a preselected layout name
@@ -92,7 +92,7 @@ For no-body-image draft delivery, use `postprocess_wechat_article.py --no-images
 
 `make_wechat_article_image_jobs.py` also supports direct lightweight planning flags: `--mode no-image|fast|full`, `--max-body-images N`, and `--missing-only --images-dir <dir>`. Prefer `postprocess_wechat_article.py` for the normal workflow, but use these flags when diagnosing or regenerating the image plan directly.
 
-The canonical image payload is schema v2: `slots[]` stores article-facing placement and visual constraints, while `generation_queue[]` stores only `{slot, output, generation_prompt}` for execution. Shared rules and review defaults live once at the top level. Historical v1 payloads (`jobs[]`, `image_slots`, nested `generation_task`, duplicate variants) are normalized on read; new writers must emit v2 only. Queue tasks intentionally omit review details. Image generation rules come from `references/image-rules.json`; normal execution should not print the full rules or queue.
+The canonical image payload is schema v2: `slots[]` stores article-facing placement and visual constraints, while `generation_queue[]` stores only `{slot, output, generation_prompt}` for execution. Shared rules and review defaults live once at the top level. When `--mode fast` or `--max-body-images` intentionally omits body slots, `article.skipped_visuals` records those exact `body-N` names; the packager removes only those declared image placeholders instead of failing later on nonexistent files. Historical v1 payloads (`jobs[]`, `image_slots`, nested `generation_task`, duplicate variants) are normalized on read; new writers must emit v2 only. Queue tasks intentionally omit review details. Image generation rules come from `references/image-rules.json`; normal execution should not print the full rules or queue.
 
 Build outputs may also include:
 - `<html-stem>.assets/` — local files materialized from `data_uri` or `base64` visual inputs for clean workbench markdown
@@ -101,11 +101,11 @@ Build outputs may also include:
 - `resolved-assets.json` — records the final URI used for each placeholder
 - `image-plan.json` — records the role-based slot plan
 - `image-plan.md` — debug-friendly markdown table for the slot plan
-- `<html-stem>.publish-manifest.json` — records the WeChat backend draft/preview handoff data
+- `<html-stem>.publish-manifest.json` — optional WeChat backend draft/preview handoff data, created only with `--publish-manifest`
 
 ## Publish Manifest
 
-`package_wechat_article_bundle.py` writes a publishing manifest by default. It is used by the optional official WeChat API draft-box workflow in [publishing.md](publishing.md). The manifest only contains fields the official API workflow can use; it does not include original declaration, reward account, or collection fields.
+`package_wechat_article_bundle.py` writes only the local workbench by default. Pass `--publish-manifest` for the optional official WeChat API draft-box workflow in [publishing.md](publishing.md). The manifest embeds every publishable image as `data:image`, rejects external image sources, and contains only fields the official API workflow can use; it does not include original declaration, reward account, or collection fields.
 
 ```json
 {
@@ -116,6 +116,7 @@ Build outputs may also include:
   "digest": "摘要",
   "content_html": "<p>...</p><p>...</p>",
   "content_text": "纯文本正文",
+  "source_fingerprint": "sha256 of the rendered job plus resolved image bytes",
   "workbench_html": "/absolute/path/output.html",
   "cover": {
     "name": "cover",
@@ -139,5 +140,7 @@ Build outputs may also include:
 ```
 
 Author, optional preview account, AppID, and AppSecret are local defaults. Keep them in `.env`, copied from `.env.example`; `.env` is ignored by Git and must never be committed.
+
+New manifests include `source_fingerprint`. Package verification recomputes it from the current job and resolved image bytes, so an old manifest left beside a newly edited article or regenerated image is reported as stale. Historical manifests without this field remain readable.
 
 Access tokens are cached locally in `~/.codex/wechat-article-pipeline/wechat-token-cache.json`, outside the repo.

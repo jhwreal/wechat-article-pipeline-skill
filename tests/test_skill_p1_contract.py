@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import importlib
 import json
 import sys
@@ -227,6 +228,34 @@ class SkillP1ContractTest(unittest.TestCase):
         )
 
         self.assertEqual([job["name"] for job in payload["slots"]], ["cover", "body-1", "closing"])
+        self.assertEqual(payload["article"]["planning_mode"], "fast")
+        self.assertEqual(payload["article"]["skipped_visuals"], ["body-2"])
+
+    def test_image_jobs_reject_invalid_rhythm_and_noncanonical_placeholders(self) -> None:
+        markdown = (
+            "# 标题\n\n"
+            "![题图]({{visual:cover}})\n\n"
+            "正文。\n\n![配图]({{visual:body-zero}})\n\n"
+            "![尾图]({{visual:closing}})\n"
+        )
+        with self.assertRaisesRegex(SystemExit, "Unsupported visual placeholders"):
+            image_jobs.build_jobs(
+                article_path=Path("article.md"),
+                article_slug="article",
+                markdown=markdown,
+                target_body_chars=200,
+                min_body_chars=120,
+            )
+
+        with self.assertRaisesRegex(SystemExit, "target-body-chars"):
+            image_jobs.build_jobs(
+                article_path=Path("article.md"),
+                article_slug="article",
+                markdown=markdown,
+                target_body_chars=0,
+                min_body_chars=120,
+                mode="no-image",
+            )
 
     def test_image_jobs_missing_only_filters_generation_queue(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -388,6 +417,22 @@ class SkillP1ContractTest(unittest.TestCase):
         expected_avoids = payload["review_defaults"]["must_avoid"]
         self.assertIn("must_avoid", payload["review_defaults"])
         self.assertIn("quality_floor", payload["review_defaults"])
+        rules = json.loads((SKILL_DIR / "references" / "image-rules.json").read_text(encoding="utf-8"))
+        rules_bytes = json.dumps(
+            rules, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        self.assertEqual(payload["rules"]["sha256"], hashlib.sha256(rules_bytes).hexdigest())
+        self.assertEqual(expected_avoids, rules["avoid_rules"])
+        self.assertEqual(payload["review_defaults"]["quality_floor"], rules["quality_floor_rules"])
+        for key in (
+            "visual_mode",
+            "visual_intent",
+            "summary",
+            "essence",
+            "global_visual_style",
+            "source",
+        ):
+            self.assertTrue(payload["article"].get(key), key)
 
         for job in payload["slots"]:
             self.assertNotIn("generation_prompt", job)
@@ -407,7 +452,8 @@ class SkillP1ContractTest(unittest.TestCase):
     def test_skill_draft_creation_advances_original_issue(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertIn("--create-draft --increment-original-issue", skill_md)
+        self.assertIn("automatically advances the issue counter", skill_md)
+        self.assertIn("do not rely on callers remembering an extra flag", skill_md)
 
     def test_packaging_does_not_increment_original_issue_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -437,12 +483,50 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("WECHAT_ORIGINAL_ISSUE=9", env_text)
         self.assertNotIn("WECHAT_ORIGINAL_ISSUE=10", env_text)
 
+    def test_explicit_packaging_increment_uses_compare_and_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            env = root / ".env"
+            article = root / "article.md"
+            out = root / "article.html"
+            env.write_text(
+                "WECHAT_SIGNATURE_AUTHOR=作者\nWECHAT_ORIGINAL_ISSUE=9\n",
+                encoding="utf-8",
+            )
+            article.write_text("# 标题\n\n正文第一段。\n", encoding="utf-8")
+            calls = []
+            original_compare_and_set = packager.account_config.compare_and_set_env_value
+
+            def record_compare_and_set(path, key, expected, value):
+                calls.append((path, key, expected, value))
+                return "updated"
+
+            packager.account_config.compare_and_set_env_value = record_compare_and_set
+            old_argv = sys.argv
+            sys.argv = [
+                "package_wechat_article_bundle.py",
+                str(article),
+                str(out),
+                "--no-images",
+                "--publisher-env-file",
+                str(env),
+                "--increment-original-issue",
+            ]
+            try:
+                packager.main()
+            finally:
+                sys.argv = old_argv
+                packager.account_config.compare_and_set_env_value = original_compare_and_set
+
+        self.assertEqual(calls, [(env, "WECHAT_ORIGINAL_ISSUE", "9", "10")])
+
     def test_skill_marks_install_assets_as_not_runtime_context(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertIn("README.md", skill_md)
-        self.assertIn("examples/", skill_md)
-        self.assertIn("do not read", skill_md)
+        self.assertIn(".env.example", skill_md)
+        self.assertIn("only for requested API setup", skill_md)
+        self.assertNotIn("README.md", skill_md)
+        self.assertNotIn("examples/", skill_md)
 
 
 if __name__ == "__main__":

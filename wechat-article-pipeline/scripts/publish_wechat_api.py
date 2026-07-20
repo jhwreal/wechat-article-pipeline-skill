@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import json
 import mimetypes
 import re
@@ -16,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,13 +29,32 @@ import wechat_account_config as account_config
 DEFAULT_API_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-api-config.json"
 DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-token-cache.json"
 API_BASE = "https://api.weixin.qq.com"
-DATA_IMAGE_RE = re.compile(r'src=(["\'])(data:image/[^"\']+)\1', re.I)
+DATA_IMAGE_RE = re.compile(r'\bsrc\s*=\s*(["\'])(data:image/[^"\']+)\1', re.I)
+IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.I | re.S)
+IMG_SRC_RE = re.compile(r'<img\b[^>]*?\bsrc\s*=\s*(["\'])(.*?)\1', re.I | re.S)
 VISUAL_PLACEHOLDER_RE = re.compile(r"\{\{visual:[^}]+\}\}")
 WECHAT_DRAFT_UNSTABLE_TAG_RE = re.compile(r"</?(section|div|blockquote|pre|ul|ol)\b", re.I)
 MAX_BODY_IMAGE_BYTES = 1024 * 1024
 # WeChat uploadimg requires body images under 1 MB; target 900 KiB for a
 # practical margin while keeping generated article images readable.
 BODY_IMAGE_TARGET_BYTES = 900 * 1024
+DATA_IMAGE_HEADER_RE = re.compile(r"^data:(image/[a-z0-9.+-]+);base64$", re.I)
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+URL_CONTROL_RE = re.compile(r"[\x00-\x20\x7f]+")
+URL_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*$", re.I)
+DATA_IMAGE_PREFIX = "data:image/"
+ALLOWED_DRAFT_TAGS = {"p", "img", "a", "code", "strong", "span", "em", "br"}
+VOID_DRAFT_TAGS = {"img", "br"}
+ALLOWED_DRAFT_ATTRIBUTES = {
+    "p": {"style"},
+    "img": {"alt", "src", "style"},
+    "a": {"href", "style"},
+    "code": {"style"},
+    "strong": {"style"},
+    "span": {"style"},
+    "em": set(),
+    "br": set(),
+}
 ERROR_HELP = {
     40164: "当前调用 IP 不在公众号接口 IP 白名单。把这台机器的出口 IP 加到公众平台开发配置后重试。",
     48001: "公众号没有开通或没有获得该接口权限。",
@@ -97,7 +118,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--increment-original-issue",
         action="store_true",
-        help="After a successful draft creation, advance the manifest article_signature issue value in .env.",
+        help=(
+            "After a successful draft creation, advance the manifest article_signature issue value in .env. "
+            "Signed manifests enable this automatically; the flag remains for compatibility."
+        ),
     )
     parser.add_argument("--include-payload", action="store_true", help="Include full draft payload in result JSON. This can be very large.")
     parser.add_argument(
@@ -256,10 +280,58 @@ def get_access_token(
     return token
 
 
-def decode_data_image(data_uri: str, suffix_hint: str) -> LocalImage:
+def decode_data_image_payload(data_uri: str) -> tuple[str, bytes]:
+    if "," not in data_uri:
+        raise SystemExit("Invalid data image URI: missing payload separator.")
     header, encoded = data_uri.split(",", 1)
-    mime = header[5:].split(";")[0].lower()
-    raw = base64.b64decode(encoded)
+    match = DATA_IMAGE_HEADER_RE.fullmatch(header.strip())
+    if not match:
+        raise SystemExit("Invalid data image URI: expected data:image/<type>;base64,...")
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise SystemExit("Invalid data image URI: malformed base64 payload.") from exc
+    if not raw:
+        raise SystemExit("Invalid data image URI: image payload is empty.")
+    declared_mime = match.group(1).lower()
+    canonical_declared = {
+        "image/jpg": "image/jpeg",
+        "image/x-ms-bmp": "image/bmp",
+    }.get(declared_mime, declared_mime)
+    detected_mime = ""
+    if (
+        len(raw) >= 24
+        and raw.startswith(b"\x89PNG\r\n\x1a\n")
+        and raw[12:16] == b"IHDR"
+        and int.from_bytes(raw[16:20], "big") > 0
+        and int.from_bytes(raw[20:24], "big") > 0
+    ):
+        detected_mime = "image/png"
+    elif raw.startswith(b"\xff\xd8\xff"):
+        detected_mime = "image/jpeg"
+    elif (
+        len(raw) >= 10
+        and raw[:6] in {b"GIF87a", b"GIF89a"}
+        and int.from_bytes(raw[6:8], "little") > 0
+        and int.from_bytes(raw[8:10], "little") > 0
+    ):
+        detected_mime = "image/gif"
+    elif len(raw) >= 16 and raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
+        detected_mime = "image/webp"
+    elif len(raw) >= 26 and raw.startswith(b"BM"):
+        detected_mime = "image/bmp"
+    if not detected_mime:
+        raise SystemExit("Invalid data image URI: payload is not a recognized image format.")
+    if canonical_declared != detected_mime:
+        raise SystemExit(
+            "Invalid data image URI: declared MIME type does not match the image payload "
+            f"({declared_mime} != {detected_mime})."
+        )
+    return detected_mime, raw
+
+
+def decode_data_image(data_uri: str, suffix_hint: str) -> LocalImage:
+    mime, raw = decode_data_image_payload(data_uri)
     suffix = mimetypes.guess_extension(mime) or f".{suffix_hint}"
     tmp = tempfile.NamedTemporaryFile(prefix="wechat-image-", suffix=suffix, delete=False)
     tmp.write(raw)
@@ -275,6 +347,12 @@ def decode_data_image(data_uri: str, suffix_hint: str) -> LocalImage:
             width, height = image_size_with_sips(Path(tmp.name))
         except Exception:
             pass
+    if width <= 0 or height <= 0:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise SystemExit(
+            "Image payload could not be decoded or has invalid dimensions. "
+            "Install Pillow or provide a valid supported image."
+        )
     size = Path(tmp.name).stat().st_size
     return LocalImage(Path(tmp.name), mime, width, height, original_bytes=size, upload_bytes=size)
 
@@ -374,6 +452,108 @@ def image_size_with_sips(path: Path) -> tuple[int, int]:
         elif line.startswith("pixelHeight:"):
             height = int(line.split(":", 1)[1].strip())
     return width, height
+
+
+def is_data_image_uri(value: str) -> bool:
+    return value[: len(DATA_IMAGE_PREFIX)].lower() == DATA_IMAGE_PREFIX
+
+
+def _safe_draft_url(value: str, *, image: bool) -> bool:
+    stripped = value.strip()
+    colon = stripped.find(":")
+    if colon < 0:
+        return True
+    scheme = URL_CONTROL_RE.sub("", stripped[:colon]).lower()
+    if not URL_SCHEME_RE.fullmatch(scheme):
+        return True
+    if scheme in {"http", "https"}:
+        return True
+    if not image and scheme == "mailto":
+        return True
+    if not image or scheme != "data":
+        return False
+    comma = stripped.find(",", colon + 1)
+    if comma < 0 or comma - colon > 256:
+        return False
+    header = URL_CONTROL_RE.sub("", stripped[:comma]).lower()
+    return header.startswith(DATA_IMAGE_PREFIX)
+
+
+class DraftHTMLSafetyParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[str] = []
+
+    def _validate_start(
+        self, tag: str, attrs: list[tuple[str, str | None]], *, self_closing: bool
+    ) -> None:
+        tag = tag.lower()
+        if tag not in ALLOWED_DRAFT_TAGS:
+            raise ValueError(f"unsupported HTML tag: <{tag}>")
+        allowed = ALLOWED_DRAFT_ATTRIBUTES[tag]
+        seen: set[str] = set()
+        values: dict[str, str] = {}
+        for raw_name, raw_value in attrs:
+            name = raw_name.lower()
+            if name in seen:
+                raise ValueError(f"duplicate {name} attribute on <{tag}>")
+            seen.add(name)
+            if name not in allowed:
+                raise ValueError(f"unsupported {name} attribute on <{tag}>")
+            value = raw_value or ""
+            values[name] = value
+            if name == "style" and re.search(
+                r"(?:expression\s*\(|url\s*\(|@import|behavior\s*:)", value, re.I
+            ):
+                raise ValueError(f"unsafe inline style on <{tag}>")
+        if tag == "a":
+            href = values.get("href", "")
+            if not href or not _safe_draft_url(href, image=False):
+                raise ValueError("unsafe or missing link href")
+        if tag == "img":
+            source = values.get("src", "")
+            if not source or not _safe_draft_url(source, image=True):
+                raise ValueError("unsafe or missing image src")
+        if tag in VOID_DRAFT_TAGS:
+            return
+        if self_closing:
+            return
+        self.stack.append(tag)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._validate_start(tag, attrs, self_closing=False)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._validate_start(tag, attrs, self_closing=True)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in VOID_DRAFT_TAGS or not self.stack or self.stack[-1] != tag:
+            raise ValueError(f"unbalanced closing tag: </{tag}>")
+        self.stack.pop()
+
+    def handle_comment(self, _data: str) -> None:
+        raise ValueError("HTML comments are not allowed")
+
+    def handle_decl(self, _decl: str) -> None:
+        raise ValueError("HTML declarations are not allowed")
+
+    def handle_pi(self, _data: str) -> None:
+        raise ValueError("HTML processing instructions are not allowed")
+
+    def close(self) -> None:
+        super().close()
+        if self.stack:
+            raise ValueError(f"unclosed HTML tag: <{self.stack[-1]}>")
+
+
+def validate_draft_html_safety(content_html: str) -> None:
+    parser = DraftHTMLSafetyParser()
+    try:
+        parser.feed(content_html)
+        parser.close()
+    except ValueError as exc:
+        raise SystemExit(f"Manifest content_html is unsafe or malformed: {exc}.") from exc
 
 
 def normalize_body_image_with_sips(image: LocalImage, pillow_exc: Exception) -> LocalImage:
@@ -479,7 +659,7 @@ def upload_body_images(content_html: str, access_token: str) -> tuple[str, list[
 def upload_cover(manifest: dict[str, Any], access_token: str) -> dict[str, str]:
     cover = manifest.get("wechat_cover") or manifest.get("cover") or {}
     src = str(cover.get("src") or "").strip()
-    if not src.startswith("data:image/"):
+    if not is_data_image_uri(src):
         raise SystemExit("Manifest cover.src must be a data:image URI for API publishing.")
     image = decode_data_image(src, "png")
     result: dict[str, str] | None = None
@@ -580,15 +760,30 @@ def summarize_draft_payload(draft_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, Any]:
+    if not isinstance(manifest, dict):
+        raise SystemExit("Publish manifest must be a JSON object.")
     source_state = manifest.get("source_state")
-    if source_state:
+    if source_state is not None:
+        if not isinstance(source_state, dict):
+            raise SystemExit("Manifest source_state must be an object.")
+        for key in ("core_revision", "manifest_revision"):
+            value = source_state.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise SystemExit(f"Manifest source_state.{key} must be a non-negative integer.")
         if source_state.get("core_revision") != source_state.get("manifest_revision"):
             raise SystemExit("Manifest source revision mismatch.")
-        if source_state.get("asset_state") in ("stale", "missing") or source_state.get("stale_visuals") or source_state.get("missing_visuals"):
-            raise SystemExit("Manifest assets are stale or missing.")
+        asset_state = str(source_state.get("asset_state", "")).strip()
+        if asset_state != "ready" or source_state.get("stale_visuals") or source_state.get("missing_visuals"):
+            raise SystemExit("Manifest assets are not ready (stale, missing, or failed).")
     title = str(manifest.get("title", "")).strip()
     digest = str(manifest.get("digest", "")).strip()
-    cover_src = str(((manifest.get("wechat_cover") or manifest.get("cover")) or {}).get("src", "")).strip()
+    source_fingerprint = str(manifest.get("source_fingerprint", "")).strip()
+    if source_fingerprint and not SHA256_RE.fullmatch(source_fingerprint):
+        raise SystemExit("Manifest source_fingerprint must be a lowercase SHA-256 digest.")
+    cover = manifest.get("wechat_cover") or manifest.get("cover") or {}
+    if not isinstance(cover, dict):
+        raise SystemExit("Manifest cover must be an object.")
+    cover_src = str(cover.get("src", "")).strip()
     if not title:
         raise SystemExit("Manifest title is empty.")
     if not digest:
@@ -608,14 +803,45 @@ def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, 
         raise SystemExit("Manifest content_html still contains raw fenced-code backticks. Regenerate the manifest.")
     if VISUAL_PLACEHOLDER_RE.search(content_html):
         raise SystemExit("Manifest content_html still contains unresolved {{visual:*}} placeholders.")
-    if not cover_src.startswith("data:image/"):
+    if not is_data_image_uri(cover_src):
         raise SystemExit("Manifest cover.src must be a data:image URI for API publishing.")
-    data_images = DATA_IMAGE_RE.findall(content_html)
+    body_image_sources: list[str] = []
+    for image_tag in IMG_TAG_RE.finditer(content_html):
+        source_match = IMG_SRC_RE.search(content_html, image_tag.start(), image_tag.end())
+        if not source_match:
+            raise SystemExit(
+                "Every manifest body <img> must have a quoted src attribute so it can be uploaded safely."
+            )
+        body_image_sources.append(source_match.group(2).strip())
+    unsupported_sources = [
+        source for source in body_image_sources if not is_data_image_uri(source)
+    ]
+    if unsupported_sources:
+        sample = unsupported_sources[0]
+        if len(sample) > 120:
+            sample = sample[:117] + "..."
+        raise SystemExit(
+            "Manifest body images must be embedded data:image URIs for API publishing; "
+            f"unsupported src: {sample!r}. Regenerate the publish manifest from local assets."
+        )
+    decode_data_image_payload(cover_src)
+    for source in body_image_sources:
+        if source != cover_src:
+            decode_data_image_payload(source)
+    # Base64 has already been validated strictly above. Replacing only its
+    # quoted src value keeps every tag, attribute, link, and style visible to
+    # the structural safety parser without making it walk megabytes of inert
+    # image payload character by character.
+    safety_html = DATA_IMAGE_RE.sub(
+        lambda match: f"src={match.group(1)}data:image/png;base64,AA=={match.group(1)}",
+        content_html,
+    )
+    validate_draft_html_safety(safety_html)
     return {
         "title": title,
         "digest_length": len(digest),
         "content_html_length": len(content_html),
-        "body_data_image_count": len(data_images),
+        "body_data_image_count": len(body_image_sources),
         "cover_is_data_uri": True,
         "draft_html_mode": "paragraph_only",
     }
@@ -628,6 +854,8 @@ def validate_execution_mode(args: argparse.Namespace) -> bool:
         raise SystemExit("--retry-preview requires --resume.")
     if args.resume and not args.out:
         raise SystemExit("--resume requires an explicit --out result path.")
+    if args.open_draft_switch:
+        args.check_draft_switch = True
     network_flags = []
     for flag in (
         "check_draft_switch",
@@ -650,18 +878,60 @@ def validate_execution_mode(args: argparse.Namespace) -> bool:
     return not args.create_draft
 
 
+def manifest_original_issue(manifest: dict[str, Any], *, required: bool = False) -> tuple[str, str, int] | None:
+    signature_value = manifest.get("article_signature")
+    signature = signature_value if isinstance(signature_value, dict) else {}
+    key = str(signature.get("issue_env_key", "")).strip()
+    raw_issue = str(signature.get("issue", "")).strip()
+    if not key and not raw_issue:
+        if required:
+            raise SystemExit(
+                "Manifest article_signature lacks issue_env_key/issue; regenerate the manifest before incrementing."
+            )
+        return None
+    if not key or not raw_issue:
+        raise SystemExit(
+            "Manifest article_signature must contain both issue_env_key and issue; regenerate the manifest."
+        )
+    try:
+        issue = int(raw_issue)
+    except ValueError as exc:
+        raise SystemExit(f"Manifest article_signature.issue is not an integer: {raw_issue!r}") from exc
+    return key, raw_issue, issue
+
+
+def apply_original_issue_policy(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
+    """Make issue consumption an invariant of every new signed draft."""
+    if args.create_draft and not args.resume and manifest_original_issue(manifest) is not None:
+        args.increment_original_issue = True
+
+
+def validate_original_issue_preflight(manifest: dict[str, Any], env_file: Path | None) -> None:
+    key, raw_issue, issue = manifest_original_issue(manifest, required=True)
+    if env_file is None or not env_file.expanduser().is_file():
+        raise SystemExit("Cannot increment original issue: the resolved env file is missing.")
+
+    current = account_config.read_env_file(env_file).get(key)
+    if current == raw_issue:
+        return
+    if current == str(issue + 1):
+        raise SystemExit(
+            f"Manifest original issue {raw_issue} has already been consumed ({key}={current}). "
+            "Regenerate the publish manifest before creating another draft."
+        )
+    if current is None:
+        raise SystemExit(f"Cannot increment original issue: {key} is missing from {env_file.expanduser()}.")
+    raise SystemExit(
+        f"Manifest original issue {raw_issue} does not match {key}={current}. "
+        "Regenerate the publish manifest before creating a draft."
+    )
+
+
 def increment_original_issue(manifest: dict[str, Any], env_file: Path | None) -> dict[str, str]:
     if not env_file:
         raise SystemExit("Cannot increment original issue without an env file.")
-    signature = manifest.get("article_signature") if isinstance(manifest.get("article_signature"), dict) else {}
-    key = str(signature.get("issue_env_key", "")).strip()
-    raw_issue = str(signature.get("issue", "")).strip()
-    if not key or not raw_issue:
-        raise SystemExit("Manifest article_signature lacks issue_env_key/issue; regenerate the manifest before incrementing.")
-    try:
-        next_issue = int(raw_issue) + 1
-    except ValueError as exc:
-        raise SystemExit(f"Manifest article_signature.issue is not an integer: {raw_issue!r}") from exc
+    key, raw_issue, issue = manifest_original_issue(manifest, required=True)
+    next_issue = issue + 1
     account_config.compare_and_set_env_value(env_file, key, raw_issue, str(next_issue))
     return {"env_file": str(env_file.expanduser()), "issue_env_key": key, "next_issue": str(next_issue)}
 
@@ -681,10 +951,18 @@ def create_draft(payload: dict[str, Any], access_token: str) -> str:
 def verify_draft(media_id: str, expected_title: str, access_token: str) -> dict[str, Any]:
     resp = api_post_json("/cgi-bin/draft/get", {"media_id": media_id}, access_token)
     articles = (resp.get("news_item") or resp.get("articles") or [])
+    if not isinstance(articles, list) or not articles:
+        raise RuntimeError("Draft verification failed: WeChat returned no article items.")
     first = articles[0] if articles else {}
     returned_title = str(first.get("title", "")).strip() if isinstance(first, dict) else ""
+    expected_title = expected_title.strip()
+    if returned_title != expected_title:
+        raise RuntimeError(
+            "Draft verification failed: returned title does not match the manifest "
+            f"({returned_title!r} != {expected_title!r})."
+        )
     return {
-        "verified": returned_title == expected_title,
+        "verified": True,
         "title": returned_title,
         "article_count": len(articles) if isinstance(articles, list) else 0,
     }
@@ -782,8 +1060,8 @@ def validate_new_run_side_effect_parameters(
 ) -> None:
     if args.send_preview and not normalize_preview_target(args, manifest, account)["value"]:
         raise SystemExit("Preview account is empty. Pass --preview-account or set manifest.preview.account.")
-    if args.increment_original_issue and (env_file is None or not env_file.expanduser().is_file()):
-        raise SystemExit("Cannot increment original issue: the resolved env file is missing.")
+    if args.increment_original_issue:
+        validate_original_issue_preflight(manifest, env_file)
 
 
 def validate_resume_side_effect_parameters(
@@ -1094,6 +1372,7 @@ def main() -> None:
             f"Refusing to overwrite existing publish receipt: {out}. Use --resume or choose a different --out path."
         )
     manifest = read_json(args.manifest)
+    apply_original_issue_policy(args, manifest)
     config = read_config(args.config)
     env_file = find_env_file(args.manifest, args.env_file)
     env = account_config.read_env_file(env_file)
