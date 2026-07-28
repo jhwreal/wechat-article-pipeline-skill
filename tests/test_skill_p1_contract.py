@@ -329,6 +329,9 @@ class SkillP1ContractTest(unittest.TestCase):
             self.assertIn("视觉类型", prompt)
             self.assertIn("文字预算", prompt)
             self.assertIn("质感要求", prompt)
+            self.assertIn("3:2", prompt)
+            self.assertIn("横版", prompt)
+            self.assertIn("1536×1024", prompt)
             self.assertNotIn("generic wallpaper", prompt)
             self.assertNotIn("官网链接", prompt)
 
@@ -392,6 +395,7 @@ class SkillP1ContractTest(unittest.TestCase):
         image_production = (SKILL_DIR / "references" / "image-production.md").read_text(encoding="utf-8")
         style_guide = (SKILL_DIR / "references" / "style-guide.md").read_text(encoding="utf-8")
         self.assertIn("image-rules.json", image_production)
+        self.assertIn("strict 3:2 landscape", image_production)
         self.assertIn("image-rules.json", style_guide)
         self.assertNotIn("generic wallpaper", image_production)
         self.assertNotIn("dense PPT-style", style_guide)
@@ -454,6 +458,27 @@ class SkillP1ContractTest(unittest.TestCase):
 
         self.assertIn("automatically advances the issue counter", skill_md)
         self.assertIn("do not rely on callers remembering an extra flag", skill_md)
+
+    def test_toutiao_contract_enforces_workbench_first_and_publish_gate(self) -> None:
+        skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+        toutiao = (SKILL_DIR / "references" / "publishing-toutiao.md").read_text(encoding="utf-8")
+
+        self.assertIn("before the first browser write", skill_md)
+        self.assertIn("工作台的 `复制富文本` 是已有工作台文章进入头条的唯一正文入口", toutiao)
+        self.assertIn("不得改走头条的单图上传按钮", toutiao)
+        self.assertIn("用 Computer Use 通过 macOS 系统剪贴板把完整正文一次粘贴", toutiao)
+        self.assertIn("不得用浏览器虚拟剪贴板替代", toutiao)
+        self.assertIn("`super+a` / `super+v`", toutiao)
+        self.assertIn("必须保留全部图片、标题层级、列表、加粗和原始顺序", toutiao)
+        self.assertIn("不自行改换正文导入方式", toutiao)
+        self.assertIn("提交前硬门槛", toutiao)
+        self.assertIn("外部链接数量必须为 0", toutiao)
+        self.assertIn("按头条私有图片 URL 去重后的图片数等于预期图片数", toutiao)
+        self.assertIn("头条图文默认选择 `投放广告赚收益`", toutiao)
+        self.assertIn("不要把“去除微信正文里的广告卡片”误解为关闭头条广告收益", toutiao)
+        self.assertIn("两个广告选项都未选中时，不得保存草稿或提交", toutiao)
+        self.assertIn("toutiao_ads_enabled: true|false", toutiao)
+        self.assertIn("将于 MM-DD HH:mm 发布", toutiao)
 
     def test_packaging_does_not_increment_original_issue_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -54,3 +54,28 @@ test('caret events and viewport scrolling use different sync anchors', () => {
 test('preview synchronization adds no artificial bottom space', () => {
   assert.doesNotMatch(template, /preview-scroll-spacer|caret-scroll-spacer|sync-bottom-padding/);
 });
+
+test('markdown blocks expose stable source offsets for preview edits', () => {
+  const source = [
+    extractFunction('getMarkdownBlocks'),
+    'return getMarkdownBlocks;'
+  ].join('\n');
+  const getMarkdownBlocks = new Function(source)();
+  const markdown = '# 标题\n\n第一行\n第二行\n\n结尾';
+  const result = getMarkdownBlocks(markdown);
+
+  assert.deepEqual(
+    result.blocks.map(block => ({
+      text: block.text,
+      startLine: block.startLine,
+      endLine: block.endLine,
+      startOffset: block.startOffset,
+      endOffset: block.endOffset
+    })),
+    [
+      { text: '# 标题', startLine: 1, endLine: 1, startOffset: 0, endOffset: 4 },
+      { text: '第一行\n第二行', startLine: 3, endLine: 4, startOffset: 6, endOffset: 13 },
+      { text: '结尾', startLine: 6, endLine: 6, startOffset: 15, endOffset: 17 }
+    ]
+  );
+});

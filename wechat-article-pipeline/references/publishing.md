@@ -81,6 +81,8 @@ Never commit `.env` or token cache files.
 
 Local packaging skips the publish manifest by default. Pass `--publish-manifest` to write `<html-stem>.publish-manifest.json` for an explicitly requested API handoff. It contains title, author, digest, rendered HTML, text, embedded cover/body images, image candidates, a source fingerprint, optional preview account, and safety flags. Verification recomputes the fingerprint from the current job and image bytes so a leftover manifest cannot silently describe older content. External image URLs are rejected because WeChat filters them and the uploader only accepts embedded images. The manifest must not contain original declaration, reward account, or collection fields.
 
+Do not publish external hyperlinks in WeChat article bodies. Source names may remain as plain text, but remove every external anchor from the final Markdown/workbench content before manifest creation. Before `draft/add`, verify that `content_html` contains no external `<a href>` values. This is separate from image handling: uploaded WeChat body-image URLs in `img src` are required and are not article hyperlinks.
+
 `content_html` is generated as a paragraph-only draft-safe stream. Do not wrap the article body in `section` / `div`, and do not use `blockquote`, `pre`, `ul`, or `ol` in the API manifest. The WeChat draft editor can normalize those tags into extra blank editable lines around badges and code blocks. Inline black code blocks keep their internal padding inside a styled `<p>`; fenced code blocks may contain blank lines, but the full fenced block must stay together before conversion so closing backticks never leak into draft-box body text.
 
 The manifest separates the article hero image from WeChat platform cover crops:
@@ -159,6 +161,7 @@ The script performs:
 ## Safety
 
 - Uploading generated images, creating a draft, and sending preview are allowed when the user requested this workflow and provided credentials.
+- Reject draft submission when the rendered article body contains an external hyperlink. Remove the anchor while preserving its visible text, rebuild the manifest, and dry-run again.
 - QR login and browser security prompts are not part of the API flow.
 - Admin confirmation, IP whitelist, permission, and risk-control errors are user-handled.
 - Final publish/group-send APIs are out of scope by default.

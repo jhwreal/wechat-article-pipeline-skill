@@ -207,6 +207,15 @@
       background: #fff;
     }
 
+    .preview [data-preview-editable="true"][contenteditable="true"] {
+      cursor: text;
+      caret-color: var(--primary);
+    }
+    .preview [data-preview-editable="true"][contenteditable="true"]:focus {
+      outline: 1px dashed rgba(23, 179, 148, .42);
+      outline-offset: 4px;
+    }
+
     .preview h1,
     .preview h2,
     .preview h3,
@@ -526,7 +535,7 @@
       <div class="panel-head">
         <div>
           <div class="panel-title">微信风格预览</div>
-          <div class="panel-desc">h1=文字同宽下划线；h2=居中底色线；h3=左竖线。</div>
+          <div class="panel-desc">可直接点击正文改字；排版仍由左侧 Markdown 控制。</div>
         </div>
       </div>
       <div class="preview-shell">
@@ -539,11 +548,11 @@
       </div>
       <div class="statusbar">
         <div class="status-left">
-          <span>模板版本：v10 本地存储兼容版</span>
+          <span>模板版本：v11 双向文字编辑版</span>
           <span id="lastSavedLabel">未保存</span>
         </div>
         <div class="status-right">
-          <span>不再额外补标题</span>
+          <span>右侧正文可直接修改</span>
           <span>复制样式与预览同步</span>
         </div>
       </div>
@@ -590,6 +599,10 @@
     let caretSyncFrame = null;
     let saveFeedbackTimer = null;
     let saveFeedbackPointerType = 'keyboard';
+    let previewComposing = false;
+    let previewSyncFrame = null;
+    let pendingPreviewBlock = null;
+    let pendingPreviewSave = false;
 
     function clearSaveButtonFeedback() {
       if (saveFeedbackTimer !== null) clearTimeout(saveFeedbackTimer);
@@ -644,22 +657,37 @@
         ))
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/==([^=\n]+)==/g, '<span class="inline-accent">$1</span>')
-        .replace(/(^|[\s（(“‘])'([^'\n]{1,80})'(?![\w])/g, '$1<span class="inline-accent">&#39;$2&#39;</span>')
+        .replace(/==([^=\n]+)==/g, '<span class="inline-accent" data-md-accent="mark">$1</span>')
+        .replace(/(^|[\s（(“‘])'([^'\n]{1,80})'(?![\w])/g, '$1<span class="inline-accent" data-md-accent="quote">&#39;$2&#39;</span>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>');
     }
 
     function getMarkdownBlocks(md) {
       const normalized = md.replace(/\r\n?/g, '\n');
       const lines = normalized.split('\n');
+      const lineOffsets = [];
       const blocks = [];
       let current = [];
       let startLine = 1;
+      let startOffset = 0;
       let inCodeFence = false;
+
+      let offset = 0;
+      lines.forEach((line, index) => {
+        lineOffsets[index] = offset;
+        offset += line.length + (index < lines.length - 1 ? 1 : 0);
+      });
 
       const pushCurrent = () => {
         if (!current.length) return;
-        blocks.push({ text: current.join('\n'), startLine });
+        const text = current.join('\n');
+        blocks.push({
+          text,
+          startLine,
+          endLine: startLine + current.length - 1,
+          startOffset,
+          endOffset: startOffset + text.length
+        });
         current = [];
       };
 
@@ -667,7 +695,10 @@
         const lineNo = index + 1;
         const trimmed = line.trim();
 
-        if (!current.length) startLine = lineNo;
+        if (!current.length) {
+          startLine = lineNo;
+          startOffset = lineOffsets[index];
+        }
 
         if (inCodeFence) {
           current.push(line);
@@ -688,7 +719,11 @@
       return { blocks, lineCount: lines.length || 1 };
     }
 
-    function parseTable(block, startLine) {
+    function previewBlockAttributes(source, blockIndex) {
+      return `class="preview-block" data-source-line="${source.startLine}" data-source-end-line="${source.endLine}" data-source-start="${source.startOffset}" data-source-end="${source.endOffset}" data-source-block="${blockIndex}"`;
+    }
+
+    function parseTable(block, attributes) {
       const lines = block.trim().split('\n');
       if (lines.length < 2) return null;
       const rows = lines
@@ -698,24 +733,26 @@
       if (!rows[1].every(cell => /^:?-{3,}:?$/.test(cell.replace(/<[^>]+>/g, '')))) return null;
       const header = rows[0];
       const body = rows.slice(2);
-      return `<table class="preview-block" data-source-line="${startLine}"><thead><tr>${header.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${body.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      return `<table ${attributes}><thead><tr>${header.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${body.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
     }
 
-    function blockquoteToHtml(block, startLine) {
+    function blockquoteToHtml(block, attributes) {
       const lines = block.split('\n').map(line => line.replace(/^>\s?/, '').trim());
       const content = lines.join('<br>');
-      return `<blockquote class="preview-block" data-source-line="${startLine}"><p>${inlineFormat(escapeHtml(content))}</p></blockquote>`;
+      return `<blockquote ${attributes} data-preview-editable="true"><p>${inlineFormat(escapeHtml(content))}</p></blockquote>`;
     }
 
     function markdownToHtml(md) {
       const { blocks } = getMarkdownBlocks(md);
       let html = '';
 
-      for (const { text: rawBlock, startLine } of blocks) {
+      for (const [blockIndex, source] of blocks.entries()) {
+        const rawBlock = source.text;
         const block = rawBlock.trim();
         if (!block) continue;
+        const attributes = previewBlockAttributes(source, blockIndex);
 
-        const tableHtml = parseTable(block, startLine);
+        const tableHtml = parseTable(block, attributes);
         if (tableHtml) {
           html += tableHtml;
           continue;
@@ -723,44 +760,115 @@
 
         if (/^```/.test(block)) {
           const code = block.replace(/^```[a-zA-Z0-9_-]*\n?/, '').replace(/```$/, '');
-          html += `<pre class="preview-block" data-source-line="${startLine}"><code>${escapeHtml(code)}</code></pre>`;
+          html += `<pre ${attributes}><code>${escapeHtml(code)}</code></pre>`;
           continue;
         }
 
         if (/^---+$/.test(block)) {
-          html += `<hr class="preview-block" data-source-line="${startLine}" />`;
+          html += `<hr ${attributes} />`;
           continue;
         }
 
         if (/^>/.test(block)) {
-          html += blockquoteToHtml(block, startLine);
+          html += blockquoteToHtml(block, attributes);
           continue;
         }
 
         if (/^#{1,6}\s/.test(block)) {
           const level = block.match(/^#+/)[0].length;
           const text = block.replace(/^#{1,6}\s+/, '');
-          html += `<h${level} class="preview-block" data-source-line="${startLine}">${inlineFormat(escapeHtml(text))}</h${level}>`;
+          html += `<h${level} ${attributes} data-preview-editable="true">${inlineFormat(escapeHtml(text))}</h${level}>`;
           continue;
         }
 
         if (/^(-|\*|\+)\s+/m.test(block) && block.split('\n').every(line => /^(-|\*|\+)\s+/.test(line.trim()))) {
           const items = block.split('\n').map(line => line.replace(/^(-|\*|\+)\s+/, '').trim()).map(item => `<li>${inlineFormat(escapeHtml(item))}</li>`).join('');
-          html += `<ul class="preview-block" data-source-line="${startLine}">${items}</ul>`;
+          html += `<ul ${attributes} data-preview-editable="true">${items}</ul>`;
           continue;
         }
 
         if (/^\d+\.\s+/m.test(block) && block.split('\n').every(line => /^\d+\.\s+/.test(line.trim()))) {
           const items = block.split('\n').map(line => line.replace(/^\d+\.\s+/, '').trim()).map(item => `<li>${inlineFormat(escapeHtml(item))}</li>`).join('');
-          html += `<ol class="preview-block" data-source-line="${startLine}">${items}</ol>`;
+          html += `<ol ${attributes} data-preview-editable="true">${items}</ol>`;
           continue;
         }
 
         const paragraph = block.split('\n').map(line => inlineFormat(escapeHtml(line.trim()))).join('<br>');
-        html += `<p class="preview-block" data-source-line="${startLine}">${paragraph}</p>`;
+        html += `<p ${attributes} data-preview-editable="true">${paragraph}</p>`;
       }
 
       return html;
+    }
+
+    function serializePreviewInline(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return String(node.nodeValue || '').replace(/\u00a0/g, ' ');
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+      const tag = node.tagName;
+      if (tag === 'BR') return '\n';
+      if (tag === 'IMG') {
+        const alt = node.getAttribute('alt') || '';
+        const src = node.getAttribute('src') || '';
+        return `![${alt}](${src})`;
+      }
+
+      const content = Array.from(node.childNodes).map(serializePreviewInline).join('');
+      if (tag === 'STRONG' || tag === 'B') return `**${content}**`;
+      if (tag === 'EM' || tag === 'I') return `*${content}*`;
+      if (tag === 'CODE') return `\`${content}\``;
+      if (tag === 'A') return `[${content}](${node.getAttribute('href') || ''})`;
+      if (tag === 'SPAN' && node.classList.contains('inline-accent')) {
+        return node.dataset.mdAccent === 'quote' ? content : `==${content}==`;
+      }
+      if (tag === 'DIV' || tag === 'P') return `\n${content}\n`;
+      return content;
+    }
+
+    function normalizePreviewMarkdown(value) {
+      return String(value || '')
+        .replace(/\r\n?/g, '\n')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{2,}/g, '\n')
+        .replace(/^\n+/, '')
+        .replace(/\n+$/, '');
+    }
+
+    function serializePreviewBlock(block, originalMarkdown) {
+      const tag = block.tagName;
+      const content = normalizePreviewMarkdown(
+        Array.from(block.childNodes).map(serializePreviewInline).join('')
+      );
+
+      if (/^H[1-6]$/.test(tag)) {
+        const prefix = String(originalMarkdown || '').match(/^(\s*#{1,6}\s+)/);
+        return `${prefix ? prefix[1] : `${'#'.repeat(Number(tag.slice(1)))} `}${content.replace(/\n+/g, ' ')}`;
+      }
+
+      if (tag === 'BLOCKQUOTE') {
+        const sourceLines = String(originalMarkdown || '').split('\n');
+        return content.split('\n').map((line, index) => {
+          const prefix = (sourceLines[index] || '').match(/^(\s*>\s?)/);
+          return `${prefix ? prefix[1] : '> '}${line}`;
+        }).join('\n');
+      }
+
+      if (tag === 'UL' || tag === 'OL') {
+        const sourceLines = String(originalMarkdown || '').split('\n');
+        const items = Array.from(block.children).filter(child => child.tagName === 'LI');
+        return items.map((item, index) => {
+          const sourcePrefix = (sourceLines[index] || '').match(/^(\s*(?:[-+*]|\d+\.)\s+)/);
+          const defaultPrefix = tag === 'OL' ? `${index + 1}. ` : '- ';
+          const itemText = normalizePreviewMarkdown(
+            Array.from(item.childNodes).map(serializePreviewInline).join('')
+          ).replace(/\n+/g, ' ');
+          return `${sourcePrefix ? sourcePrefix[1] : defaultPrefix}${itemText}`;
+        }).join('\n');
+      }
+
+      return content;
     }
 
     function getSignatureLabel() {
@@ -1064,6 +1172,14 @@
         && (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
     }
 
+    function setPreviewEditingEnabled(enabled) {
+      preview.querySelectorAll('[data-preview-editable="true"]').forEach(block => {
+        const canEdit = enabled && !block.querySelector('img');
+        block.contentEditable = canEdit ? 'true' : 'false';
+        block.spellcheck = canEdit;
+      });
+    }
+
     function setEditingEnabled(enabled) {
       editor.readOnly = !enabled;
       saveArticleButton.disabled = !enabled;
@@ -1071,6 +1187,7 @@
       themeColor.disabled = !enabled;
       fontSize.disabled = !enabled;
       fontFamily.disabled = !enabled;
+      setPreviewEditingEnabled(enabled);
     }
 
     function showPersistenceWarning(message) {
@@ -1175,12 +1292,80 @@
       assetsStatus.textContent = assetLabels[assets.state] || '图片状态未知';
     }
 
-    function updatePreview(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
-      preview.innerHTML = markdownToHtml(editor.value);
-      injectSignature(preview);
+    function updateEditorStats() {
       const text = editor.value.replace(/\s+/g, '');
       wordCount.textContent = `${text.length} 字`;
       lineCount.textContent = `${editor.value.split('\n').length} 行`;
+    }
+
+    function updatePreviewSourceRanges(editedBlock, oldEnd, newEnd) {
+      const delta = newEnd - oldEnd;
+      getPreviewBlocks().forEach(block => {
+        let start = Number(block.dataset.sourceStart);
+        let end = Number(block.dataset.sourceEnd);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+
+        if (block === editedBlock) {
+          end = newEnd;
+        } else if (start >= oldEnd) {
+          start += delta;
+          end += delta;
+        }
+
+        block.dataset.sourceStart = String(start);
+        block.dataset.sourceEnd = String(end);
+        block.dataset.sourceLine = String(getLineNumberAtOffset(editor.value, start));
+        block.dataset.sourceEndLine = String(getLineNumberAtOffset(editor.value, end));
+      });
+    }
+
+    function syncPreviewBlockToMarkdown(block, shouldSave = true) {
+      if (!block || block.contentEditable !== 'true' || !persistenceReady) return false;
+      const start = Number(block.dataset.sourceStart);
+      const end = Number(block.dataset.sourceEnd);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start || end > editor.value.length) {
+        updatePreview('editor');
+        return false;
+      }
+
+      const originalMarkdown = editor.value.slice(start, end);
+      const replacement = serializePreviewBlock(block, originalMarkdown);
+      if (replacement !== originalMarkdown) {
+        editor.value = `${editor.value.slice(0, start)}${replacement}${editor.value.slice(end)}`;
+        updatePreviewSourceRanges(block, end, start + replacement.length);
+        updateEditorStats();
+        saveStatus.textContent = '编辑中…';
+        articleStatus.textContent = '正文有修改';
+        holdScrollLock('preview');
+        syncAfterRender('preview');
+      }
+      if (shouldSave) scheduleSave();
+      return true;
+    }
+
+    function flushPreviewBlockSync() {
+      if (previewSyncFrame !== null) cancelAnimationFrame(previewSyncFrame);
+      previewSyncFrame = null;
+      const block = pendingPreviewBlock;
+      const shouldSave = pendingPreviewSave;
+      pendingPreviewBlock = null;
+      pendingPreviewSave = false;
+      if (block) syncPreviewBlockToMarkdown(block, shouldSave);
+    }
+
+    function schedulePreviewBlockSync(block, shouldSave = true) {
+      if (!block) return;
+      pendingPreviewBlock = block;
+      pendingPreviewSave = pendingPreviewSave || shouldSave;
+      if (previewSyncFrame !== null) return;
+      previewSyncFrame = requestAnimationFrame(flushPreviewBlockSync);
+    }
+
+    function updatePreview(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
+      preview.innerHTML = markdownToHtml(editor.value);
+      injectSignature(preview);
+      setPreviewEditingEnabled(persistenceReady);
+      updateEditorStats();
       saveStatus.textContent = '编辑中…';
       syncAfterRender(preferredSource, editorAnchor);
     }
@@ -1459,6 +1644,83 @@
         exportedAt: new Date().toISOString()
       };
     };
+
+    function closestEditablePreviewBlock(target) {
+      const element = target && target.nodeType === Node.ELEMENT_NODE ? target : target && target.parentElement;
+      return element ? element.closest('[data-preview-editable="true"][contenteditable="true"]') : null;
+    }
+
+    function insertPreviewLineBreak() {
+      if (document.execCommand('insertLineBreak', false, null)) return;
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const lineBreak = document.createElement('br');
+      range.insertNode(lineBreak);
+      range.setStartAfter(lineBreak);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    preview.addEventListener('beforeinput', event => {
+      const block = closestEditablePreviewBlock(event.target);
+      if (!block) return;
+      if (String(event.inputType || '').startsWith('format')) {
+        event.preventDefault();
+        return;
+      }
+      if (event.inputType !== 'insertParagraph' && event.inputType !== 'insertLineBreak') return;
+      if (/^H[1-6]$/.test(block.tagName)) {
+        event.preventDefault();
+        return;
+      }
+      if (block.tagName === 'UL' || block.tagName === 'OL') return;
+      event.preventDefault();
+      insertPreviewLineBreak();
+    });
+
+    preview.addEventListener('paste', event => {
+      const block = closestEditablePreviewBlock(event.target);
+      if (!block) return;
+      event.preventDefault();
+      const text = (event.clipboardData || window.clipboardData).getData('text/plain').replace(/\r\n?/g, '\n');
+      document.execCommand('insertText', false, text);
+    });
+
+    preview.addEventListener('compositionstart', event => {
+      if (closestEditablePreviewBlock(event.target)) previewComposing = true;
+    });
+
+    preview.addEventListener('compositionend', event => {
+      previewComposing = false;
+      schedulePreviewBlockSync(closestEditablePreviewBlock(event.target), true);
+    });
+
+    preview.addEventListener('input', event => {
+      schedulePreviewBlockSync(closestEditablePreviewBlock(event.target), !previewComposing);
+    });
+
+    const previewMutationObserver = new MutationObserver(mutations => {
+      const block = closestEditablePreviewBlock(document.activeElement);
+      if (!block) return;
+      if (mutations.some(mutation => block === mutation.target || block.contains(mutation.target))) {
+        schedulePreviewBlockSync(block, !previewComposing);
+      }
+    });
+    previewMutationObserver.observe(preview, {
+      subtree: true,
+      childList: true,
+      characterData: true
+    });
+
+    preview.addEventListener('focusout', () => {
+      flushPreviewBlockSync();
+      setTimeout(() => {
+        if (!closestEditablePreviewBlock(document.activeElement)) updatePreview('preview');
+      }, 0);
+    });
 
     editor.addEventListener('input', () => {
       holdScrollLock('editor');

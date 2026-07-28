@@ -15,7 +15,7 @@ Produce a complete local article package from the user's topic, draft, notes, or
 - If the user asks for "不配图", "只排版", "直接格式化", or similar, use the no-image path.
 - If the user asks to补图, continue, or fix missing assets, use the missing-image path and do not rebuild finished images.
 - If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.
-- For explicitly requested Toutiao sync or publishing, use Chrome and read [publishing-toutiao.md](references/publishing-toutiao.md). This does not change the WeChat API-only rule.
+- For explicitly requested Toutiao sync or publishing, use Chrome plus Computer Use and read [publishing-toutiao.md](references/publishing-toutiao.md). Use Computer Use for the system-clipboard rich-text copy/paste handoff; use Chrome for page inspection, settings, submission, and verification. This does not change the WeChat API-only rule.
 
 ## Workspace Contract
 
@@ -50,7 +50,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-5. Read [image-production.md](references/image-production.md), then generate `generation_queue[]` once. Use at most `min(queue length, currently available worker slots)` workers, refilling freed slots. Save each result to its `output`. Do not inspect generated images; continue to packaging and verification.
+5. Read [image-production.md](references/image-production.md), then run its single-pass queue with currently available worker slots. Default every visual to strict 3:2 landscape. Verify files and dimensions only; regenerate invalid ratios before packaging.
 6. Run the same script again without `--plan-only` to build the HTML, job JSON, crop previews, and support files. Add `--publish-manifest` only when the user requested API draft-box handoff.
 7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html` and fix any failures before delivery.
 8. After every verified HTML workbench build, start the local persistence server before delivery. This is the default for any task that produces an HTML workbench, even when the user did not explicitly ask to open it:
@@ -61,7 +61,7 @@ python3 <skill>/scripts/serve_wechat_workbench.py \
   --workspace <workspace>
 ```
 
-Keep it running. Deliver `WORKBENCH_URL` first and `HTML_PATH` second. Direct-file mode is preview/copy-only; use the loopback URL for editing and lock editing if persistence disconnects.
+Keep it running. Deliver `WORKBENCH_URL` first and `HTML_PATH` second. Use the loopback URL for editing; direct-file mode is preview/copy-only.
 
 ## Fast Paths
 
@@ -75,7 +75,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --support-dir <workspace>/files/wechat-article-pipeline/<slug>
 ```
 
-Use this when the user wants a formatted article without generated visuals. Existing `{{visual:*}}` image placeholders are removed from the packaged copy, so an illustrated source can safely use this path without manual cleanup. This path skips publish-manifest creation by default; add `--publish-manifest` only for API handoff. Draft creation may still need a cover asset; state that clearly.
+This removes existing `{{visual:*}}` placeholders and skips the manifest unless `--publish-manifest` is supplied. Draft delivery may still require a cover.
 
 No body images, but draft-box delivery:
 
@@ -88,7 +88,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --cover-image <workspace>/image/<slug>/cover.png
 ```
 
-Use this when the user says no配图 but still wants 草稿箱. WeChat `draft/add` requires a cover `thumb_media_id`; here `--no-images` means no body/closing images, not no cover. Generate or reuse exactly one cover asset and do not insert it into the article body.
+For no配图 draft delivery, generate or reuse one cover for WeChat's required `thumb_media_id`; do not insert it into the body.
 
 Missing-image jobs only:
 
@@ -103,13 +103,13 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-Generate only those listed images, then rerun the default packaging command without `--missing-only`.
+Generate only listed images, then package without `--missing-only`.
 
 ## Publishing Path
 
 Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first; create drafts only when requested. A signed manifest automatically advances the issue counter after success; do not rely on callers remembering an extra flag. Never publish/group-send by default.
 
-For Toutiao, follow [publishing-toutiao.md](references/publishing-toutiao.md). Use Chrome, not Computer Use; publish directly only when explicitly authorized.
+For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Computer Use for workbench rich-text system copy/paste, never the browser virtual clipboard; use Chrome for inspection and publishing. Submit only when authorized.
 
 ## Safety Rules
 
@@ -119,6 +119,7 @@ For Toutiao, follow [publishing-toutiao.md](references/publishing-toutiao.md). U
 - Do not start nested Codex runtimes or custom image API runners for normal image work.
 - Keep `cover.png` as the article hero image. Packaging may derive WeChat crop previews such as `cover.wechat-235.png` and `cover.wechat-1x1.png`; do not replace the original hero with a crop.
 - Enable Toutiao `头条首发` only when the user confirms eligibility.
+- Publish no external hyperlinks in WeChat or Toutiao bodies. Preserve source names as plain text and remove every external `href` before delivery.
 
 ## Acceptance Checklist
 
@@ -127,12 +128,14 @@ Before delivery, confirm:
 - final HTML is under `<workspace>/files/`
 - markdown, job JSON, image directory, and any requested manifest use the same slug
 - every requested visual is present or intentionally skipped by `--no-images`
+- every generated visual is strict 3:2 landscape unless the user explicitly requested another ratio
 - no unresolved `{{visual:*}}` remains in the HTML
 - workbench Markdown uses relative image paths; copy inlines local images only in clipboard HTML
 - `verify_wechat_article_package.py` reports `status: ok`
 - optional WeChat API result file is reported if draft delivery was run
 - optional Toutiao delivery reports its status and verified public URL
-- whenever an HTML workbench was produced, its persistence server is still running and the final response gives the local `http://127.0.0.1:<port>/...` link first, then the HTML file path
+- WeChat and Toutiao body content contains zero external hyperlinks
+- workbench persistence server remains running and delivery gives its loopback URL before the HTML path
 - when no HTML workbench was produced, give the main artifact path first, then supporting paths when relevant
 
 ## References
@@ -143,6 +146,6 @@ Before delivery, confirm:
 - [style-guide.md](references/style-guide.md): writing style, Secretary Mode, focus marks, and technical inline-code rules.
 - [job-schema.md](references/job-schema.md): image-job and workbench JSON contracts.
 - [publishing.md](references/publishing.md): official WeChat draft/preview API procedure.
-- [publishing-toutiao.md](references/publishing-toutiao.md): Chrome-only Toutiao draft, publish, and public-page QA procedure.
+- [publishing-toutiao.md](references/publishing-toutiao.md): Chrome + Computer Use Toutiao draft, publish, and public-page QA procedure.
 - [assets/templates/wechat-md-workbench.template.v3.html](assets/templates/wechat-md-workbench.template.v3.html): template asset used by scripts; do not read it unless debugging template behavior.
 - Read [.env.example](.env.example) only for requested API setup.
