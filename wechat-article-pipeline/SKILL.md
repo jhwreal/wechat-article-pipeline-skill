@@ -109,7 +109,7 @@ Generate only listed images, then package without `--missing-only`.
 
 Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first; create drafts only when requested. A signed manifest automatically advances the issue counter after success; do not rely on callers remembering an extra flag. Never publish/group-send by default.
 
-For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Computer Use for workbench rich-text system copy/paste, never the browser virtual clipboard; use Chrome for inspection and publishing. Submit only when authorized.
+For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Computer Use for workbench rich-text system copy/paste, never the browser virtual clipboard; use Chrome for inspection and publishing. Submit only when authorized. For scheduled publishing, follow the reference's exact state machine and one-shot submission latch: a repeated button label is not state proof, and any possible final submission forbids retrying, hiding, deleting, or creating a replacement until the management page is checked and the user authorizes any recovery.
 
 ## Safety Rules
 
@@ -134,6 +134,7 @@ Before delivery, confirm:
 - `verify_wechat_article_package.py` reports `status: ok`
 - optional WeChat API result file is reported if draft delivery was run
 - optional Toutiao delivery reports its status and verified public URL
+- scheduled Toutiao delivery has exactly one same-day row for the exact title, and that row shows the expected `将于 MM-DD HH:mm 发布`
 - WeChat and Toutiao body content contains zero external hyperlinks
 - workbench persistence server remains running and delivery gives its loopback URL before the HTML path
 - when no HTML workbench was produced, give the main artifact path first, then supporting paths when relevant
