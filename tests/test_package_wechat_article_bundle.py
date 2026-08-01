@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +22,7 @@ import verify_wechat_article_package as verifier  # noqa: E402
 import build_wechat_article_workbench as builder  # noqa: E402
 
 
-PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lpI1GQAAAABJRU5ErkJggg=="
+PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mNk+M/wHwAF/gL+IpcQ3wAAAABJRU5ErkJggg=="
 
 
 class PackageWechatArticleBundleTest(unittest.TestCase):
@@ -212,6 +213,31 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 self.assertEqual(packager.image_size(image_path), (1, 1))
             finally:
                 packager.subprocess.run = original_run
+
+    def test_center_crop_does_not_hide_corrupt_images_behind_sips(self) -> None:
+        with mock.patch.object(
+            packager,
+            "write_center_crop_with_pillow",
+            side_effect=OSError("broken image"),
+        ), mock.patch.object(packager, "write_center_crop_with_sips") as sips:
+            with self.assertRaisesRegex(OSError, "broken image"):
+                packager.write_center_crop(
+                    Path("broken.png"), Path("out.png"), (0, 0, 1, 1), 1, 1
+                )
+
+        sips.assert_not_called()
+
+    def test_center_crop_uses_sips_only_when_pillow_is_unavailable(self) -> None:
+        with mock.patch.object(
+            packager,
+            "write_center_crop_with_pillow",
+            side_effect=ModuleNotFoundError("Pillow is unavailable"),
+        ), mock.patch.object(packager, "write_center_crop_with_sips") as sips:
+            packager.write_center_crop(
+                Path("source.png"), Path("out.png"), (0, 0, 1, 1), 1, 1
+            )
+
+        sips.assert_called_once()
 
     def test_package_without_images_accepts_plain_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

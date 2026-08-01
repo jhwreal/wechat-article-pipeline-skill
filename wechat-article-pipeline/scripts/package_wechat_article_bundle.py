@@ -413,7 +413,7 @@ def write_center_crop_with_sips(source: Path, out: Path, box: tuple[int, int, in
 def write_center_crop(source: Path, out: Path, box: tuple[int, int, int, int], target_width: int, target_height: int) -> None:
     try:
         write_center_crop_with_pillow(source, out, box, target_width, target_height)
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         write_center_crop_with_sips(source, out, box, target_width, target_height)
 
 

@@ -16,7 +16,7 @@ SCRIPTS = ROOT / "wechat-article-pipeline" / "scripts"
 POSTPROCESS = SCRIPTS / "postprocess_wechat_article.py"
 PUBLISH = SCRIPTS / "publish_wechat_api.py"
 PNG_1X1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lpI1GQAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mNk+M/wHwAF/gL+IpcQ3wAAAABJRU5ErkJggg=="
 )
 
 

@@ -23,7 +23,7 @@ import publish_wechat_api as publisher  # noqa: E402
 
 PNG_1X1_DATA_URI = (
     "data:image/png;base64,"
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lpI1GQAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mNk+M/wHwAF/gL+IpcQ3wAAAABJRU5ErkJggg=="
 )
 PNG_1X1_BYTES = base64.b64decode(PNG_1X1_DATA_URI.split(",", 1)[1])
 

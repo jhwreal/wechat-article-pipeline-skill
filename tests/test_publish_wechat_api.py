@@ -17,7 +17,7 @@ sys.path.insert(0, str(SCRIPTS))
 import publish_wechat_api as publisher  # noqa: E402
 
 
-PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lpI1GQAAAABJRU5ErkJggg=="
+PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mNk+M/wHwAF/gL+IpcQ3wAAAABJRU5ErkJggg=="
 
 
 class PublishWechatApiTest(unittest.TestCase):
