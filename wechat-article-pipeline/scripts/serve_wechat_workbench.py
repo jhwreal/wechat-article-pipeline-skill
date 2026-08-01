@@ -13,6 +13,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -739,12 +740,17 @@ class WorkbenchDocument:
         self._manifest_thread.start()
 
     def save(self, payload: dict[str, Any]) -> dict[str, Any]:
+        save_started = time.perf_counter()
         markdown = payload.get("markdown")
         if not isinstance(markdown, str):
             raise ValueError("markdown must be a string")
         if len(markdown.encode("utf-8")) > MAX_REQUEST_BYTES:
             raise ValueError("markdown is too large")
+        platform_mode = str(payload.get("platformMode") or "wechat")
+        if platform_mode not in {"wechat", "toutiao", "xiaohongshu"}:
+            platform_mode = "wechat"
         state = {
+            "platformMode": platform_mode,
             "themeColor": str(payload.get("themeColor") or "#17b394"),
             "fontSize": str(payload.get("fontSize") or "16"),
             "fontFamily": str(payload.get("fontFamily") or "-apple-system, BlinkMacSystemFont, sans-serif"),
@@ -759,8 +765,14 @@ class WorkbenchDocument:
                 raise RevisionConflict(self.status())
             html_text = self.html_path.read_text(encoding="utf-8")
             try:
-                updated_html = builder.replace_bootstrap(html_text, {"markdown": markdown, "workbenchState": state})
-                if updated_html == html_text:
+                bootstrap_matches = list(builder.BOOTSTRAP_RE.finditer(html_text))
+                if len(bootstrap_matches) > 1:
+                    raise ValueError("duplicate wechat-bootstrap nodes")
+                if bootstrap_matches:
+                    updated_html = builder.replace_bootstrap(
+                        html_text, {"markdown": markdown, "workbenchState": state}
+                    )
+                else:
                     updated_html = builder.replace_default_markdown(html_text, markdown)
                     updated_html = replace_default_workbench_state(updated_html, state)
             except (ValueError, json.JSONDecodeError):
@@ -795,6 +807,25 @@ class WorkbenchDocument:
             if job is not None:
                 files[self.markdown_path] = source_markdown
                 files[self.job_path] = json.dumps(job, ensure_ascii=False, indent=2) + "\n"
+            files_unchanged = all(
+                target.is_file() and target.read_text(encoding="utf-8") == value
+                for target, value in files.items()
+            )
+            assets_unchanged = assets == self._state.get("assets")
+            if files_unchanged and assets_unchanged:
+                return {
+                    "saved": True,
+                    "unchanged": True,
+                    "saved_at": datetime.now(timezone.utc).isoformat(),
+                    "html": str(self.html_path),
+                    "markdown": str(self.markdown_path) if job is not None else "",
+                    "job": str(self.job_path) if job is not None else "",
+                    "revision": current_revision,
+                    "clientMutationId": payload.get("clientMutationId"),
+                    "manifest": self._state["manifest"],
+                    "assets": self._state["assets"],
+                    "duration_ms": round((time.perf_counter() - save_started) * 1000, 2),
+                }
             self.support_dir.mkdir(parents=True, exist_ok=True)
             revision = current_revision + 1
             transaction_dir = (self.transaction_root / str(revision)).resolve()
@@ -893,6 +924,7 @@ class WorkbenchDocument:
 
         return {
             "saved": True,
+            "unchanged": False,
             "saved_at": datetime.now(timezone.utc).isoformat(),
             "html": str(self.html_path),
             "markdown": str(self.markdown_path) if job is not None else "",
@@ -901,6 +933,7 @@ class WorkbenchDocument:
             "clientMutationId": payload.get("clientMutationId"),
             "manifest": self._state["manifest"],
             "assets": self._state["assets"],
+            "duration_ms": round((time.perf_counter() - save_started) * 1000, 2),
         }
 
     def close(self):
@@ -915,9 +948,28 @@ class WorkbenchDocument:
 def make_handler(document: WorkbenchDocument):
     class WorkbenchHandler(SimpleHTTPRequestHandler):
         def end_headers(self) -> None:
+            request_path = urlparse(self.path).path
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; base-uri 'none'; object-src 'none'; "
+                "frame-ancestors 'none'; form-action 'none'; connect-src 'self'; "
+                "img-src 'self' data: blob: https:; font-src 'self' data:; "
+                "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+            )
+            self.send_header(
+                "Permissions-Policy",
+                "camera=(), microphone=(), geolocation=(), payment=()",
+            )
+            if request_path not in {STATUS_ENDPOINT, SAVE_ENDPOINT}:
+                suffix = Path(request_path).suffix.lower()
+                if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg", ".js"}:
+                    self.send_header("Cache-Control", "private, max-age=60")
+                else:
+                    self.send_header("Cache-Control", "no-store")
             super().end_headers()
 
         def has_valid_host(self) -> bool:

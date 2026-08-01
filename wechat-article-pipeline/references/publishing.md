@@ -145,8 +145,9 @@ The script performs:
 5. Upload the cover through `cgi-bin/material/add_material?type=image`.
 6. Build the `articles[0]` payload and call `cgi-bin/draft/add`.
 7. Optionally call `cgi-bin/draft/get` to verify the created draft title.
-8. If and only if preview was explicitly requested, call `cgi-bin/message/mass/preview` with the created `media_id`.
-9. Stop. Do not publish.
+8. When the manifest names an existing `workbench_html`, write the ordered uploaded body-image HTTPS URLs into that workbench's bootstrap data. The local Markdown and relative image paths stay unchanged; the open loopback workbench refreshes these URLs when Toutiao format is selected or copied, so no manual page reload is required. Xiaohongshu uses embedded image data already packaged in the workbench.
+9. If and only if preview was explicitly requested, call `cgi-bin/message/mass/preview` with the created `media_id`.
+10. Stop. Do not publish.
 
 ## Operational notes
 

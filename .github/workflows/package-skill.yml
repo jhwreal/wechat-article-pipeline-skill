@@ -14,7 +14,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout repository
@@ -36,10 +40,13 @@ jobs:
       - name: Validate installable skill structure
         run: |
           test -f wechat-article-pipeline/SKILL.md
+          test -f wechat-article-pipeline/VERSION
           test -f wechat-article-pipeline/agents/openai.yaml
           test -f wechat-article-pipeline/.env.example
+          test -f wechat-article-pipeline/references/platform-adapters.json
           test -d wechat-article-pipeline/scripts
           python -m unittest tests.test_skill_p0_contract.SkillP0ContractTest.test_skill_md_stays_lean_and_trigger_description_is_not_a_workflow -v
+          python wechat-article-pipeline/scripts/doctor_wechat_article_skill.py --skip-installed
 
       - name: Compile Python sources
         run: python -m compileall -q wechat-article-pipeline/scripts tests wechat-article-pipeline/tests
@@ -72,6 +79,11 @@ jobs:
         shell: bash
         run: |
           PROJECT_VERSION="$(python -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          SKILL_VERSION="$(tr -d '[:space:]' < wechat-article-pipeline/VERSION)"
+          if [ "${PROJECT_VERSION}" != "${SKILL_VERSION}" ]; then
+            echo "pyproject ${PROJECT_VERSION} does not match skill VERSION ${SKILL_VERSION}." >&2
+            exit 1
+          fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             if [ "${GITHUB_REF_NAME}" != "v${PROJECT_VERSION}" ]; then
               echo "Tag ${GITHUB_REF_NAME} does not match pyproject version v${PROJECT_VERSION}." >&2
@@ -97,7 +109,10 @@ jobs:
             --exclude="__pycache__/" \
             --exclude="*.pyc" \
             wechat-article-pipeline/ build/wechat-article-pipeline/
-          printf '%s\n' "${{ steps.version.outputs.project_version }}" > build/wechat-article-pipeline/VERSION
+          python wechat-article-pipeline/scripts/doctor_wechat_article_skill.py \
+            --source wechat-article-pipeline \
+            --installed build/wechat-article-pipeline \
+            --require-installed-sync
           cd build
           zip -r "../dist/wechat-article-pipeline-${{ steps.version.outputs.version }}.zip" wechat-article-pipeline
           cd ..

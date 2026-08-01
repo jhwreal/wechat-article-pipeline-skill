@@ -11,13 +11,13 @@ from typing import Any
 
 import build_wechat_article_workbench as builder
 import wechat_account_config as account_config
+from article_core import extract_title
 from atomic_files import atomic_write_json
 
 
 DEFAULT_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "publisher-config.json"
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 DEFAULT_TOKEN_CACHE = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-token-cache.json"
-TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 BASE_TEXT_STYLE = "font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;font-size:16px;line-height:1.75;color:#222;word-break:break-word"
 PARAGRAPH_STYLE = BASE_TEXT_STYLE + ";margin:16px 8px"
@@ -113,11 +113,6 @@ def resolve_author(args: argparse.Namespace, env_file: Path, account: dict[str, 
     raise SystemExit(
         f"Missing WeChat article author for {selector}. Ask the user for the author, then store it in {env_file} as {key}=<author>."
     )
-
-
-def extract_title(markdown: str, fallback: str) -> str:
-    match = TITLE_RE.search(markdown)
-    return match.group(1).strip() if match else fallback
 
 
 def strip_markdown(text: str) -> str:

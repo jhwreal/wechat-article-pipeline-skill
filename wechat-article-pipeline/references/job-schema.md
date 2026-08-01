@@ -96,12 +96,15 @@ The canonical image payload is schema v2: `slots[]` stores article-facing placem
 
 Build outputs may also include:
 - `<html-stem>.assets/` — local files materialized from `data_uri` or `base64` visual inputs for clean workbench markdown
-- `<html-stem>.clipboard-assets.js` — sidecar local-image data used only when copying rich HTML from the workbench
+- `<html-stem>.clipboard-assets.js` — fallback local-image data loaded lazily only when a direct-file workbench copy cannot fetch local images; it is released after copying
 - `quality-report.json` — records how each visual asset was resolved
 - `resolved-assets.json` — records the final URI used for each placeholder
 - `image-plan.json` — records the role-based slot plan
 - `image-plan.md` — debug-friendly markdown table for the slot plan
 - `<html-stem>.publish-manifest.json` — optional WeChat backend draft/preview handoff data, created only with `--publish-manifest`
+- `<slug>.three-platform-result.json` — resumable aggregate state for explicitly requested WeChat + Toutiao + Xiaohongshu draft sync
+
+Workbench builds also embed release diagnostics in `bootstrap.buildInfo` and the versioned platform adapter registry in `bootstrap.platformAdapters`. Markdown remains the sole content source; platform HTML is derived on demand and is not stored as a fourth editable document.
 
 ## Publish Manifest
 

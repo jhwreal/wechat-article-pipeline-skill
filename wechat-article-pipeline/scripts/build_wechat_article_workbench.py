@@ -12,7 +12,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote_to_bytes
 
+import release_info
 from atomic_files import atomic_write_bytes, atomic_write_text
+from platform_assets import (
+    discover_platform_image_urls,
+    normalize_platform_image_url,
+    normalize_platform_image_urls,
+    platform_image_result_path,
+    platform_image_urls_from_wechat_result,
+)
 
 
 DEFAULT_TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "templates" / "wechat-md-workbench.template.v3.html"
@@ -43,6 +51,7 @@ def parse_args() -> argparse.Namespace:
 
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
 
 def html_safe_json(value: Any) -> str:
     return (json.dumps(value, ensure_ascii=False, separators=(",", ":"))
@@ -255,19 +264,20 @@ def replace_default_workbench_state(template: str, state: dict[str, str]) -> str
     )
 
 
-def replace_clipboard_assets_script(template: str, script_path: str) -> str:
-    if script_path:
-        tag = f'<script src="{html.escape(script_path, quote=True)}"></script>'
-    else:
-        tag = ""
-    return template.replace("<!-- CLIPBOARD_ASSETS_SCRIPT -->", tag)
-
-
 def replace_first(pattern: str, repl: str, text: str) -> str:
     return re.sub(pattern, repl, text, count=1, flags=re.S)
 
 
-def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
+def apply_template(
+    job: dict[str, Any],
+    template: str,
+    markdown: str,
+    *,
+    platform_image_urls: list[str] | None = None,
+    platform_image_source: str = "",
+    build_info: dict[str, Any] | None = None,
+    platform_adapters: dict[str, dict[str, Any]] | None = None,
+) -> str:
     markdown, markdown_metadata = split_front_matter(markdown)
     article_metadata = job.get("article_metadata") or markdown_metadata
     page_title = str(job.get("page_title", "公众号 Markdown 工作台"))
@@ -275,6 +285,9 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     brand_title = str(job.get("brand_title", "公众号 Markdown 工作台"))
     brand_subtitle = str(job.get("brand_subtitle", "HTML 工作台 · 相对路径配图 · 可继续编辑"))
     theme_color = str(job.get("theme_color", "#17b394"))
+    platform_mode = str(job.get("platform_mode", "wechat"))
+    if platform_mode not in {"wechat", "toutiao", "xiaohongshu"}:
+        platform_mode = "wechat"
 
     html_text = template
     html_text = replace_first(r"<title>.*?</title>", f"<title>{html.escape(page_title)}</title>", html_text)
@@ -283,6 +296,7 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
     html_text = replace_first(r'(<input id="themeColor"[^>]*value=")[^"]+(")', rf"\g<1>{html.escape(theme_color, quote=True)}\2", html_text)
     html_text = replace_first(r"const STORAGE_KEY = .*?;", f"const STORAGE_KEY = {json.dumps(storage_key, ensure_ascii=False)};", html_text)
     state = {
+            "platformMode": platform_mode,
             "themeColor": theme_color,
             "fontSize": str(job.get("font_size", "16")),
             "fontFamily": str(
@@ -292,14 +306,25 @@ def apply_template(job: dict[str, Any], template: str, markdown: str) -> str:
                 )
             ),
         }
-    bootstrap = {"markdown": markdown, "metadata": article_metadata if isinstance(article_metadata, dict) else {}, "signature": job.get("article_signature") or {}, "storageKey": storage_key, "workbenchState": state}
+    bootstrap = {
+        "markdown": markdown,
+        "metadata": article_metadata if isinstance(article_metadata, dict) else {},
+        "signature": job.get("article_signature") or {},
+        "storageKey": storage_key,
+        "workbenchState": state,
+        "platformImageUrls": normalize_platform_image_urls(platform_image_urls or []),
+        "platformImageSource": str(platform_image_source or ""),
+        "platformAdapters": platform_adapters or release_info.platform_adapters(),
+        "buildInfo": build_info or release_info.workbench_build_info(DEFAULT_TEMPLATE),
+        "clipboardAssetsScript": str(job.get("clipboard_assets_script", "")).strip(),
+    }
     if html_text.count("{{BOOTSTRAP_JSON}}") != 1: raise ValueError("expected exactly one {{BOOTSTRAP_JSON}} placeholder")
     html_text = html_text.replace("{{BOOTSTRAP_JSON}}", html_safe_json(bootstrap), 1)
     controller_path = Path(__file__).resolve().parents[1] / "assets" / "workbench-save-controller.js"
     controller_source = controller_path.read_text(encoding="utf-8")
     if html_text.count("{{SAVE_CONTROLLER_JS}}") != 1: raise ValueError("expected exactly one {{SAVE_CONTROLLER_JS}} placeholder")
     html_text = html_text.replace("{{SAVE_CONTROLLER_JS}}", controller_source, 1)
-    html_text = replace_clipboard_assets_script(html_text, str(job.get("clipboard_assets_script", "")).strip())
+    html_text = html_text.replace("<!-- CLIPBOARD_ASSETS_SCRIPT -->", "")
     return html_text
 
 
@@ -435,7 +460,16 @@ def main() -> None:
     clipboard_assets_script = write_clipboard_assets(args.out.resolve(), rendered_visuals, visuals, job_dir)
     if clipboard_assets_script:
         job["clipboard_assets_script"] = clipboard_assets_script
-    html = apply_template(job, template, markdown)
+    platform_image_urls, platform_image_source = discover_platform_image_urls(job, args.job)
+    html = apply_template(
+        job,
+        template,
+        markdown,
+        platform_image_urls=platform_image_urls,
+        platform_image_source=platform_image_source,
+        build_info=release_info.workbench_build_info(args.template),
+        platform_adapters=release_info.platform_adapters(),
+    )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(args.out, html)

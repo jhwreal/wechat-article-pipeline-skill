@@ -21,7 +21,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
 
-from atomic_files import atomic_write_json, manifest_fingerprint
+import build_wechat_article_workbench as workbench_builder
+from atomic_files import atomic_write_json, atomic_write_text, manifest_fingerprint
 import publish_run_state as run_state
 import wechat_account_config as account_config
 
@@ -1162,6 +1163,56 @@ def finish_publish_run(out: Path, run: dict[str, Any]) -> None:
     run_state.checkpoint(out, run)
 
 
+def sync_platform_images_to_workbench(
+    manifest: dict[str, Any],
+    result: dict[str, Any],
+    receipt_path: Path,
+) -> dict[str, Any]:
+    """Expose uploaded body images to the workbench's one-paste adapters."""
+    workbench_value = str(manifest.get("workbench_html") or "").strip()
+    if not workbench_value:
+        return {"status": "skipped", "reason": "manifest has no workbench_html"}
+    urls = workbench_builder.platform_image_urls_from_wechat_result(result)
+    if not urls:
+        return {"status": "skipped", "reason": "successful body image uploads are unavailable"}
+
+    workbench_path = Path(workbench_value).expanduser().resolve()
+    if not workbench_path.exists():
+        return {
+            "status": "skipped",
+            "reason": "workbench_html does not exist",
+            "workbench_html": str(workbench_path),
+        }
+    try:
+        current = workbench_path.read_text(encoding="utf-8")
+        updated = workbench_builder.replace_bootstrap(
+            current,
+            {
+                "platformImageUrls": urls,
+                "platformImageSource": str(receipt_path.resolve()),
+            },
+        )
+        if updated == current and 'id="wechat-bootstrap"' not in current:
+            return {
+                "status": "skipped",
+                "reason": "workbench template does not support platform image URLs",
+                "workbench_html": str(workbench_path),
+            }
+        if updated != current:
+            atomic_write_text(workbench_path, updated)
+        return {
+            "status": "updated",
+            "workbench_html": str(workbench_path),
+            "image_count": len(urls),
+        }
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return {
+            "status": "failed",
+            "reason": f"{type(exc).__name__}: {exc}"[:240],
+            "workbench_html": str(workbench_path),
+        }
+
+
 def validate_resume_receipt(
     out: Path,
     run: dict[str, Any],
@@ -1429,6 +1480,13 @@ def main() -> None:
             content_html,
             validation,
         )
+    if result.get("status") == "success" and result.get("draft_media_id"):
+        result["platform_workbench_update"] = sync_platform_images_to_workbench(
+            manifest,
+            result,
+            out,
+        )
+        write_json(out, result)
     print(f"Wrote {out}")
     if result.get("draft_media_id"):
         print(f"Created draft media_id: {result['draft_media_id']}")

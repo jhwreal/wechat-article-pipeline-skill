@@ -44,7 +44,7 @@ test('line number is derived from the caret offset', () => {
 });
 
 test('caret events and viewport scrolling use different sync anchors', () => {
-  assert.match(template, /updatePreview\('editor',\s*'caret'\)/);
+  assert.match(template, /schedulePreviewUpdate\('editor',\s*'caret'\)/);
   assert.match(template, /addEventListener\('click',\s*scheduleCaretSync\)/);
   assert.match(template, /addEventListener\('keyup',\s*scheduleCaretSync\)/);
   assert.match(template, /addEventListener\('select',\s*scheduleCaretSync\)/);

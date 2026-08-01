@@ -16,6 +16,7 @@
       --radius: 16px;
       --shadow: 0 8px 30px rgba(16,24,40,.08);
       --preview-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --preview-font-size: 16px;
       --content-width: 430px;
       --wechat-side-padding: 8px;
     }
@@ -115,7 +116,41 @@
       box-shadow: none;
     }
     .field, .select { min-width: 110px; }
+    #platformMode {
+      min-width: 132px;
+      border-color: color-mix(in srgb, var(--primary) 42%, var(--line));
+      font-weight: 700;
+    }
     .color { padding: 6px; width: 44px; }
+    .copy-warning {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid #fda29b;
+      border-radius: 8px;
+      background: #fff1f0;
+      color: #b42318;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .copy-warning[hidden] { display: none; }
+    .platform-readiness {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: #f2f4f7;
+      color: #475467;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .platform-readiness[data-level="ready"] { background: #ecfdf3; color: #027a48; }
+    .platform-readiness[data-level="warning"] { background: #fffaeb; color: #b54708; }
+    .platform-readiness[data-level="blocked"] { background: #fff1f0; color: #b42318; }
 
     .main {
       display: grid;
@@ -178,6 +213,8 @@
       box-shadow: none;
       overflow: hidden;
     }
+    .phone-frame[data-platform="toutiao"] { width: min(694px, 100%); }
+    .phone-frame[data-platform="xiaohongshu"] { width: min(618px, 100%); }
     .phone-top {
       height: 42px;
       display: flex;
@@ -200,7 +237,7 @@
       margin: 0 auto;
       padding: 18px var(--wechat-side-padding) 42px;
       font-family: var(--preview-font);
-      font-size: 16px;
+      font-size: var(--preview-font-size);
       line-height: 1.75;
       color: #222;
       word-break: break-word;
@@ -272,7 +309,7 @@
     .preview p {
       margin: 16px 0;
       color: #222;
-      font-size: 16px;
+      font-size: var(--preview-font-size);
       line-height: 1.75;
     }
     .preview strong { font-weight: 700; color: var(--primary); }
@@ -294,7 +331,7 @@
       background: #f7f8fa;
       border-left: 4px solid var(--primary);
       color: #3b4552;
-      font-size: 16px;
+      font-size: var(--preview-font-size);
       line-height: 1.75;
       border-radius: 8px;
     }
@@ -302,7 +339,7 @@
     .preview ul, .preview ol {
       padding-left: 1.5em;
       margin: 16px 0;
-      font-size: 16px;
+      font-size: var(--preview-font-size);
       line-height: 1.75;
     }
     .preview li { margin: 8px 0; }
@@ -367,6 +404,56 @@
       display: block;
       margin: 22px auto;
       border-radius: 8px;
+    }
+    .preview[data-platform="toutiao"] {
+      width: 100%;
+      padding-left: 26px;
+      padding-right: 26px;
+      color: #222;
+    }
+    .preview[data-platform="toutiao"] h1 {
+      width: auto;
+      margin: 30px 0 16px;
+      padding: 0;
+      border: 0;
+      color: #222;
+      font-size: 22px;
+      line-height: 1.5;
+      text-align: left;
+    }
+    .preview[data-platform="xiaohongshu"] {
+      width: 100%;
+      padding-left: 28px;
+      padding-right: 28px;
+      color: #333;
+    }
+    .preview[data-platform="xiaohongshu"] h1 {
+      width: auto;
+      margin: 30px 0 16px;
+      padding: 0;
+      border: 0;
+      color: #222;
+      font-size: 22px;
+      line-height: 1.5;
+      text-align: left;
+    }
+    .preview[data-platform="xiaohongshu"] h2 {
+      width: auto;
+      margin: 24px 0 14px;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      color: #333;
+      font-size: 18px;
+      line-height: 1.6;
+      text-align: left;
+    }
+    .preview[data-platform="toutiao"] a,
+    .preview[data-platform="xiaohongshu"] a {
+      color: inherit;
+      border-bottom: 0;
     }
     .preview .article-signature {
       display: block;
@@ -478,6 +565,11 @@
       <button id="saveArticle" class="btn primary">保存</button>
     </div>
     <div class="toolbar">
+      <select id="platformMode" class="select" aria-label="平台预览">
+        <option value="wechat" selected>微信格式</option>
+        <option value="toutiao">头条格式</option>
+        <option value="xiaohongshu">小红书格式</option>
+      </select>
       <select id="fontFamily" class="select">
         <option value='-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif'>默认中文</option>
         <option value='"PingFang SC", "Microsoft YaHei", sans-serif'>苹方 / 微软雅黑</option>
@@ -490,7 +582,8 @@
         <option value="18">18px</option>
       </select>
       <input id="themeColor" class="color" type="color" value="#17b394" title="主题色" />
-      <button id="copyWechat" class="btn primary">复制富文本</button>
+      <button id="copyCurrentPlatform" class="btn primary">复制为微信格式</button>
+      <span id="copyWarning" class="copy-warning" role="alert" aria-live="assertive" hidden></span>
     </div>
   </div>
 
@@ -526,7 +619,8 @@
         </div>
         <div class="status-right">
           <span id="storageModeLabel">自动保存：localStorage</span>
-          <span>复制：输出预览富文本</span>
+          <span>唯一内容源：Markdown</span>
+          <span id="platformReadiness" class="platform-readiness" data-level="ready">正在检查微信格式…</span>
         </div>
       </div>
     </section>
@@ -534,13 +628,13 @@
     <section class="panel">
       <div class="panel-head">
         <div>
-          <div class="panel-title">微信风格预览</div>
-          <div class="panel-desc">可直接点击正文改字；排版仍由左侧 Markdown 控制。</div>
+          <div id="previewPanelTitle" class="panel-title">微信风格预览</div>
+          <div id="previewPanelDesc" class="panel-desc">可直接点击正文改字；排版仍由左侧 Markdown 控制。</div>
         </div>
       </div>
       <div class="preview-shell">
         <div class="phone-frame">
-          <div class="phone-top">公众号图文预览</div>
+          <div id="previewPlatformLabel" class="phone-top">公众号图文预览</div>
           <div class="preview-viewport">
             <article id="preview" class="preview"></article>
           </div>
@@ -548,7 +642,7 @@
       </div>
       <div class="statusbar">
         <div class="status-left">
-          <span>模板版本：v11 双向文字编辑版</span>
+          <span id="buildInfoLabel">Skill 版本：加载中</span>
           <span id="lastSavedLabel">未保存</span>
         </div>
         <div class="status-right">
@@ -572,10 +666,23 @@
     const ARTICLE_SIGNATURE = BOOTSTRAP.signature || {};
     const STORAGE_KEY = BOOTSTRAP.storageKey;
     const DEFAULT_WORKBENCH_STATE = BOOTSTRAP.workbenchState || {};
+    let PLATFORM_IMAGE_URLS = Array.isArray(BOOTSTRAP.platformImageUrls)
+      ? BOOTSTRAP.platformImageUrls.filter(value => /^https:\/\//i.test(String(value || '')))
+      : [];
+    let PLATFORM_IMAGE_SOURCE = String(BOOTSTRAP.platformImageSource || '');
+    const PLATFORM_ADAPTERS = BOOTSTRAP.platformAdapters || {};
+    const WORKBENCH_BUILD_INFO = BOOTSTRAP.buildInfo || {};
+    const CLIPBOARD_ASSETS_SCRIPT_URL = String(BOOTSTRAP.clipboardAssetsScript || '');
+    const CLIPBOARD_IMAGE_CONCURRENCY = 3;
     const WORKBENCH_SAVE_ENDPOINT = '/__wechat_workbench/save';
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const previewShell = document.querySelector('.preview-shell');
+    const phoneFrame = document.querySelector('.phone-frame');
+    const platformMode = document.getElementById('platformMode');
+    const previewPanelTitle = document.getElementById('previewPanelTitle');
+    const previewPanelDesc = document.getElementById('previewPanelDesc');
+    const previewPlatformLabel = document.getElementById('previewPlatformLabel');
     const themeColor = document.getElementById('themeColor');
     const fontSize = document.getElementById('fontSize');
     const fontFamily = document.getElementById('fontFamily');
@@ -587,6 +694,10 @@
     const wordCount = document.getElementById('wordCount');
     const lineCount = document.getElementById('lineCount');
     const storageModeLabel = document.getElementById('storageModeLabel');
+    const copyWarning = document.getElementById('copyWarning');
+    const copyCurrentPlatformButton = document.getElementById('copyCurrentPlatform');
+    const platformReadiness = document.getElementById('platformReadiness');
+    const buildInfoLabel = document.getElementById('buildInfoLabel');
     const saveArticleButton = document.getElementById('saveArticle');
     const persistenceWarning = document.getElementById('persistenceWarning');
     const persistenceWarningMessage = document.getElementById('persistenceWarningMessage');
@@ -601,8 +712,28 @@
     let saveFeedbackPointerType = 'keyboard';
     let previewComposing = false;
     let previewSyncFrame = null;
+    let previewRenderFrame = null;
+    let pendingPreviewRender = null;
+    let postRenderSyncFrame = null;
     let pendingPreviewBlock = null;
     let pendingPreviewSave = false;
+    let activePlatform = 'wechat';
+    let semanticMarkdownCacheSource = null;
+    let semanticMarkdownCacheHtml = '';
+    let previewLayoutDirty = true;
+    let previewLayoutCache = [];
+    let previewResizeObserver = null;
+    let clipboardAssetsLoadPromise = null;
+    let lastPlatformCopyResult = null;
+    let lastSaveResult = null;
+
+    function platformAdapter(target) {
+      return PLATFORM_ADAPTERS[target] || PLATFORM_ADAPTERS.wechat || {};
+    }
+
+    function normalizePlatformMode(value) {
+      return Object.prototype.hasOwnProperty.call(PLATFORM_ADAPTERS, value) ? value : 'wechat';
+    }
 
     function clearSaveButtonFeedback() {
       if (saveFeedbackTimer !== null) clearTimeout(saveFeedbackTimer);
@@ -800,6 +931,82 @@
       return html;
     }
 
+    function platformHeadingTag(target, tagName) {
+      const normalized = String(tagName || '').toUpperCase();
+      const headingMap = platformAdapter(target).headingMap || {};
+      return headingMap[normalized] || normalized;
+    }
+
+    function replaceElementTag(element, nextTagName) {
+      if (!element || element.tagName === nextTagName) return element;
+      const replacement = document.createElement(nextTagName.toLowerCase());
+      Array.from(element.attributes || []).forEach(attribute => {
+        replacement.setAttribute(attribute.name, attribute.value);
+      });
+      while (element.firstChild) replacement.appendChild(element.firstChild);
+      element.replaceWith(replacement);
+      return replacement;
+    }
+
+    function removePlatformExternalLinks(root) {
+      root.querySelectorAll('a').forEach(link => {
+        const replacement = document.createElement('span');
+        while (link.firstChild) replacement.appendChild(link.firstChild);
+        link.replaceWith(replacement);
+      });
+    }
+
+    function removePlatformArticleChrome(root) {
+      const expectedTitle = getArticleTitle().replace(/\s+/g, ' ').trim();
+      const articleTitle = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6, p'))
+        .find(element => element.textContent.replace(/\s+/g, ' ').trim() === expectedTitle);
+      if (articleTitle) articleTitle.remove();
+      root.querySelectorAll('.article-signature').forEach(signature => signature.remove());
+    }
+
+    function stripPlatformClipboardAttributes(root) {
+      root.querySelectorAll('*').forEach(element => {
+        Array.from(element.attributes).forEach(attribute => {
+          const name = attribute.name.toLowerCase();
+          if (name === 'src' || name === 'alt' || name === 'href') return;
+          element.removeAttribute(attribute.name);
+        });
+      });
+    }
+
+    function normalizePlatformArticleRoot(root, target, options = {}) {
+      if (target === 'wechat') return root;
+      removePlatformArticleChrome(root);
+      removePlatformExternalLinks(root);
+
+      Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6')).forEach(heading => {
+        replaceElementTag(heading, platformHeadingTag(target, heading.tagName));
+      });
+
+      if (options.forClipboard) stripPlatformClipboardAttributes(root);
+      return root;
+    }
+
+    function getSemanticMarkdownHtml() {
+      const markdown = editor.value;
+      if (markdown === semanticMarkdownCacheSource) return semanticMarkdownCacheHtml;
+      semanticMarkdownCacheSource = markdown;
+      semanticMarkdownCacheHtml = markdownToHtml(markdown);
+      return semanticMarkdownCacheHtml;
+    }
+
+    function createSemanticArticleRoot(target = 'wechat', options = {}) {
+      const root = document.createElement('article');
+      root.innerHTML = getSemanticMarkdownHtml();
+      injectSignature(root);
+      normalizePlatformArticleRoot(root, target, options);
+      return root;
+    }
+
+    function buildPlatformPreviewHtml(target = activePlatform) {
+      return createSemanticArticleRoot(target).innerHTML.trim();
+    }
+
     function serializePreviewInline(node) {
       if (node.nodeType === Node.TEXT_NODE) {
         return String(node.nodeValue || '').replace(/\u00a0/g, ' ');
@@ -901,8 +1108,9 @@
       const size = fontSize.value || '16';
 
       const root = document.createElement('div');
-      root.innerHTML = markdownToHtml(editor.value);
+      root.innerHTML = getSemanticMarkdownHtml();
       injectSignature(root);
+      removePlatformExternalLinks(root);
 
       const setStyle = (selector, style) => {
         root.querySelectorAll(selector).forEach(el => {
@@ -1060,26 +1268,40 @@
       return Array.from(preview.querySelectorAll('[data-source-line]'));
     }
 
-    function getPositionInPreviewShell(element) {
+    function invalidatePreviewLayout() {
+      previewLayoutDirty = true;
+      previewLayoutCache = [];
+    }
+
+    function getPreviewLayoutEntries() {
+      if (!previewLayoutDirty) return previewLayoutCache;
+      const blocks = getPreviewBlocks();
+      const totalLines = getMarkdownLineCount();
       const shellRect = previewShell.getBoundingClientRect();
-      const rect = element.getBoundingClientRect();
-      return previewShell.scrollTop + (rect.top - shellRect.top);
+      const shellScrollTop = previewShell.scrollTop;
+      const tops = blocks.map(block => shellScrollTop + (block.getBoundingClientRect().top - shellRect.top));
+      previewLayoutCache = blocks.map((block, index) => ({
+        line: Number(block.dataset.sourceLine) || 1,
+        nextLine: index + 1 < blocks.length
+          ? Number(blocks[index + 1].dataset.sourceLine) || (totalLines + 1)
+          : totalLines + 1,
+        top: tops[index],
+        nextTop: index + 1 < blocks.length ? tops[index + 1] : tops[index] + block.offsetHeight
+      }));
+      previewLayoutDirty = false;
+      return previewLayoutCache;
     }
 
     function findPreviewScrollForLine(lineNo) {
-      const blocks = getPreviewBlocks();
-      const totalLines = getMarkdownLineCount();
-      if (!blocks.length) return 0;
+      const entries = getPreviewLayoutEntries();
+      if (!entries.length) return 0;
 
-      for (let i = 0; i < blocks.length; i++) {
-        const currentLine = Number(blocks[i].dataset.sourceLine) || 1;
-        const nextLine = i + 1 < blocks.length ? Number(blocks[i + 1].dataset.sourceLine) || (totalLines + 1) : totalLines + 1;
-        if (lineNo < nextLine || i === blocks.length - 1) {
-          const currentTop = getPositionInPreviewShell(blocks[i]);
-          const nextTop = i + 1 < blocks.length ? getPositionInPreviewShell(blocks[i + 1]) : currentTop + blocks[i].offsetHeight;
-          const span = Math.max(1, nextLine - currentLine);
-          const ratio = clamp((lineNo - currentLine) / span, 0, 1);
-          return currentTop + (nextTop - currentTop) * ratio;
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        if (lineNo < entry.nextLine || i === entries.length - 1) {
+          const span = Math.max(1, entry.nextLine - entry.line);
+          const ratio = clamp((lineNo - entry.line) / span, 0, 1);
+          return entry.top + (entry.nextTop - entry.top) * ratio;
         }
       }
 
@@ -1087,20 +1309,16 @@
     }
 
     function findEditorLineForPreviewScroll(scrollTop) {
-      const blocks = getPreviewBlocks();
-      const totalLines = getMarkdownLineCount();
-      if (!blocks.length) return 1;
+      const entries = getPreviewLayoutEntries();
+      if (!entries.length) return 1;
 
       const anchor = scrollTop + 1;
-      for (let i = 0; i < blocks.length; i++) {
-        const currentTop = getPositionInPreviewShell(blocks[i]);
-        const nextTop = i + 1 < blocks.length ? getPositionInPreviewShell(blocks[i + 1]) : currentTop + blocks[i].offsetHeight;
-        if (anchor < nextTop || i === blocks.length - 1) {
-          const currentLine = Number(blocks[i].dataset.sourceLine) || 1;
-          const nextLine = i + 1 < blocks.length ? Number(blocks[i + 1].dataset.sourceLine) || (totalLines + 1) : totalLines + 1;
-          const distance = Math.max(1, nextTop - currentTop);
-          const ratio = clamp((anchor - currentTop) / distance, 0, 1);
-          return Math.round(currentLine + (nextLine - currentLine) * ratio);
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        if (anchor < entry.nextTop || i === entries.length - 1) {
+          const distance = Math.max(1, entry.nextTop - entry.top);
+          const ratio = clamp((anchor - entry.top) / distance, 0, 1);
+          return Math.round(entry.line + (entry.nextLine - entry.line) * ratio);
         }
       }
 
@@ -1131,7 +1349,9 @@
     }
 
     function syncAfterRender(preferredSource = 'editor', editorAnchor = 'viewport') {
-      requestAnimationFrame(() => {
+      if (postRenderSyncFrame !== null) cancelAnimationFrame(postRenderSyncFrame);
+      postRenderSyncFrame = requestAnimationFrame(() => {
+        postRenderSyncFrame = null;
         holdScrollLock(preferredSource);
         if (preferredSource === 'preview') {
           syncEditorToPreview();
@@ -1172,9 +1392,42 @@
         && (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
     }
 
+    async function refreshPlatformImagesFromWorkbench() {
+      if (!isLoopbackServer()) return false;
+      try {
+        const response = await fetch(location.pathname, { cache: 'no-store' });
+        if (!response.ok) return false;
+        const documentCopy = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const bootstrapNode = documentCopy.getElementById('wechat-bootstrap');
+        if (!bootstrapNode) return false;
+        const latest = JSON.parse(bootstrapNode.textContent);
+        const urls = Array.isArray(latest.platformImageUrls)
+          ? latest.platformImageUrls.filter(value => /^https:\/\//i.test(String(value || '')))
+          : [];
+        PLATFORM_IMAGE_URLS = urls;
+        PLATFORM_IMAGE_SOURCE = String(latest.platformImageSource || '');
+        updatePlatformReadiness();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function syncPlatformPresentation() {
+      const presentation = platformAdapter(activePlatform);
+      platformMode.value = activePlatform;
+      preview.dataset.platform = activePlatform;
+      phoneFrame.dataset.platform = activePlatform;
+      previewPanelTitle.textContent = presentation.panelTitle || '平台格式预览';
+      previewPanelDesc.textContent = presentation.panelDesc || '由同一份 Markdown 自动转换。';
+      previewPlatformLabel.textContent = presentation.previewLabel || '图文预览';
+      copyCurrentPlatformButton.textContent = presentation.copyLabel || '复制当前格式';
+    }
+
     function setPreviewEditingEnabled(enabled) {
+      const platformAllowsEditing = activePlatform === 'wechat';
       preview.querySelectorAll('[data-preview-editable="true"]').forEach(block => {
-        const canEdit = enabled && !block.querySelector('img');
+        const canEdit = enabled && platformAllowsEditing && !block.querySelector('img');
         block.contentEditable = canEdit ? 'true' : 'false';
         block.spellcheck = canEdit;
       });
@@ -1236,13 +1489,19 @@
         if (!response.ok) throw new Error(`save request failed: ${response.status}`);
         const result = await response.json();
         if (!result.saved) throw new Error(result.error || 'save failed');
+        lastSaveResult = result;
         window.__workbenchRevision = result.revision || window.__workbenchRevision;
         if (window.workbenchSaveController && window.workbenchSaveController.setServerRevision) window.workbenchSaveController.setServerRevision(window.__workbenchRevision);
         updateServerStatus(result);
         storageModeLabel.textContent = '自动保存：HTML 文件 + localStorage';
-        saveStatus.textContent = '已写入 HTML';
+        saveStatus.textContent = result.unchanged ? '内容未变化，无需写盘' : '已写入 HTML';
         return result;
-      } catch {
+      } catch (error) {
+        lastSaveResult = {
+          saved: false,
+          error: error && error.message ? error.message : 'save connection failed',
+          failedAt: new Date().toISOString()
+        };
         showPersistenceWarning('本地保存服务连接已经中断，文件无法继续保存。请关闭本页，让 Codex 重新启动工作台服务后再打开。');
         return false;
       }
@@ -1362,12 +1621,28 @@
     }
 
     function updatePreview(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
-      preview.innerHTML = markdownToHtml(editor.value);
-      injectSignature(preview);
+      if (previewRenderFrame !== null) cancelAnimationFrame(previewRenderFrame);
+      previewRenderFrame = null;
+      pendingPreviewRender = null;
+      syncPlatformPresentation();
+      preview.innerHTML = buildPlatformPreviewHtml(activePlatform);
+      invalidatePreviewLayout();
       setPreviewEditingEnabled(persistenceReady);
       updateEditorStats();
+      updatePlatformReadiness();
       saveStatus.textContent = '编辑中…';
       syncAfterRender(preferredSource, editorAnchor);
+    }
+
+    function schedulePreviewUpdate(preferredSource = activeScrollSource || 'editor', editorAnchor = 'viewport') {
+      pendingPreviewRender = { preferredSource, editorAnchor };
+      if (previewRenderFrame !== null) return;
+      previewRenderFrame = requestAnimationFrame(() => {
+        previewRenderFrame = null;
+        const next = pendingPreviewRender || { preferredSource, editorAnchor };
+        pendingPreviewRender = null;
+        updatePreview(next.preferredSource, next.editorAnchor);
+      });
     }
 
     function scheduleSave() {
@@ -1377,14 +1652,16 @@
     function applySettings() {
       document.documentElement.style.setProperty('--primary', themeColor.value);
       document.documentElement.style.setProperty('--preview-font', fontFamily.value);
-      updatePreview(activeScrollSource || 'editor');
+      document.documentElement.style.setProperty('--preview-font-size', `${fontSize.value || '16'}px`);
+      invalidatePreviewLayout();
+      syncAfterRender(activeScrollSource || 'editor');
       if (!initializing) scheduleSave();
     }
 
     window.workbenchSaveController = createWorkbenchSaveController({
       storage: localStorage,
       storageKey: STORAGE_KEY,
-      snapshot: () => ({ markdown: editor.value, themeColor: themeColor.value, fontSize: fontSize.value, fontFamily: fontFamily.value, savedAt: new Date().toISOString() }),
+      snapshot: () => ({ markdown: editor.value, platformMode: activePlatform, themeColor: themeColor.value, fontSize: fontSize.value, fontFamily: fontFamily.value, savedAt: new Date().toISOString() }),
       transport: data => saveStateToServer(data),
       onStateChange: state => {
         const labels = {cached:'已缓存到本机', saving:'正在保存正文…', saved:'正文已保存', error:'保存失败'};
@@ -1436,6 +1713,8 @@
         themeColor.value = DEFAULT_WORKBENCH_STATE.themeColor;
         fontSize.value = DEFAULT_WORKBENCH_STATE.fontSize;
         fontFamily.value = DEFAULT_WORKBENCH_STATE.fontFamily;
+        activePlatform = normalizePlatformMode(DEFAULT_WORKBENCH_STATE.platformMode);
+        platformMode.value = activePlatform;
         return;
       }
       try {
@@ -1444,8 +1723,12 @@
         themeColor.value = data.themeColor || DEFAULT_WORKBENCH_STATE.themeColor;
         fontSize.value = data.fontSize || DEFAULT_WORKBENCH_STATE.fontSize;
         fontFamily.value = data.fontFamily || DEFAULT_WORKBENCH_STATE.fontFamily;
+        activePlatform = normalizePlatformMode(data.platformMode || DEFAULT_WORKBENCH_STATE.platformMode);
+        platformMode.value = activePlatform;
       } catch {
         editor.value = DEFAULT_MARKDOWN;
+        activePlatform = 'wechat';
+        platformMode.value = activePlatform;
       }
     }
 
@@ -1467,6 +1750,33 @@
     function clipboardMappedDataUri(src) {
       const assets = window.WECHAT_CLIPBOARD_IMAGE_DATA || {};
       return assets[src] || assets[decodeURI(src)] || assets[absoluteImageUrl(src)] || '';
+    }
+
+    async function ensureClipboardAssetsLoaded() {
+      if (isLoopbackServer() || !CLIPBOARD_ASSETS_SCRIPT_URL) return false;
+      if (Object.keys(window.WECHAT_CLIPBOARD_IMAGE_DATA || {}).length) return true;
+      if (clipboardAssetsLoadPromise) return clipboardAssetsLoadPromise;
+      clipboardAssetsLoadPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = CLIPBOARD_ASSETS_SCRIPT_URL;
+        script.async = true;
+        script.onload = () => {
+          script.remove();
+          resolve(true);
+        };
+        script.onerror = () => {
+          script.remove();
+          reject(new Error('clipboard image sidecar failed to load'));
+        };
+        document.head.appendChild(script);
+      }).finally(() => {
+        clipboardAssetsLoadPromise = null;
+      });
+      return clipboardAssetsLoadPromise;
+    }
+
+    function releaseClipboardAssets() {
+      window.WECHAT_CLIPBOARD_IMAGE_DATA = {};
     }
 
     function blobToDataUri(blob) {
@@ -1514,24 +1824,138 @@
       return canvas.toDataURL(mimeTypeForImageSrc(absoluteSrc));
     }
 
-    async function inlineImagesForClipboard(root) {
+    async function inlineImagesForClipboard(root, onProgress = null) {
+      await ensureClipboardAssetsLoaded();
       const images = Array.from(root.querySelectorAll('img'));
       let converted = 0;
       let failed = 0;
-      for (const img of images) {
-        const originalSrc = img.getAttribute('src') || img.currentSrc || img.src;
-        if (!originalSrc || /^data:image\//i.test(originalSrc)) continue;
-        try {
-          img.setAttribute('src', await imageToDataUri(img));
-          converted += 1;
-        } catch {
-          failed += 1;
-        }
+      const pendingImages = images.filter(img => {
+        const src = img.getAttribute('src') || img.currentSrc || img.src;
+        return src && !/^data:image\//i.test(src);
+      });
+      for (let index = 0; index < pendingImages.length; index += CLIPBOARD_IMAGE_CONCURRENCY) {
+        const batch = pendingImages.slice(index, index + CLIPBOARD_IMAGE_CONCURRENCY);
+        const results = await Promise.all(batch.map(async img => {
+          try {
+            img.setAttribute('src', await imageToDataUri(img));
+            return true;
+          } catch {
+            return false;
+          }
+        }));
+        converted += results.filter(Boolean).length;
+        failed += results.filter(result => !result).length;
+        if (typeof onProgress === 'function') onProgress(converted + failed, pendingImages.length);
       }
       return { converted, failed };
     }
 
-    function createClipboardBox() {
+    function countVisibleCharacters(value) {
+      return Array.from(String(value || '').trim()).length;
+    }
+
+    function evaluatePlatformReadiness(target = activePlatform) {
+      const adapter = platformAdapter(target);
+      const root = createSemanticArticleRoot(target, { forClipboard: true });
+      const titleLength = countVisibleCharacters(getArticleTitle());
+      const titleMax = Number(adapter.titleMax) || null;
+      const structure = {
+        images: root.querySelectorAll('img').length,
+        h1: root.querySelectorAll('h1').length,
+        h2: root.querySelectorAll('h2').length
+      };
+      const imagePolicy = platformClipboardImagePolicy(
+        target,
+        structure.images,
+        PLATFORM_IMAGE_URLS.length
+      );
+      const warnings = [];
+      const blockers = [];
+      if (titleMax && titleLength > titleMax) {
+        warnings.push(`标题 ${titleLength}/${titleMax} 字`);
+      }
+      if (imagePolicy === 'unavailable') {
+        blockers.push(`需要 ${structure.images} 张公众号 HTTPS 图片，当前 ${PLATFORM_IMAGE_URLS.length} 张`);
+      }
+      if (!adapter.version) blockers.push('平台适配器配置缺失');
+      return {
+        target,
+        displayName: adapter.displayName || target,
+        titleLength,
+        titleMax,
+        structure,
+        imagePolicy,
+        warnings,
+        blockers,
+        ready: blockers.length === 0
+      };
+    }
+
+    function updatePlatformReadiness() {
+      const result = evaluatePlatformReadiness(activePlatform);
+      const headingSummary = result.target === 'xiaohongshu'
+        ? `${result.structure.h1} 个一级标题 / ${result.structure.h2} 个二级标题`
+        : `${result.structure.h1} 个标题`;
+      const details = [headingSummary, `${result.structure.images} 张图片`];
+      if (result.blockers.length) details.push(result.blockers.join('；'));
+      else if (result.warnings.length) details.push(result.warnings.join('；'));
+      else details.push('可一键复制');
+      platformReadiness.textContent = `${result.displayName}：${details.join(' · ')}`;
+      platformReadiness.dataset.level = result.blockers.length
+        ? 'blocked'
+        : result.warnings.length ? 'warning' : 'ready';
+      copyCurrentPlatformButton.setAttribute('aria-disabled', result.blockers.length ? 'true' : 'false');
+      return result;
+    }
+
+    function platformClipboardImagePolicy(target, imageCount = 0, hostedImageCount = 0) {
+      const configured = platformAdapter(target).imagePolicy || 'absolute-url';
+      if (configured === 'hosted-url' && imageCount > 0 && hostedImageCount !== imageCount) {
+        return 'unavailable';
+      }
+      return configured;
+    }
+
+    function platformUsesNativeSelection(target) {
+      return platformAdapter(target).nativeSelection === true;
+    }
+
+    function absolutizeImagesForClipboard(root) {
+      let converted = 0;
+      let failed = 0;
+      root.querySelectorAll('img').forEach(image => {
+        const src = image.getAttribute('src') || '';
+        if (!src) {
+          failed += 1;
+          return;
+        }
+        image.setAttribute('src', absoluteImageUrl(src));
+        converted += 1;
+      });
+      return { converted, failed };
+    }
+
+    function applyHostedImagesForClipboard(root) {
+      const images = Array.from(root.querySelectorAll('img'));
+      if (!images.length) return { converted: 0, failed: 0 };
+      if (PLATFORM_IMAGE_URLS.length !== images.length) {
+        return { converted: 0, failed: images.length };
+      }
+      let converted = 0;
+      let failed = 0;
+      images.forEach((image, index) => {
+        const url = PLATFORM_IMAGE_URLS[index] || '';
+        if (!/^https:\/\//i.test(url)) {
+          failed += 1;
+          return;
+        }
+        image.setAttribute('src', url);
+        converted += 1;
+      });
+      return { converted, failed };
+    }
+
+    function createClipboardBox(target = 'wechat') {
       const box = document.createElement('article');
       box.className = 'preview';
       box.style.position = 'fixed';
@@ -1540,7 +1964,9 @@
       box.style.width = getComputedStyle(preview).width || '430px';
       box.style.maxWidth = getComputedStyle(preview).width || '430px';
       box.style.background = '#fff';
-      box.innerHTML = buildInlineWechatHtml();
+      box.innerHTML = target === 'wechat'
+        ? buildInlineWechatHtml()
+        : createSemanticArticleRoot(target, { forClipboard: true }).innerHTML;
       return box;
     }
 
@@ -1557,36 +1983,107 @@
       }
     }
 
-    async function copyRichHtmlWithEmbeddedImages() {
-      const box = createClipboardBox();
+    async function writeClipboardHtml(box) {
+      if (!navigator.clipboard || !window.ClipboardItem) throw new Error('clipboard html unavailable');
+      const item = new ClipboardItem({
+        'text/html': new Blob([box.innerHTML], { type: 'text/html' }),
+        'text/plain': new Blob([box.innerText], { type: 'text/plain' })
+      });
+      await navigator.clipboard.write([item]);
+    }
+
+    async function copyRichHtmlForPlatform(target = 'wechat', options = {}) {
+      const preflight = evaluatePlatformReadiness(target);
+      if (preflight.blockers.length) throw new Error(preflight.blockers.join('；'));
+      const box = createClipboardBox(target);
       document.body.appendChild(box);
       try {
-        const imageResult = await inlineImagesForClipboard(box);
-        const html = box.innerHTML;
-        const plain = box.innerText;
-        if (navigator.clipboard && window.ClipboardItem) {
-          const item = new ClipboardItem({
-            'text/html': new Blob([html], { type: 'text/html' }),
-            'text/plain': new Blob([plain], { type: 'text/plain' })
-          });
-          await navigator.clipboard.write([item]);
-          return imageResult;
+        const imageCount = box.querySelectorAll('img').length;
+        const imagePolicy = platformClipboardImagePolicy(target, imageCount, PLATFORM_IMAGE_URLS.length);
+        const imageResult = imagePolicy === 'embedded-data'
+          ? await inlineImagesForClipboard(box, options.onProgress)
+          : imagePolicy === 'hosted-url'
+            ? applyHostedImagesForClipboard(box)
+            : absolutizeImagesForClipboard(box);
+        if (target !== 'wechat' && imageResult.failed) {
+          throw new Error(`${imageResult.failed} 张图片未准备完成，已停止复制`);
         }
-        const copied = copyBoxBySelection(box);
-        if (!copied) throw new Error('copy failed');
-        return imageResult;
+        const structure = {
+          images: box.querySelectorAll('img').length,
+          h1: box.querySelectorAll('h1').length,
+          h2: box.querySelectorAll('h2').length
+        };
+
+        if (platformUsesNativeSelection(target) && copyBoxBySelection(box)) {
+          return { imagePolicy, imageResult, structure, strategy: 'native-selection', preflight };
+        }
+        await writeClipboardHtml(box);
+        return { imagePolicy, imageResult, structure, strategy: 'clipboard-html', preflight };
       } finally {
         document.body.removeChild(box);
+        releaseClipboardAssets();
       }
     }
 
-    async function copyWechatContent() {
-      saveStatus.textContent = '正在准备图片…';
+    function activatePlatformPreview(target) {
+      if (pendingPreviewBlock) flushPreviewBlockSync();
+      activePlatform = normalizePlatformMode(target);
+      platformMode.value = activePlatform;
+      updatePreview(activeScrollSource || 'editor');
+      if (activePlatform === 'toutiao') refreshPlatformImagesFromWorkbench();
+      if (!initializing && persistenceReady) scheduleSave();
+    }
+
+    async function copyPlatformContent(target = activePlatform) {
+      if (activePlatform !== target) activatePlatformPreview(target);
+      const adapter = platformAdapter(target);
+      let preflight = null;
+      saveStatus.textContent = `正在准备${adapter.displayName || '平台'}正文与图片…`;
       try {
-        const result = await copyRichHtmlWithEmbeddedImages();
-        saveStatus.textContent = result.failed ? '已复制富文本，部分图片保持原路径' : '已复制富文本';
-      } catch (e) {
-        saveStatus.textContent = '复制失败，请手动复制右侧预览';
+        if (target === 'toutiao') await refreshPlatformImagesFromWorkbench();
+        preflight = updatePlatformReadiness();
+        const warningText = preflight.warnings.concat(preflight.blockers).join('；');
+        copyWarning.hidden = !warningText;
+        copyWarning.textContent = warningText ? `⚠ ${warningText}` : '';
+        const result = await copyRichHtmlForPlatform(target, {
+          onProgress: (done, total) => {
+            saveStatus.textContent = `正在准备${adapter.displayName || '平台'}图片 ${done}/${total}…`;
+          }
+        });
+        const headingMessage = target === 'xiaohongshu'
+          ? `${result.structure.h1} 个一级标题、${result.structure.h2} 个二级标题`
+          : `${result.structure.h1} 个标题`;
+        const imageMessage = result.structure.images
+          ? `${result.structure.images} 张图片（${result.imagePolicy}）`
+          : '无正文图片';
+        const qaMessage = target === 'xiaohongshu' ? '；粘贴后仍需核验平台图片托管' : '';
+        saveStatus.textContent = `已复制${adapter.displayName || '平台'}格式：${headingMessage}、${imageMessage}${qaMessage}`;
+        lastPlatformCopyResult = {
+          status: 'success',
+          target,
+          adapterVersion: adapter.version || 'unknown',
+          copiedAt: new Date().toISOString(),
+          imagePolicy: result.imagePolicy,
+          imageResult: result.imageResult,
+          structure: result.structure,
+          strategy: result.strategy,
+          warnings: preflight.warnings
+        };
+        return result;
+      } catch (error) {
+        const message = error && error.message ? error.message : '未知错误';
+        saveStatus.textContent = `${adapter.displayName || '平台'}格式复制失败：${message}`;
+        copyWarning.hidden = false;
+        copyWarning.textContent = `⚠ ${message}`;
+        lastPlatformCopyResult = {
+          status: 'failed',
+          target,
+          adapterVersion: adapter.version || 'unknown',
+          attemptedAt: new Date().toISOString(),
+          error: message,
+          preflight: preflight || evaluatePlatformReadiness(target)
+        };
+        return null;
       }
     }
 
@@ -1630,18 +2127,46 @@
     window.__WECHAT_ARTICLE_EXPORT__ = function() {
       const images = getArticleImages();
       const cover = images.find(image => image.name === 'cover') || images[0] || null;
+      const semanticWechat = createSemanticArticleRoot('wechat');
       return {
         metadata: ARTICLE_METADATA,
         title: getArticleTitle(),
         digest: getArticleDigest(),
         content_html: buildInlineWechatHtml(),
-        content_text: preview.innerText,
+        content_text: semanticWechat.textContent,
+        platform_html: {
+          toutiao: createSemanticArticleRoot('toutiao', { forClipboard: true }).innerHTML,
+          xiaohongshu: createSemanticArticleRoot('xiaohongshu', { forClipboard: true }).innerHTML
+        },
+        platform_readiness: {
+          wechat: evaluatePlatformReadiness('wechat'),
+          toutiao: evaluatePlatformReadiness('toutiao'),
+          xiaohongshu: evaluatePlatformReadiness('xiaohongshu')
+        },
+        build_info: WORKBENCH_BUILD_INFO,
+        active_platform: activePlatform,
         images,
         cover,
         themeColor: themeColor.value,
         fontSize: fontSize.value,
         fontFamily: fontFamily.value,
         exportedAt: new Date().toISOString()
+      };
+    };
+
+    window.__WECHAT_WORKBENCH_DIAGNOSTICS__ = function() {
+      return {
+        buildInfo: WORKBENCH_BUILD_INFO,
+        activePlatform,
+        activeAdapter: platformAdapter(activePlatform),
+        readiness: evaluatePlatformReadiness(activePlatform),
+        hostedImageSource: PLATFORM_IMAGE_SOURCE,
+        hostedImageCount: PLATFORM_IMAGE_URLS.length,
+        semanticCacheActive: semanticMarkdownCacheSource === editor.value,
+        previewNodeCount: preview.querySelectorAll('*').length,
+        clipboardAssetsResident: Object.keys(window.WECHAT_CLIPBOARD_IMAGE_DATA || {}).length,
+        lastPlatformCopyResult,
+        lastSaveResult
       };
     };
 
@@ -1703,6 +2228,7 @@
     });
 
     const previewMutationObserver = new MutationObserver(mutations => {
+      invalidatePreviewLayout();
       const block = closestEditablePreviewBlock(document.activeElement);
       if (!block) return;
       if (mutations.some(mutation => block === mutation.target || block.contains(mutation.target))) {
@@ -1714,6 +2240,12 @@
       childList: true,
       characterData: true
     });
+    if (typeof ResizeObserver === 'function') {
+      previewResizeObserver = new ResizeObserver(invalidatePreviewLayout);
+      previewResizeObserver.observe(preview);
+    }
+    preview.addEventListener('load', invalidatePreviewLayout, true);
+    window.addEventListener('resize', invalidatePreviewLayout);
 
     preview.addEventListener('focusout', () => {
       flushPreviewBlockSync();
@@ -1724,7 +2256,7 @@
 
     editor.addEventListener('input', () => {
       holdScrollLock('editor');
-      updatePreview('editor', 'caret');
+      schedulePreviewUpdate('editor', 'caret');
       scheduleSave();
     });
 
@@ -1744,10 +2276,21 @@
       syncEditorToPreview();
     });
 
+    platformMode.addEventListener('change', () => {
+      copyWarning.hidden = true;
+      activatePlatformPreview(platformMode.value);
+    });
     themeColor.addEventListener('input', applySettings);
     fontSize.addEventListener('change', applySettings);
     fontFamily.addEventListener('change', applySettings);
-    document.getElementById('copyWechat').addEventListener('click', copyWechatContent);
+    copyCurrentPlatformButton.addEventListener('click', () => copyPlatformContent(activePlatform));
+
+    Array.from(platformMode.options).forEach(option => {
+      const adapter = platformAdapter(option.value);
+      if (adapter.optionLabel) option.textContent = adapter.optionLabel;
+    });
+    buildInfoLabel.textContent = `Skill v${WORKBENCH_BUILD_INFO.skillVersion || 'unknown'} · 工作台 schema ${WORKBENCH_BUILD_INFO.workbenchSchemaVersion || '?'}`;
+    buildInfoLabel.title = JSON.stringify(WORKBENCH_BUILD_INFO);
 
     loadState();
     applySettings();

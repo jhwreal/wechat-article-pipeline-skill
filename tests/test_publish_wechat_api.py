@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,6 +34,36 @@ class PublishWechatApiTest(unittest.TestCase):
         self.assertEqual(publisher.MAX_BODY_IMAGE_BYTES, 1024 * 1024)
         self.assertEqual(publisher.BODY_IMAGE_TARGET_BYTES, 900 * 1024)
         self.assertLess(publisher.BODY_IMAGE_TARGET_BYTES, publisher.MAX_BODY_IMAGE_BYTES)
+
+    def test_successful_wechat_uploads_are_written_back_to_workbench(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            workbench = root / "article.html"
+            receipt = root / "article.publish-manifest.wechat-api-result.json"
+            workbench.write_text(
+                '<script type="application/json" id="wechat-bootstrap">'
+                '{"markdown":"# 标题"}</script>',
+                encoding="utf-8",
+            )
+            result = {
+                "status": "success",
+                "body_uploads": [
+                    {"kind": "body", "url": "http://mmbiz.qpic.cn/body.png"}
+                ],
+            }
+
+            update = publisher.sync_platform_images_to_workbench(
+                {"workbench_html": str(workbench)},
+                result,
+                receipt,
+            )
+
+            bootstrap = publisher.workbench_builder.read_bootstrap(
+                workbench.read_text(encoding="utf-8")
+            )
+            self.assertEqual(update["status"], "updated")
+            self.assertEqual(bootstrap["platformImageUrls"], ["https://mmbiz.qpic.cn/body.png"])
+            self.assertEqual(bootstrap["platformImageSource"], str(receipt.resolve()))
 
     def test_upload_body_images_removes_temporary_decoded_file(self) -> None:
         uploaded_paths: list[Path] = []

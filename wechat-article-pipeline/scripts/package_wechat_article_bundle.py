@@ -13,7 +13,9 @@ import unicodedata
 from pathlib import Path
 
 import build_wechat_article_workbench as builder
+import release_info
 import wechat_account_config as account_config
+from article_core import extract_title
 from atomic_files import atomic_write_text
 from image_jobs_contract import normalize_image_jobs, derive_image_plan, render_image_plan_markdown
 
@@ -23,7 +25,6 @@ DEFAULT_IMAGE_ROOT = WORKSPACE / "image"
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 MAKE_PUBLISH_MANIFEST = Path(__file__).resolve().parent / "make_wechat_publish_manifest.py"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
-TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 PLANNED_VISUAL_IMAGE_RE = re.compile(
     r"!\[[^\]]*\]\(\s*\{\{visual:([a-zA-Z0-9_-]+)\}\}\s*\)"
 )
@@ -155,13 +156,6 @@ def parse_args() -> argparse.Namespace:
         help="Persist provided author/preview values into the local publisher config.",
     )
     return parser.parse_args()
-
-
-def extract_title(markdown: str, fallback: str) -> str:
-    match = TITLE_RE.search(markdown)
-    if match:
-        return match.group(1).strip()
-    return fallback
 
 
 def slugify(value: str, fallback: str = "wechat-article") -> str:
@@ -615,7 +609,16 @@ def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, 
     )
     if clipboard_assets_script:
         job["clipboard_assets_script"] = clipboard_assets_script
-    html = builder.apply_template(job, template, markdown)
+    platform_image_urls, platform_image_source = builder.discover_platform_image_urls(job, job_path)
+    html = builder.apply_template(
+        job,
+        template,
+        markdown,
+        platform_image_urls=platform_image_urls,
+        platform_image_source=platform_image_source,
+        build_info=release_info.workbench_build_info(template_path),
+        platform_adapters=release_info.platform_adapters(),
+    )
     validate_workbench_html(html, expected_visual_count)
 
     atomic_write_text(out_path, html)

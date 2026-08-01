@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import re
 import sys
 import tempfile
@@ -38,17 +39,34 @@ class SkillP0ContractTest(unittest.TestCase):
             encoding="utf-8"
         )
         agent_metadata = (SKILL_DIR / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        skill_version = (SKILL_DIR / "VERSION").read_text(encoding="utf-8").strip()
 
         version_match = re.search(r'^version = "([^"]+)"$', pyproject, re.M)
         self.assertIsNotNone(version_match)
         assert version_match is not None
         version = version_match.group(1)
-        self.assertEqual(version, "1.5.0")
-        self.assertIn(f"V {version}", readme)
+        self.assertEqual(version, "1.6.0")
+        self.assertEqual(skill_version, version)
+        self.assertIn(f"V {version}（当前版本）", readme)
+        self.assertIn(f"V {version} (current version)", readme)
         self.assertIn("PROJECT_VERSION", workflow)
         self.assertIn("agents/openai.yaml", workflow)
         self.assertIn('display_name: "微信公众号文章流水线"', agent_metadata)
         self.assertIn("$wechat-article-pipeline", agent_metadata)
+
+    def test_platform_adapter_registry_is_the_workbench_rule_source(self) -> None:
+        adapters = json.loads(
+            (SKILL_DIR / "references" / "platform-adapters.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(adapters["schema_version"], 1)
+        self.assertEqual(
+            {name for name in adapters if name != "schema_version"},
+            {"wechat", "toutiao", "xiaohongshu"},
+        )
+        self.assertEqual(adapters["toutiao"]["titleMax"], 30)
+        self.assertEqual(adapters["xiaohongshu"]["titleMax"], 64)
+        self.assertEqual(adapters["toutiao"]["headingMap"]["H3"], "H1")
+        self.assertEqual(adapters["xiaohongshu"]["headingMap"]["H3"], "H2")
 
     def test_skill_md_stays_lean_and_trigger_description_is_not_a_workflow(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
@@ -91,20 +109,23 @@ class SkillP0ContractTest(unittest.TestCase):
         ):
             self.assertNotIn(conflicting_phrase, skill_md)
 
-    def test_workbench_template_copies_images_as_data_uri_without_polluting_markdown(self) -> None:
+    def test_workbench_template_keeps_wechat_data_images_without_polluting_markdown(self) -> None:
         template = (SKILL_DIR / "assets" / "templates" / "wechat-md-workbench.template.v3.html").read_text(encoding="utf-8")
 
         self.assertIn("相对路径配图", template)
         self.assertIn("复制富文本", template)
         self.assertIn("CLIPBOARD_ASSETS_SCRIPT", template)
+        self.assertIn("clipboardAssetsScript", template)
+        self.assertIn("ensureClipboardAssetsLoaded", template)
+        self.assertIn("releaseClipboardAssets", template)
         self.assertIn("WECHAT_CLIPBOARD_IMAGE_DATA", template)
-        self.assertIn("copyRichHtmlWithEmbeddedImages", template)
+        self.assertIn("copyRichHtmlForPlatform", template)
         self.assertIn("inlineImagesForClipboard", template)
         self.assertIn("imageToDataUri", template)
         self.assertIn("canvas.toDataURL", template)
         self.assertIn("ClipboardItem", template)
         self.assertIn("data:image", template)
-        self.assertIn("box.innerHTML = buildInlineWechatHtml();", template)
+        self.assertIn("? buildInlineWechatHtml()", template)
         self.assertIn("display:inline-block; max-width:100%; box-sizing:border-box", template)
         self.assertIn("文件保存功能加载失败", template)
         self.assertIn("persistenceWarning", template)

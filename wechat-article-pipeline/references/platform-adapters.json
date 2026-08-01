@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "wechat": {
+    "version": "1.0.0",
+    "displayName": "微信",
+    "optionLabel": "微信格式",
+    "panelTitle": "微信风格预览",
+    "panelDesc": "唯一内容源是左侧 Markdown；这里显示微信排版，可直接点击无图正文改字。",
+    "previewLabel": "公众号图文预览",
+    "copyLabel": "复制为微信格式",
+    "titleMax": null,
+    "headingMap": {"H1": "H1", "H2": "H2", "H3": "H3", "H4": "H4", "H5": "H5", "H6": "H6"},
+    "imagePolicy": "embedded-data",
+    "nativeSelection": false
+  },
+  "toutiao": {
+    "version": "1.0.0",
+    "displayName": "今日头条",
+    "optionLabel": "头条格式",
+    "panelTitle": "今日头条格式预览",
+    "panelDesc": "由同一份 Markdown 自动转换；正文小标题统一为头条单级大标题。",
+    "previewLabel": "今日头条图文预览",
+    "copyLabel": "复制为头条格式",
+    "titleMax": 30,
+    "headingMap": {"H1": "H1", "H2": "H1", "H3": "H1", "H4": "H1", "H5": "H1", "H6": "H1"},
+    "imagePolicy": "hosted-url",
+    "nativeSelection": true
+  },
+  "xiaohongshu": {
+    "version": "1.0.0",
+    "displayName": "小红书",
+    "optionLabel": "小红书格式",
+    "panelTitle": "小红书格式预览",
+    "panelDesc": "由同一份 Markdown 自动转换；保留两级标题和原始图片位置。",
+    "previewLabel": "小红书长文预览",
+    "copyLabel": "复制为小红书格式",
+    "titleMax": 64,
+    "headingMap": {"H1": "H1", "H2": "H1", "H3": "H2", "H4": "H2", "H5": "H2", "H6": "H2"},
+    "imagePolicy": "embedded-data",
+    "nativeSelection": true
+  }
+}

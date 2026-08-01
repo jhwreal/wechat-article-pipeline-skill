@@ -58,13 +58,51 @@ class WorkbenchTemplateTests(unittest.TestCase):
         left = source.split('<div class="topbar-primary">', 1)[1].split('<div class="toolbar">', 1)[0]
         right = source.split('<div class="toolbar">', 1)[1].split('<div class="main">', 1)[0]
         self.assertIn('<button id="saveArticle" class="btn primary">保存</button>', left)
-        self.assertNotIn('id="copyWechat"', left)
+        self.assertNotIn('id="copyCurrentPlatform"', left)
+        self.assertIn('id="platformMode"', right)
         self.assertIn('id="fontFamily"', right)
         self.assertIn('id="fontSize"', right)
         self.assertIn('id="themeColor"', right)
-        self.assertIn('<button id="copyWechat" class="btn primary">复制富文本</button>', right)
+        self.assertLess(right.index('id="platformMode"'), right.index('id="fontFamily"'))
+        self.assertIn('<option value="wechat" selected>微信格式</option>', right)
+        self.assertIn('<option value="toutiao">头条格式</option>', right)
+        self.assertIn('<option value="xiaohongshu">小红书格式</option>', right)
+        self.assertIn('<button id="copyCurrentPlatform" class="btn primary">复制为微信格式</button>', right)
+        self.assertNotIn('id="copyWechat"', right)
+        self.assertNotIn('id="copyToutiao"', right)
+        self.assertNotIn('id="copyXiaohongshu"', right)
         self.assertNotIn('id="saveArticle"', right)
         self.assertIn('grid-template-columns: 1.05fr .95fr', source)
+
+    def test_toutiao_copy_has_platform_specific_cleanup_and_title_warning(self):
+        source = TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("normalizePlatformArticleRoot", source)
+        self.assertIn("removePlatformArticleChrome", source)
+        self.assertIn("removePlatformExternalLinks", source)
+        self.assertIn("platformAdapter(target).headingMap", source)
+        self.assertIn("platformUsesNativeSelection", source)
+        self.assertIn("createSemanticArticleRoot(target, { forClipboard: true })", source)
+        self.assertIn("titleLength > titleMax", source)
+        self.assertIn("copyCurrentPlatformButton.addEventListener", source)
+        self.assertIn("copyPlatformContent", source)
+        self.assertIn("复制为头条格式", (ROOT / "references" / "platform-adapters.json").read_text(encoding="utf-8"))
+
+    def test_xiaohongshu_copy_maps_headings_and_keeps_images_in_native_rich_html(self):
+        source = TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("platformAdapter(target).headingMap", source)
+        self.assertIn("platformAdapter(target).imagePolicy", source)
+        self.assertIn("applyHostedImagesForClipboard", source)
+        self.assertIn("inlineImagesForClipboard", source)
+        self.assertNotIn("wrapXiaohongshuImagesForClipboard", source)
+        self.assertIn("PLATFORM_IMAGE_URLS.length !== images.length", source)
+        self.assertIn("absolutizeImagesForClipboard", source)
+        self.assertIn("copyBoxBySelection(box)", source)
+        self.assertNotIn("data-xhs-image-marker", source)
+        self.assertNotIn("[[XHS_IMAGE_", source)
+        self.assertIn("copyCurrentPlatformButton.addEventListener", source)
+        self.assertIn("titleLength > titleMax", source)
+        self.assertIn("粘贴后仍需核验平台图片托管", source)
+        self.assertIn("复制为小红书格式", (ROOT / "references" / "platform-adapters.json").read_text(encoding="utf-8"))
 
 
 class WorkbenchDocumentTests(unittest.TestCase):
@@ -158,6 +196,7 @@ class WorkbenchDocumentTests(unittest.TestCase):
             document = module.WorkbenchDocument(html_path=html_path, workspace=workspace)
             payload = {
                 "markdown": "# 最终稿\n\n![题图](../image/demo/cover.png)\n",
+                "platformMode": "xiaohongshu",
                 "themeColor": "#123456",
                 "fontSize": "18",
                 "fontFamily": "serif",
@@ -171,11 +210,46 @@ class WorkbenchDocumentTests(unittest.TestCase):
             self.assertTrue(result["saved"])
             self.assertIn("# 最终稿", saved_html)
             self.assertIn("localStorage.setItem", saved_html)
+            self.assertIn('"platformMode":"xiaohongshu"', saved_html)
             self.assertIn('"themeColor":"#123456"', saved_html)
             self.assertEqual(saved_markdown, "# 最终稿\n\n![题图]({{visual:cover}})\n")
             self.assertEqual(saved_job["article_markdown"], saved_markdown)
             for path in (html_path, markdown_path, job_path):
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o640)
+
+    def test_identical_save_is_a_noop_and_keeps_revision(self):
+        module = load_server_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            html_path = workspace / "article.html"
+            markdown = "# 标题\n\n正文。\n"
+            template = TEMPLATE.read_text(encoding="utf-8")
+            html_path.write_text(
+                module.builder.apply_template(
+                    {"article_markdown": markdown},
+                    template,
+                    markdown,
+                ),
+                encoding="utf-8",
+            )
+            document = module.WorkbenchDocument(html_path, workspace)
+            before = hashlib.sha256(html_path.read_bytes()).hexdigest()
+
+            result = document.save(
+                {
+                    "markdown": markdown,
+                    "platformMode": "wechat",
+                    "themeColor": "#17b394",
+                    "fontSize": "16",
+                    "fontFamily": '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif',
+                }
+            )
+            document.close()
+
+            self.assertTrue(result["saved"])
+            self.assertTrue(result["unchanged"])
+            self.assertEqual(result["revision"], 0)
+            self.assertEqual(hashlib.sha256(html_path.read_bytes()).hexdigest(), before)
 
     def test_paths_outside_workspace_are_rejected(self):
         module = load_server_module()
@@ -734,6 +808,33 @@ class WorkbenchDocumentTests(unittest.TestCase):
             self.assertTrue(module.is_allowed_host("LOCALHOST:8765", 8765))
             self.assertTrue(module.is_allowed_host("127.0.0.1:8765", 8765))
             self.assertFalse(module.is_allowed_host("attacker.example", 8765))
+
+    def test_static_responses_add_local_security_and_cache_headers(self):
+        module = load_server_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            html = root / "a.html"
+            html.write_text("safe", encoding="utf-8")
+            document = module.WorkbenchDocument(html, root)
+            handler_class = module.make_handler(document)
+            handler = handler_class.__new__(handler_class)
+            handler.path = "/a.html"
+            headers = []
+            handler.send_header = lambda name, value: headers.append((name, value))
+
+            with mock.patch.object(
+                module.SimpleHTTPRequestHandler,
+                "end_headers",
+                lambda _handler: None,
+            ):
+                handler.end_headers()
+            document.close()
+
+            header_map = dict(headers)
+            self.assertEqual(header_map["X-Frame-Options"], "DENY")
+            self.assertEqual(header_map["Cache-Control"], "no-store")
+            self.assertIn("default-src 'self'", header_map["Content-Security-Policy"])
+            self.assertIn("object-src 'none'", header_map["Content-Security-Policy"])
 
 
 if __name__ == "__main__":

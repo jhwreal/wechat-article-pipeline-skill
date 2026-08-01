@@ -25,6 +25,62 @@ PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFg
 
 
 class PackageWechatArticleBundleTest(unittest.TestCase):
+    def test_workbench_discovers_wechat_hosted_images_for_platform_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            job_path = root / "article.job.json"
+            out = root / "article.html"
+            job_path.write_text(
+                json.dumps(
+                    {
+                        "article_markdown": "# 标题\n\n![题图](https://example.com/local.png)\n",
+                        "visuals": {},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            receipt = root / "article.publish-manifest.wechat-api-result.json"
+            receipt.write_text(
+                json.dumps(
+                    {
+                        "status": "success",
+                        "body_uploads": [
+                            {"kind": "body", "url": "http://mmbiz.qpic.cn/body.png?from=appmsg"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            old_argv = sys.argv
+            sys.argv = ["build_wechat_article_workbench.py", str(job_path), str(out)]
+            try:
+                builder.main()
+            finally:
+                sys.argv = old_argv
+
+            bootstrap = builder.read_bootstrap(out.read_text(encoding="utf-8"))
+            self.assertEqual(
+                bootstrap["platformImageUrls"],
+                ["https://mmbiz.qpic.cn/body.png?from=appmsg"],
+            )
+            self.assertEqual(bootstrap["platformImageSource"], str(receipt.resolve()))
+            self.assertEqual(bootstrap["buildInfo"]["skillVersion"], "1.6.0")
+            self.assertEqual(bootstrap["buildInfo"]["workbenchSchemaVersion"], 3)
+            self.assertEqual(
+                set(bootstrap["platformAdapters"]),
+                {"wechat", "toutiao", "xiaohongshu"},
+            )
+
+    def test_platform_image_url_normalization_rejects_non_https_hosts(self) -> None:
+        self.assertEqual(
+            builder.normalize_platform_image_url("http://mmbiz.qpic.cn/body.png"),
+            "https://mmbiz.qpic.cn/body.png",
+        )
+        self.assertEqual(builder.normalize_platform_image_url("http://example.com/body.png"), "")
+        self.assertEqual(builder.normalize_platform_image_url("data:image/png;base64,abc"), "")
+
     def test_verifier_requires_the_exact_planned_image_extension(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -441,6 +497,7 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
             self.assertTrue((files_dir / "article.assets" / "cover.png").exists())
             self.assertIn("![题图](article.assets/cover.png)", html)
             self.assertIn("article.clipboard-assets.js", html)
+            self.assertNotIn('<script src="article.clipboard-assets.js">', html)
             self.assertNotIn(data_uri, html)
             self.assertIn(data_uri, sidecar)
 
@@ -481,6 +538,7 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
 
             self.assertIn("![题图](../image/article/cover.png)", html)
             self.assertIn("article.clipboard-assets.js", html)
+            self.assertNotIn('<script src="article.clipboard-assets.js">', html)
             self.assertNotIn("data:image/", html)
             self.assertIn("WECHAT_CLIPBOARD_IMAGE_DATA", clipboard_assets)
             self.assertIn("../image/article/cover.png", clipboard_assets)

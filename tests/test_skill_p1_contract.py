@@ -459,17 +459,27 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("automatically advances the issue counter", skill_md)
         self.assertIn("do not rely on callers remembering an extra flag", skill_md)
 
+    def test_skill_keeps_platform_views_lazy(self) -> None:
+        skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("Mount only the active platform preview", skill_md)
+        self.assertIn("sole Markdown source", skill_md)
+        self.assertIn("Cache semantic HTML", skill_md)
+        self.assertIn("only while copying", skill_md)
+
     def test_toutiao_contract_enforces_workbench_first_and_publish_gate(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
         toutiao = (SKILL_DIR / "references" / "publishing-toutiao.md").read_text(encoding="utf-8")
 
         self.assertIn("before the first browser write", skill_md)
-        self.assertIn("工作台的 `复制富文本` 是已有工作台文章进入头条的唯一正文入口", toutiao)
+        self.assertIn("选择头条格式 → 点击 `复制为头条格式`", toutiao)
         self.assertIn("不得改走头条的单图上传按钮", toutiao)
-        self.assertIn("用 Computer Use 通过 macOS 系统剪贴板把完整正文一次粘贴", toutiao)
+        self.assertIn("成功回执中的正文图片 HTTPS 托管地址会按原顺序自动回填工作台", toutiao)
+        self.assertIn("点击一次 `复制为头条格式`", toutiao)
+        self.assertIn("执行一次 `super+v`", toutiao)
         self.assertIn("不得用浏览器虚拟剪贴板替代", toutiao)
         self.assertIn("`super+a` / `super+v`", toutiao)
-        self.assertIn("必须保留全部图片、标题层级、列表、加粗和原始顺序", toutiao)
+        self.assertIn("必须保留全部图片、单级标题、列表、加粗和原始顺序", toutiao)
         self.assertIn("不自行改换正文导入方式", toutiao)
         self.assertIn("提交前硬门槛", toutiao)
         self.assertIn("外部链接数量必须为 0", toutiao)
@@ -479,6 +489,39 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("两个广告选项都未选中时，不得保存草稿或提交", toutiao)
         self.assertIn("toutiao_ads_enabled: true|false", toutiao)
         self.assertIn("将于 MM-DD HH:mm 发布", toutiao)
+
+    def test_xiaohongshu_contract_preserves_two_heading_levels_and_avoids_private_api(self) -> None:
+        skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+        xiaohongshu = (SKILL_DIR / "references" / "publishing-xiaohongshu.md").read_text(encoding="utf-8")
+
+        self.assertIn("publishing-xiaohongshu.md", skill_md)
+        self.assertIn("选择小红书格式 → 点击 `复制为小红书格式`", xiaohongshu)
+        self.assertIn("Markdown `##` → 小红书 `h1`", xiaohongshu)
+        self.assertIn("Markdown `###`", xiaohongshu)
+        self.assertIn("macOS 系统剪贴板", xiaohongshu)
+        self.assertIn("不得用浏览器虚拟剪贴板替代", xiaohongshu)
+        self.assertIn("真实工作台整篇粘贴", xiaohongshu)
+        self.assertIn("Base64 内嵌图片", xiaohongshu)
+        self.assertIn("data:image", xiaohongshu)
+        self.assertIn("正常同步的 `heading_repairs` 和 `image_repairs` 都必须为 `0`", xiaohongshu)
+        self.assertIn("只读标题 DOM 审计", xiaohongshu)
+        self.assertIn("外部链接数量为 0", xiaohongshu)
+        self.assertIn("不调用、复制或固化 `creator.xiaohongshu.com` 的私有接口", xiaohongshu)
+        self.assertIn("official_api_available", xiaohongshu)
+
+    def test_three_platform_sync_uses_resumable_aggregate_state(self) -> None:
+        skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+        reference = (SKILL_DIR / "references" / "publishing-three-platform.md").read_text(
+            encoding="utf-8"
+        )
+        state_script = SKILL_DIR / "scripts" / "platform_delivery_state.py"
+
+        self.assertIn("publishing-three-platform.md", skill_md)
+        self.assertTrue(state_script.is_file())
+        self.assertIn("微信 → 头条 → 小红书", reference)
+        self.assertIn("three-platform-result.json", reference)
+        self.assertIn("submission_maybe_sent=true", reference)
+        self.assertIn("verified` 平台不得重复创建草稿", reference)
 
     def test_packaging_does_not_increment_original_issue_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

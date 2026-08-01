@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import build_wechat_article_workbench as builder
+from article_core import extract_title
 from atomic_files import atomic_write_text
 from image_jobs_contract import (
     filter_missing_image_jobs,
@@ -26,7 +27,6 @@ from image_planning_catalog import (
 
 PLACEHOLDER_RE = re.compile(r"\{\{visual:([a-zA-Z0-9_-]+)\}\}")
 BODY_PLACEHOLDER_RE = re.compile(r"^body-[1-9][0-9]*$")
-TITLE_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.M)
 REFERENCE_HEADING_RE = re.compile(
     r"^\s*#{1,6}\s*(资料参考|参考来源|参考资料|参考信息|信息来源|官方链接|参考|references?)\s*$",
     re.I | re.M,
@@ -123,11 +123,6 @@ def infer_article_slug(article_path: Path, title: str) -> str:
     if parent:
         return slugify(parent)
     return slugify(title or stem)
-
-
-def extract_title(markdown: str, fallback: str) -> str:
-    match = TITLE_RE.search(markdown)
-    return match.group(1).strip() if match else fallback
 
 
 def strip_markdown(text: str) -> str:
