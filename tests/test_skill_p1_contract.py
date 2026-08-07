@@ -453,11 +453,13 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("currently available worker slots", skill_md)
         self.assertNotIn("two candidates", skill_md)
 
-    def test_skill_draft_creation_advances_original_issue(self) -> None:
+    def test_skill_draft_creation_consumes_issue_once_and_reuses_it_for_revisions(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertIn("automatically advances the issue counter", skill_md)
-        self.assertIn("do not rely on callers remembering an extra flag", skill_md)
+        self.assertIn("First draft consumes its issue", skill_md)
+        self.assertIn("--same-session-revision", skill_md)
+        self.assertIn("current counter minus one", skill_md)
+        self.assertIn("no advance", skill_md)
 
     def test_skill_keeps_platform_views_lazy(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")

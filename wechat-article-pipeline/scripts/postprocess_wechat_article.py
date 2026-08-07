@@ -75,6 +75,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--signature-author", help="Visible signature author shown below the cover.")
     parser.add_argument("--original-issue", type=int, help="Visible original article issue number.")
     parser.add_argument(
+        "--same-session-revision",
+        action="store_true",
+        help=(
+            "Treat this package as a revision of the same article already drafted in the current "
+            "Codex conversation. Reuse the current original-issue counter minus one and do not "
+            "consume another issue when the draft is created."
+        ),
+    )
+    parser.add_argument(
         "--remember-publisher-config",
         action="store_true",
         help="Persist supplied author/preview values when building a publish manifest.",
@@ -193,6 +202,8 @@ def extend_package_command(
             command.extend([flag, str(value)])
     if args.original_issue is not None:
         command.extend(["--original-issue", str(args.original_issue)])
+    if args.same_session_revision:
+        command.append("--same-session-revision")
     if args.remember_publisher_config:
         command.append("--remember-publisher-config")
 

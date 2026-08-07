@@ -177,7 +177,8 @@ https://developers.weixin.qq.com/platform
 
 ## 七、版本说明
 
-- `V 1.6.0（当前版本）`：正式支持小红书长文与微信、头条、小红书三平台一稿同步；新增统一当前平台复制、复制前检查、版本化平台适配器、可恢复三平台结果、构建诊断、相同快照免写盘和本地安全头，并通过单预览挂载、语义缓存、逐帧合并渲染、滚动布局缓存、懒加载 Base64 与按需图片转码降低浏览器开销。
+- `V 1.6.1（当前版本）`：同一 Codex 会话重复发送同一文章 slug 时可标记为修改稿，沿用首次草稿的原创篇号，并只在第一次成功创建草稿后递增系统计数。
+- `V 1.6.0`：正式支持小红书长文与微信、头条、小红书三平台一稿同步；新增统一当前平台复制、复制前检查、版本化平台适配器、可恢复三平台结果、构建诊断、相同快照免写盘和本地安全头，并通过单预览挂载、语义缓存、逐帧合并渲染、滚动布局缓存、懒加载 Base64 与按需图片转码降低浏览器开销。
 - `V 1.5.0`：新增今日头条 Chrome 草稿与发布流程；强化工作台事务恢复和路径边界，发布清单改为显式生成，收紧图片任务/草稿校验，并补齐完整 CI 冒烟测试与安装元数据。
 - `V 1.1.0`：增加接入多个公众号的能力。
 - `V 1.0.0`：支持调用微信官方 API，直接导入微信公众号草稿箱。
@@ -362,7 +363,8 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 
 ## 7. Release Notes
 
-- `V 1.6.0 (current version)`: Officially added Xiaohongshu long-form delivery and resumable one-source WeChat/Toutiao/Xiaohongshu draft sync; added one current-platform copy action, pre-copy readiness checks, versioned adapters, build diagnostics, no-op saves, local security headers, and lower browser overhead through a single mounted preview, semantic caching, frame-coalesced rendering, cached scroll layout, lazy Base64, and on-demand image conversion.
+- `V 1.6.1 (current version)`: Added same-conversation article revision semantics: repeated drafts for the same article slug reuse the first draft's original-issue number, while the system counter advances only after the first successful draft.
+- `V 1.6.0`: Officially added Xiaohongshu long-form delivery and resumable one-source WeChat/Toutiao/Xiaohongshu draft sync; added one current-platform copy action, pre-copy readiness checks, versioned adapters, build diagnostics, no-op saves, local security headers, and lower browser overhead through a single mounted preview, semantic caching, frame-coalesced rendering, cached scroll layout, lazy Base64, and on-demand image conversion.
 - `V 1.5.0`: Added the Chrome-based Toutiao draft and publishing workflow; hardened workbench recovery and path boundaries, made publish manifests opt-in, tightened image-job/draft validation, and added full CI smoke coverage plus install metadata.
 - `V 1.1.0`: Added support for connecting multiple WeChat Official Accounts.
 - `V 1.0.0`: Added official WeChat API import for creating Official Account drafts directly.

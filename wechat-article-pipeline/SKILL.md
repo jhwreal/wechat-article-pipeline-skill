@@ -109,9 +109,9 @@ Generate only listed images, then package without `--missing-only`.
 
 ## Publishing Path
 
-Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first; create drafts only when requested. A signed manifest automatically advances the issue counter after success; do not rely on callers remembering an extra flag. Never publish/group-send by default.
+Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: current counter minus one, no advance. Never publish/group-send by default.
 
-For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Computer Use for system-clipboard copy/paste and Chrome for inspection. Follow its exact state machine, one-shot submission latch, and single recovery budget.
+For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Chrome on the loopback workbench; use Computer Use only to paste into the external editor. Follow its state machine, one-shot paste rule, submission latch, and recovery budget.
 
 For Xiaohongshu, read [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md) before the first browser write. Use Computer Use for system-clipboard paste and Chrome for heading/image QA. Auto-save is not draft proof. Never repeat a possible final submission.
 

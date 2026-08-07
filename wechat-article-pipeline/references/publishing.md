@@ -61,7 +61,13 @@ WECHAT_ACCOUNT_JUZI_PREVIEW_ACCOUNT=
 
 Keep `<ALIAS>` to uppercase ASCII letters, numbers, and underscores. Avoid aliases ending in `_SIGNATURE`, `_ORIGINAL`, or `_PREVIEW`, because those suffixes combine with reserved fields such as `AUTHOR`, `ISSUE`, and `ACCOUNT`.
 
-`WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; packaging does not advance `.env` by default. When `publish_wechat_api.py --create-draft` receives a manifest containing `article_signature.issue_env_key` and `article_signature.issue`, it automatically advances the matching `.env` counter only after draft creation succeeds. Before any upload, it also requires the current counter to equal the manifest issue and refuses an already-consumed or stale manifest. `--increment-original-issue` remains accepted for compatibility but is unnecessary for a signed manifest. Use the package script's explicit `--increment-original-issue` only in a workflow that will not subsequently create the draft from that same manifest.
+`WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; packaging does not advance `.env` by default.
+
+For the first draft of an article in the current Codex conversation, package normally. Its signed manifest uses `counter_policy=consume_on_success`: before upload, the publisher requires the current `.env` counter to equal the manifest issue, then advances it exactly once after successful draft creation.
+
+If that same conversation creates another draft for the same article slug, treat it as a revision and rebuild the package with `--same-session-revision`. Packaging uses the selected account's current counter minus one and writes `counter_policy=reuse_previous`. Before upload, the publisher requires the current counter to equal the reused issue plus one; after success it leaves `.env` unchanged. Use this flag only when both the current Codex conversation and article slug match a prior successful draft. Do not infer revision state merely from old receipt files in the workspace, and do not manually roll the counter backward for revisions.
+
+`--increment-original-issue` remains accepted for compatibility but is unnecessary for a signed first-draft manifest and is rejected for a same-session revision manifest. Use the package script's explicit `--increment-original-issue` only in a workflow that will not subsequently create the draft from that same manifest.
 
 `NAME` is the account selector. `AUTHOR` is only the official draft API author and must not be used to identify credentials or the visible article signature.
 
@@ -98,6 +104,17 @@ If needed, regenerate it directly:
 ```bash
 python3 scripts/make_wechat_publish_manifest.py output.job.json output.publish-manifest.json \
   --workbench-html output.html
+```
+
+For a same-session revision, rebuild through the main entry point so the visible signature and manifest policy stay aligned:
+
+```bash
+python3 scripts/postprocess_wechat_article.py article.md article.html \
+  --workspace /path/to/workspace \
+  --article-slug article-slug \
+  --publish-manifest \
+  --publisher-env-file /path/to/.env \
+  --same-session-revision
 ```
 
 ## API flow

@@ -45,7 +45,7 @@ class SkillP0ContractTest(unittest.TestCase):
         self.assertIsNotNone(version_match)
         assert version_match is not None
         version = version_match.group(1)
-        self.assertEqual(version, "1.6.0")
+        self.assertEqual(version, "1.6.1")
         self.assertEqual(skill_version, version)
         self.assertIn(f"V {version}（当前版本）", readme)
         self.assertIn(f"V {version} (current version)", readme)
@@ -308,6 +308,45 @@ class SkillP0ContractTest(unittest.TestCase):
         self.assertIn("--author 接口作者", command_text)
         self.assertIn("--signature-author 署名作者", command_text)
         self.assertIn("--original-issue 8", command_text)
+
+    def test_postprocess_passes_same_session_revision_to_packager(self) -> None:
+        commands: list[list[str]] = []
+
+        def fake_run(command: list[str]) -> None:
+            commands.append(command)
+
+        original_run = postprocess.run
+        try:
+            postprocess.run = fake_run
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                root = Path(tmp_dir)
+                article = root / "article.md"
+                out = root / "out.html"
+                cover = root / "cover.png"
+                article.write_text("# 标题\n\n正文第一段。\n", encoding="utf-8")
+                cover.write_bytes(b"ok")
+                old_argv = sys.argv
+                sys.argv = [
+                    "postprocess_wechat_article.py",
+                    str(article),
+                    str(out),
+                    "--no-images",
+                    "--cover-image",
+                    str(cover),
+                    "--publish-manifest",
+                    "--same-session-revision",
+                ]
+                try:
+                    postprocess.main()
+                finally:
+                    sys.argv = old_argv
+        finally:
+            postprocess.run = original_run
+
+        package_command = next(
+            command for command in commands if "package_wechat_article_bundle.py" in " ".join(command)
+        )
+        self.assertIn("--same-session-revision", package_command)
 
     def test_filter_jobs_for_missing_images_keeps_only_missing_slots(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

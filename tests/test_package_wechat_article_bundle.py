@@ -67,7 +67,7 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 ["https://mmbiz.qpic.cn/body.png?from=appmsg"],
             )
             self.assertEqual(bootstrap["platformImageSource"], str(receipt.resolve()))
-            self.assertEqual(bootstrap["buildInfo"]["skillVersion"], "1.6.0")
+            self.assertEqual(bootstrap["buildInfo"]["skillVersion"], "1.6.1")
             self.assertEqual(bootstrap["buildInfo"]["workbenchSchemaVersion"], 3)
             self.assertEqual(
                 set(bootstrap["platformAdapters"]),
@@ -330,6 +330,50 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
             self.assertEqual(job["article_signature"]["author"], "明确作者")
             self.assertEqual(job["article_signature"]["issue"], 7)
             self.assertEqual(job["article_signature"]["account"]["alias"], "")
+
+    def test_same_session_revision_reuses_previous_issue_without_changing_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            article = root / "article.md"
+            out = root / "article.html"
+            env_file = root / ".env"
+            article.write_text("# 标题\n\n正文第一段。\n", encoding="utf-8")
+            env_file.write_text(
+                "WECHAT_SIGNATURE_AUTHOR=作者\nWECHAT_ORIGINAL_ISSUE=10\n",
+                encoding="utf-8",
+            )
+            old_argv = sys.argv
+            sys.argv = [
+                "package_wechat_article_bundle.py",
+                str(article),
+                str(out),
+                "--no-images",
+                "--publisher-env-file",
+                str(env_file),
+                "--same-session-revision",
+            ]
+            try:
+                packager.main()
+            finally:
+                sys.argv = old_argv
+
+            job = json.loads(out.with_suffix(".job.json").read_text(encoding="utf-8"))
+            env_text = env_file.read_text(encoding="utf-8")
+
+        self.assertEqual(job["article_signature"]["issue"], 9)
+        self.assertEqual(job["article_signature"]["label"], "作者的第9篇原创")
+        self.assertEqual(job["article_signature"]["counter_policy"], "reuse_previous")
+        self.assertIn("WECHAT_ORIGINAL_ISSUE=10", env_text)
+
+    def test_same_session_revision_rejects_explicit_original_issue(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "cannot be combined"):
+            packager.resolve_signature_metadata(
+                env_file=Path(".env"),
+                account={"signature_author": "作者", "original_issue": "10", "alias": "", "name": ""},
+                signature_author=None,
+                original_issue=9,
+                same_session_revision=True,
+            )
 
     def test_workbench_markdown_uses_relative_image_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

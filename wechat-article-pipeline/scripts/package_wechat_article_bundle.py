@@ -141,6 +141,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--signature-author", help="Visible article signature author shown below the cover image.")
     parser.add_argument("--original-issue", type=int, help="Visible original article issue number shown below the cover image.")
     parser.add_argument(
+        "--same-session-revision",
+        action="store_true",
+        help=(
+            "Reuse the selected account's current original-issue counter minus one for a revision "
+            "of the same article in the current Codex conversation. The resulting signed manifest "
+            "will not consume another issue after draft creation."
+        ),
+    )
+    parser.add_argument(
         "--no-increment-original-issue",
         action="store_true",
         help="Deprecated compatibility flag. Packaging no longer increments original issue by default.",
@@ -472,15 +481,29 @@ def resolve_signature_metadata(
     account: dict[str, str],
     signature_author: str | None,
     original_issue: int | None,
+    same_session_revision: bool = False,
 ) -> dict[str, object]:
     author = (signature_author or account.get("signature_author") or "").strip()
     raw_issue = str(original_issue if original_issue is not None else account.get("original_issue", "")).strip()
     try:
-        issue = int(raw_issue) if raw_issue else 1
+        counter_issue = int(raw_issue) if raw_issue else 1
     except ValueError:
         raise SystemExit(f"Invalid original issue value in {env_file}: {raw_issue!r}. Use a positive integer.")
-    if issue < 1:
+    if counter_issue < 1:
         raise SystemExit("Original issue must be a positive integer.")
+    if same_session_revision:
+        if original_issue is not None:
+            raise SystemExit("--same-session-revision cannot be combined with --original-issue.")
+        if counter_issue < 2:
+            raise SystemExit(
+                "--same-session-revision requires the selected account's current original issue "
+                "counter to be at least 2."
+            )
+        issue = counter_issue - 1
+        counter_policy = "reuse_previous"
+    else:
+        issue = counter_issue
+        counter_policy = "consume_on_success"
     return {
         "author": author,
         "issue": issue,
@@ -491,6 +514,7 @@ def resolve_signature_metadata(
             "name": account.get("name", ""),
         },
         "issue_env_key": signature_issue_key(account),
+        "counter_policy": counter_policy,
     }
 
 
@@ -698,6 +722,11 @@ def main() -> None:
         )
     if args.publish_manifest_out and args.no_publish_manifest:
         raise SystemExit("--publish-manifest-out cannot be combined with --no-publish-manifest.")
+    if args.same_session_revision and args.increment_original_issue:
+        raise SystemExit(
+            "--same-session-revision cannot be combined with --increment-original-issue. "
+            "A same-session revision must not consume another issue."
+        )
     publish_manifest = bool(args.publish_manifest or args.publish_manifest_out)
     if args.no_images and publish_manifest and not args.cover_image:
         raise SystemExit(
@@ -733,6 +762,7 @@ def main() -> None:
         account=signature_account,
         signature_author=args.signature_author,
         original_issue=args.original_issue,
+        same_session_revision=args.same_session_revision,
     )
 
     metadata_title = str(article_metadata.get("title", "")).strip()

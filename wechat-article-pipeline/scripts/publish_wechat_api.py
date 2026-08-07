@@ -901,27 +901,56 @@ def manifest_original_issue(manifest: dict[str, Any], *, required: bool = False)
     return key, raw_issue, issue
 
 
+def manifest_original_issue_policy(manifest: dict[str, Any]) -> str:
+    signature_value = manifest.get("article_signature")
+    signature = signature_value if isinstance(signature_value, dict) else {}
+    policy = str(signature.get("counter_policy", "consume_on_success")).strip()
+    if policy not in {"consume_on_success", "reuse_previous"}:
+        raise SystemExit(
+            "Manifest article_signature.counter_policy must be "
+            "'consume_on_success' or 'reuse_previous'."
+        )
+    return policy
+
+
 def apply_original_issue_policy(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
-    """Make issue consumption an invariant of every new signed draft."""
-    if args.create_draft and not args.resume and manifest_original_issue(manifest) is not None:
-        args.increment_original_issue = True
+    """Apply the signed manifest's first-draft or same-session revision policy."""
+    if not args.create_draft or args.resume or manifest_original_issue(manifest) is None:
+        return
+    policy = manifest_original_issue_policy(manifest)
+    if policy == "reuse_previous":
+        if args.increment_original_issue:
+            raise SystemExit(
+                "A same-session revision manifest reuses the previous original issue and cannot "
+                "be combined with --increment-original-issue."
+            )
+        args.increment_original_issue = False
+        return
+    args.increment_original_issue = True
 
 
 def validate_original_issue_preflight(manifest: dict[str, Any], env_file: Path | None) -> None:
     key, raw_issue, issue = manifest_original_issue(manifest, required=True)
+    policy = manifest_original_issue_policy(manifest)
     if env_file is None or not env_file.expanduser().is_file():
-        raise SystemExit("Cannot increment original issue: the resolved env file is missing.")
+        raise SystemExit("Cannot validate original issue: the resolved env file is missing.")
 
     current = account_config.read_env_file(env_file).get(key)
-    if current == raw_issue:
+    expected = raw_issue if policy == "consume_on_success" else str(issue + 1)
+    if current == expected:
         return
-    if current == str(issue + 1):
+    if policy == "consume_on_success" and current == str(issue + 1):
         raise SystemExit(
             f"Manifest original issue {raw_issue} has already been consumed ({key}={current}). "
             "Regenerate the publish manifest before creating another draft."
         )
     if current is None:
-        raise SystemExit(f"Cannot increment original issue: {key} is missing from {env_file.expanduser()}.")
+        raise SystemExit(f"Cannot validate original issue: {key} is missing from {env_file.expanduser()}.")
+    if policy == "reuse_previous":
+        raise SystemExit(
+            f"Same-session revision issue {raw_issue} requires {key}={issue + 1}, but found {current}. "
+            "Rebuild without --same-session-revision for a new article, or restore the expected counter."
+        )
     raise SystemExit(
         f"Manifest original issue {raw_issue} does not match {key}={current}. "
         "Regenerate the publish manifest before creating a draft."
@@ -1061,7 +1090,7 @@ def validate_new_run_side_effect_parameters(
 ) -> None:
     if args.send_preview and not normalize_preview_target(args, manifest, account)["value"]:
         raise SystemExit("Preview account is empty. Pass --preview-account or set manifest.preview.account.")
-    if args.increment_original_issue:
+    if manifest_original_issue(manifest) is not None:
         validate_original_issue_preflight(manifest, env_file)
 
 
@@ -1448,6 +1477,12 @@ def main() -> None:
         "token_cache": str(args.token_cache),
         "validation": validation,
     }
+    issue_metadata = manifest_original_issue(manifest)
+    if issue_metadata is not None:
+        result["original_issue_policy"] = {
+            "policy": manifest_original_issue_policy(manifest),
+            "issue": issue_metadata[2],
+        }
     if dry_run:
         cover_src = str(((manifest.get("wechat_cover") or manifest.get("cover")) or {}).get("src", ""))
         cover_image = decode_data_image(cover_src, "png")

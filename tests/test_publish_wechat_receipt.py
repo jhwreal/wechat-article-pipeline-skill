@@ -548,6 +548,60 @@ class PublishWechatReceiptTest(unittest.TestCase):
             self.assertEqual(receipt["original_issue_increment"]["next_issue"], "10")
             self.assertIn("WECHAT_ORIGINAL_ISSUE=10", env_file.read_text(encoding="utf-8"))
 
+    def test_same_session_revision_reuses_issue_without_incrementing_counter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir), include_issue=True)
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["article_signature"] = {
+                "issue_env_key": "WECHAT_ORIGINAL_ISSUE",
+                "issue": "8",
+                "counter_policy": "reuse_previous",
+            }
+            manifest.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            self.invoke(manifest, result_path, env_file)
+
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt["status"], "success")
+            self.assertEqual(
+                receipt["original_issue_policy"],
+                {"policy": "reuse_previous", "issue": 8},
+            )
+            self.assertNotIn("increment_original_issue", receipt["operation_state"])
+            self.assertNotIn("original_issue_increment", receipt)
+            self.assertIn("WECHAT_ORIGINAL_ISSUE=9", env_file.read_text(encoding="utf-8"))
+
+    def test_same_session_revision_rejects_wrong_counter_before_side_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest, result_path, env_file = self.make_inputs(Path(tmp_dir), include_issue=True)
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            payload["article_signature"] = {
+                "issue_env_key": "WECHAT_ORIGINAL_ISSUE",
+                "issue": "9",
+                "counter_policy": "reuse_previous",
+            }
+            manifest.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            body_upload = mock.Mock(return_value=("<p>正文第一段。</p>", []))
+            cover_upload = mock.Mock(return_value=self.fake_upload_cover({}, ""))
+            draft_add = mock.Mock(return_value="media-123")
+
+            with self.assertRaisesRegex(SystemExit, "requires WECHAT_ORIGINAL_ISSUE=10"):
+                self.invoke(
+                    manifest,
+                    result_path,
+                    env_file,
+                    replacements={
+                        "upload_body_images": body_upload,
+                        "upload_cover": cover_upload,
+                        "create_draft": draft_add,
+                    },
+                )
+
+            body_upload.assert_not_called()
+            cover_upload.assert_not_called()
+            draft_add.assert_not_called()
+            self.assertFalse(result_path.exists())
+
     def test_consumed_signed_manifest_fails_before_draft_side_effects(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             manifest, result_path, env_file = self.make_inputs(Path(tmp_dir), include_issue=True)
