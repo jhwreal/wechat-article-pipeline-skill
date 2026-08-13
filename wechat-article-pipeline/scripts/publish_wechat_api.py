@@ -57,12 +57,13 @@ ALLOWED_DRAFT_ATTRIBUTES = {
     "br": set(),
 }
 ERROR_HELP = {
-    40164: "当前调用 IP 不在公众号接口 IP 白名单。把这台机器的出口 IP 加到公众平台开发配置后重试。",
+    40164: "公众号接口 IP 白名单校验失败。发布流程已立即停止，未创建草稿。",
     48001: "公众号没有开通或没有获得该接口权限。",
     89503: "此次调用需要管理员确认。请到微信侧完成确认后重试。",
     89506: "管理员拒绝了本 IP 的调用请求。按官方提示等待后再试。",
     89507: "管理员拒绝了本 IP 的调用请求。按官方提示等待后再试。",
 }
+IPV4_IN_ERROR_RE = re.compile(r"(?<![0-9.])(?:\d{1,3}\.){3}\d{1,3}(?![0-9.])")
 
 
 @dataclass
@@ -243,8 +244,20 @@ def request_json(req: urllib.request.Request) -> dict[str, Any]:
         raise SystemExit(f"WeChat API returned non-JSON response: {data[:500]}") from exc
     errcode = result.get("errcode")
     if errcode not in (None, 0):
-        help_text = ERROR_HELP.get(int(errcode), "请用官方 API 诊断工具结合 errmsg/rid 排查。")
-        raise SystemExit(f"WeChat API error {errcode}: {result.get('errmsg', '')}\n{help_text}")
+        numeric_errcode = int(errcode)
+        errmsg = str(result.get("errmsg", ""))
+        help_text = ERROR_HELP.get(numeric_errcode, "请用官方 API 诊断工具结合 errmsg/rid 排查。")
+        if numeric_errcode == 40164:
+            ip_match = IPV4_IN_ERROR_RE.search(errmsg)
+            outbound_ip = ip_match.group(0) if ip_match else "未能从接口错误中识别"
+            raise SystemExit(
+                "WECHAT_IP_WHITELIST_BLOCKED\n"
+                f"{help_text}\n"
+                f"当前出口 IP：{outbound_ip}\n"
+                "请立即告知用户，并等待用户把该 IP 加入微信公众平台开发配置的 IP 白名单；"
+                "在用户确认前不要继续公众号上传或任何后续跨平台发布。"
+            )
+        raise SystemExit(f"WeChat API error {errcode}: {errmsg}\n{help_text}")
     return result
 
 

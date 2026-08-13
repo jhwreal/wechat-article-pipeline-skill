@@ -111,6 +111,8 @@ Generate only listed images, then package without `--missing-only`.
 
 Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: current counter minus one, no advance. Never publish/group-send by default.
 
+After every live WeChat API command, inspect its result before doing any other work. If it returns `40164` or says the current IP is not in the Official Account API whitelist, treat that as an immediate hard stop for the entire delivery chain: do not retry, upload more assets, continue to Toutiao/Xiaohongshu, or perform unrelated packaging while the user waits. Immediately tell the user that publishing has stopped, show the outbound IP from the error, and ask them to add it to the WeChat Official Account IP whitelist. End the turn and resume only after the user confirms the whitelist was updated.
+
 For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Chrome on the loopback workbench; use Computer Use only to paste into the external editor. Follow its state machine, one-shot paste rule, submission latch, and recovery budget.
 
 For Xiaohongshu, read [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md) before the first browser write. Use Computer Use for system-clipboard paste and Chrome for heading/image QA. Auto-save is not draft proof. Never repeat a possible final submission.
@@ -125,6 +127,7 @@ For Xiaohongshu, read [publishing-xiaohongshu.md](references/publishing-xiaohong
 - Enable Toutiao `头条首发` only when the user confirms eligibility.
 - Do not use Xiaohongshu creator-platform private APIs, Cookie export, localStorage export, token extraction, or request replay for delivery.
 - Publish no external hyperlinks in WeChat, Toutiao, or Xiaohongshu bodies. Preserve source names as plain text and remove every external `href` before delivery.
+- Never absorb or defer a WeChat `40164` error inside a longer workflow. Surface it to the user immediately as a blocking result.
 
 ## Acceptance Checklist
 

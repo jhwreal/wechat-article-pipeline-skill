@@ -168,7 +168,7 @@ The script performs:
 
 ## Operational notes
 
-- `stable_token` can return `40164` when the current IP is not in the official account IP whitelist. Ask the user to add the machine's outbound IP in WeChat public platform developer settings, then retry.
+- `stable_token` can return `40164` when the current IP is not in the official account IP whitelist. This is an immediate workflow-wide hard stop. As soon as the live command returns it, stop all remaining WeChat and cross-platform delivery work, do not retry, and immediately notify the user in the same turn. Quote the outbound IP parsed from `errmsg`, say clearly that no draft was created, and ask the user to add that IP in WeChat Official Account → Developer settings → IP whitelist. End the turn; retry only after the user explicitly confirms the whitelist was updated.
 - `stable_token` can return `89503` when administrator confirmation is required. Stop and ask the user to confirm in WeChat.
 - Preview is available only for certified accounts according to the official doc.
 - `media/uploadimg` body images must be JPG or PNG and under 1 MB. The script targets 900 KiB when compression is needed, attempts to keep the best quality under that margin with Pillow when available, and otherwise stops with a clear message.
