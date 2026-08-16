@@ -44,7 +44,10 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 URL_CONTROL_RE = re.compile(r"[\x00-\x20\x7f]+")
 URL_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*$", re.I)
 DATA_IMAGE_PREFIX = "data:image/"
-ALLOWED_DRAFT_TAGS = {"p", "img", "a", "code", "strong", "span", "em", "br"}
+ALLOWED_DRAFT_TAGS = {
+    "p", "img", "a", "code", "strong", "span", "em", "br",
+    "table", "thead", "tbody", "tr", "th", "td",
+}
 VOID_DRAFT_TAGS = {"img", "br"}
 ALLOWED_DRAFT_ATTRIBUTES = {
     "p": {"style"},
@@ -55,6 +58,12 @@ ALLOWED_DRAFT_ATTRIBUTES = {
     "span": {"style"},
     "em": set(),
     "br": set(),
+    "table": {"style"},
+    "thead": set(),
+    "tbody": set(),
+    "tr": set(),
+    "th": {"style"},
+    "td": {"style"},
 }
 ERROR_HELP = {
     40164: "公众号接口 IP 白名单校验失败。发布流程已立即停止，未创建草稿。",
@@ -857,7 +866,7 @@ def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, 
         "content_html_length": len(content_html),
         "body_data_image_count": len(body_image_sources),
         "cover_is_data_uri": True,
-        "draft_html_mode": "paragraph_only",
+        "draft_html_mode": "paragraph_and_table_safe",
     }
 
 
@@ -1004,10 +1013,13 @@ def verify_draft(media_id: str, expected_title: str, access_token: str) -> dict[
             "Draft verification failed: returned title does not match the manifest "
             f"({returned_title!r} != {expected_title!r})."
         )
+    returned_content = str(first.get("content", "")) if isinstance(first, dict) else ""
     return {
         "verified": True,
         "title": returned_title,
         "article_count": len(articles) if isinstance(articles, list) else 0,
+        "table_count": len(re.findall(r"<table\b", returned_content, re.I)),
+        "raw_markdown_table_header_count": returned_content.count("| 模型 |"),
     }
 
 

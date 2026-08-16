@@ -61,6 +61,15 @@ test('blockquote preview renders Markdown line breaks instead of escaped br text
 });
 
 
+test('WeChat rich copy preserves semantic tables', () => {
+  assert.doesNotMatch(
+    template,
+    /root\.querySelectorAll\('table'\)\.forEach\(table => \{[\s\S]*?table\.replaceWith\(p\)/,
+  );
+  assert.match(template, /setStyle\('table', 'width:100%; border-collapse:collapse;/);
+});
+
+
 test('save button keeps mouse feedback until pointer exit and clears other inputs', () => {
   assert.match(
     template,

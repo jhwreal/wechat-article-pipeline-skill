@@ -28,6 +28,9 @@ ACCENT_STYLE = "color:#d14d72;font-weight:700"
 LINK_STYLE = "color:#17b394;text-decoration:none;border-bottom:1px solid rgba(23,179,148,.35)"
 CODE_STYLE = "background:#f2f4f7;border:1px solid #eaecf0;border-radius:6px;padding:.12em .38em;font-size:.92em;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d14d72;font-weight:700"
 CODE_BLOCK_STYLE = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.7;color:#e5e7eb;background:#111827;border-radius:10px;margin:16px 8px;padding:14px 16px;box-sizing:border-box;word-break:break-word;overflow-wrap:anywhere"
+TABLE_STYLE = "width:100%;border-collapse:collapse;table-layout:fixed;margin:18px 0;border:1px solid #dfe3e8"
+TABLE_HEADER_STYLE = "padding:8px 4px;border:1px solid #dfe3e8;background:#f7f8fa;color:#111827;font-size:13px;line-height:1.5;font-weight:700;vertical-align:middle;word-break:break-word"
+TABLE_CELL_STYLE = "padding:8px 4px;border:1px solid #dfe3e8;color:#222;font-size:13px;line-height:1.5;vertical-align:middle;word-break:break-word"
 SIGNATURE_STYLE = BASE_TEXT_STYLE + ";margin:21px 8px;color:#fff;font-size:14px;line-height:1.45;font-weight:400;text-align:center"
 SIGNATURE_TEXT_STYLE = "display:inline;padding:1px 5px 2px;background:#17b394;color:#fff;font-size:14px;line-height:1.45;font-weight:400"
 DATA_IMAGE_PREFIX = "data:image/"
@@ -370,6 +373,45 @@ def format_text_lines(lines: list[str]) -> str:
     return "<br>".join(inline_format(line.strip()) for line in lines)
 
 
+def markdown_table_html(block: str) -> str | None:
+    lines = [line.strip() for line in block.strip().splitlines() if line.strip()]
+    if len(lines) < 2:
+        return None
+
+    raw_rows = [
+        line.removeprefix("|").removesuffix("|").split("|")
+        for line in lines
+    ]
+    if len(raw_rows[0]) == 0 or len(raw_rows[1]) != len(raw_rows[0]):
+        return None
+
+    delimiters = [cell.strip() for cell in raw_rows[1]]
+    if not all(re.fullmatch(r":?-{3,}:?", cell) for cell in delimiters):
+        return None
+    if any(len(row) != len(raw_rows[0]) for row in raw_rows[2:]):
+        return None
+
+    alignments: list[str] = []
+    for delimiter in delimiters:
+        if delimiter.startswith(":") and delimiter.endswith(":"):
+            alignments.append("center")
+        elif delimiter.endswith(":"):
+            alignments.append("right")
+        else:
+            alignments.append("left")
+
+    def render_row(cells: list[str], tag: str, base_style: str) -> str:
+        rendered: list[str] = []
+        for index, cell in enumerate(cells):
+            style = f"{base_style};text-align:{alignments[index]}"
+            rendered.append(f'<{tag} style="{style}">{inline_format(cell.strip())}</{tag}>')
+        return "<tr>" + "".join(rendered) + "</tr>"
+
+    header = render_row(raw_rows[0], "th", TABLE_HEADER_STYLE)
+    body = "".join(render_row(row, "td", TABLE_CELL_STYLE) for row in raw_rows[2:])
+    return f'<table style="{TABLE_STYLE}"><thead>{header}</thead><tbody>{body}</tbody></table>'
+
+
 def split_markdown_blocks(markdown: str) -> list[str]:
     blocks: list[str] = []
     normal_lines: list[str] = []
@@ -415,6 +457,10 @@ def markdown_to_wechat_html(markdown: str) -> str:
     blocks = split_markdown_blocks(markdown)
     html_blocks: list[str] = []
     for block in blocks:
+        table_html = markdown_table_html(block)
+        if table_html:
+            html_blocks.append(table_html)
+            continue
         image_only = re.fullmatch(r"!\[([^\]]*)\]\(([^)]+)\)", block.strip())
         if image_only:
             html_blocks.append(image_paragraph(image_only.group(1).strip(), image_only.group(2).strip()))

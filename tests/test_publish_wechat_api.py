@@ -243,6 +243,22 @@ class PublishWechatApiTest(unittest.TestCase):
         finally:
             publisher.api_post_json = original_api_post_json
 
+    def test_verify_draft_reports_preserved_tables(self) -> None:
+        original_api_post_json = publisher.api_post_json
+        publisher.api_post_json = lambda *_args, **_kwargs: {
+            "news_item": [{
+                "title": "预期标题",
+                "content": "<p>正文</p><table><tr><td>值</td></tr></table>",
+            }]
+        }
+        try:
+            result = publisher.verify_draft("media-id", "预期标题", "token")
+        finally:
+            publisher.api_post_json = original_api_post_json
+
+        self.assertEqual(result["table_count"], 1)
+        self.assertEqual(result["raw_markdown_table_header_count"], 0)
+
     def test_open_draft_switch_implies_switch_check(self) -> None:
         args = SimpleNamespace(
             dry_run=False,

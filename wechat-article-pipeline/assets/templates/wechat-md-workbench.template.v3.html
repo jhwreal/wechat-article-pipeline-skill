@@ -1218,14 +1218,6 @@
         list.replaceWith(p);
       });
 
-      root.querySelectorAll('table').forEach(table => {
-        const p = document.createElement('p');
-        const rows = Array.from(table.querySelectorAll('tr')).map(row => Array.from(row.children).map(cell => cell.innerText.trim()).join(' | '));
-        p.innerHTML = rows.map(escapeHtml).join('<br>');
-        p.setAttribute('style', `font-family:${safeFont}; margin:16px 8px; font-size:${size}px; line-height:1.75; color:#222; word-break:break-word;`);
-        table.replaceWith(p);
-      });
-
       root.querySelectorAll('section,div,blockquote,pre,ul,ol').forEach(node => {
         node.replaceWith(...Array.from(node.childNodes));
       });

@@ -71,7 +71,7 @@ class WeChatDraftHtmlTest(unittest.TestCase):
         self.assertNotIn(">标题</p>", html)
         self.assertLess(html.index("<img "), html.index("正文第一段"))
 
-    def test_manifest_html_is_paragraph_only_and_keeps_fenced_code_together(self) -> None:
+    def test_manifest_html_is_draft_safe_and_keeps_fenced_code_together(self) -> None:
         markdown = """# 标题
 
 ![题图](data:image/png;base64,abc)
@@ -118,6 +118,25 @@ PROJECTS.md
         self.assertIn("background:#17b394", html)
         self.assertIn(">那封回信，比授权本身更暖</span>", html)
         self.assertNotIn("width:fit-content", html)
+
+    def test_markdown_tables_remain_real_wechat_tables(self) -> None:
+        markdown = """| 模型 | 普通输入 | 输出 |
+|---|---:|---:|
+| `Qwen3.8-Max` | 12 元 | 36 元 |
+| `DeepSeek V4 Pro` | 3 元 | 6 元 |
+"""
+        html = manifest_builder.markdown_to_wechat_html(markdown)
+
+        self.assertIn('<table style="', html)
+        self.assertIn("<thead><tr>", html)
+        self.assertIn("<tbody><tr>", html)
+        self.assertIn("text-align:right", html)
+        self.assertIn(">Qwen3.8-Max</code>", html)
+        self.assertNotIn("|---", html)
+        publisher.validate_manifest(
+            {"title": "标题", "digest": "摘要", "cover": {"src": PNG_1X1}},
+            html,
+        )
 
     def test_publisher_rejects_unstable_draft_tags(self) -> None:
         manifest = {
