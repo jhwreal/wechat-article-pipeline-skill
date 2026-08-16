@@ -109,6 +109,17 @@ class SkillP0ContractTest(unittest.TestCase):
         ):
             self.assertNotIn(conflicting_phrase, skill_md)
 
+    def test_toutiao_explicit_publish_instruction_is_one_confirmation(self) -> None:
+        skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+        guide = (SKILL_DIR / "references" / "publishing-toutiao.md").read_text(encoding="utf-8")
+
+        self.assertIn("is already the confirmation", skill_md)
+        self.assertIn("Do not ask for a second publish confirmation", skill_md)
+        self.assertIn("发布授权：明确指令即确认", guide)
+        self.assertIn("该指令本身就是本次头条发布的确认和授权", guide)
+        self.assertIn("不得在填写标题、粘贴正文、进入预览、点击最终发布或定时发布前再次询问", guide)
+        self.assertIn("如果用户已经把日期、小时和分钟说清楚，不得再次确认", guide)
+
     def test_workbench_template_keeps_wechat_data_images_without_polluting_markdown(self) -> None:
         template = (SKILL_DIR / "assets" / "templates" / "wechat-md-workbench.template.v3.html").read_text(encoding="utf-8")
 

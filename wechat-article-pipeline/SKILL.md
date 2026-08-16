@@ -16,6 +16,7 @@ Produce a complete local article package from the user's topic, draft, notes, or
 - If the user asks to补图, continue, or fix missing assets, use the missing-image path and do not rebuild finished images.
 - If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.
 - Toutiao: use Chrome + Computer Use and [publishing-toutiao.md](references/publishing-toutiao.md).
+- Toutiao publish authorization: a user-authored instruction to “发头条”, “发布头条”, or schedule a Toutiao post is already the confirmation to submit that same content to Toutiao at the stated time. Do not ask for a second publish confirmation in the same workflow; pause only when a material choice is missing or changed, or for CAPTCHA, authentication, or a platform hard blocker.
 - Xiaohongshu: use Chrome + Computer Use and [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md).
 - Three-platform sync: read [publishing-three-platform.md](references/publishing-three-platform.md), initialize its state, then create WeChat → Toutiao → Xiaohongshu drafts.
 
@@ -111,7 +112,7 @@ Generate only listed images, then package without `--missing-only`.
 
 Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: current counter minus one, no advance. Never publish/group-send by default.
 
-After every live WeChat API command, inspect its result before doing any other work. If it returns `40164` or says the current IP is not in the Official Account API whitelist, treat that as an immediate hard stop for the entire delivery chain: do not retry, upload more assets, continue to Toutiao/Xiaohongshu, or perform unrelated packaging while the user waits. Immediately tell the user that publishing has stopped, show the outbound IP from the error, and ask them to add it to the WeChat Official Account IP whitelist. End the turn and resume only after the user confirms the whitelist was updated.
+After every live WeChat API command, inspect its result before doing any other work. If it returns `40164` or says the current IP is not in the Official Account API whitelist, treat that as an immediate hard stop for the entire delivery chain: do not retry, upload more assets, continue to Toutiao/Xiaohongshu, or perform unrelated packaging while the user waits. Immediately tell the user that publishing has stopped, show the outbound IP from the error, and ask them to add it to the WeChat Official Account IP whitelist. End the turn and resume only once the whitelist update is acknowledged.
 
 For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Chrome on the loopback workbench; use Computer Use only to paste into the external editor. Follow its state machine, one-shot paste rule, submission latch, and recovery budget.
 
