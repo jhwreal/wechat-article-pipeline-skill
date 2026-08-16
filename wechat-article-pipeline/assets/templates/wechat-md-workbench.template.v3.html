@@ -869,8 +869,8 @@
 
     function blockquoteToHtml(block, attributes) {
       const lines = block.split('\n').map(line => line.replace(/^>\s?/, '').trim());
-      const content = lines.join('<br>');
-      return `<blockquote ${attributes} data-preview-editable="true"><p>${inlineFormat(escapeHtml(content))}</p></blockquote>`;
+      const content = lines.map(line => inlineFormat(escapeHtml(line))).join('<br>');
+      return `<blockquote ${attributes} data-preview-editable="true"><p>${content}</p></blockquote>`;
     }
 
     function markdownToHtml(md) {

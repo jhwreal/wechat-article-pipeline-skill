@@ -43,6 +43,24 @@ test('markdown preview blocks executable URL schemes', () => {
 });
 
 
+test('blockquote preview renders Markdown line breaks instead of escaped br text', () => {
+  const helpersStart = template.indexOf('    function escapeHtml');
+  const helpersEnd = template.indexOf('    function getMarkdownBlocks');
+  const quoteStart = template.indexOf('    function blockquoteToHtml');
+  const quoteEnd = template.indexOf('    function markdownToHtml');
+  assert.ok(helpersStart >= 0 && helpersEnd > helpersStart);
+  assert.ok(quoteStart >= 0 && quoteEnd > quoteStart);
+
+  const renderQuote = new Function(
+    `${template.slice(helpersStart, helpersEnd)}\n${template.slice(quoteStart, quoteEnd)}; return blockquoteToHtml;`,
+  )();
+  const rendered = renderQuote('> 作者：[法]安德烈·焦尔当\n>\n> 整理说明：仅摘录原文。', 'data-test="quote"');
+
+  assert.match(rendered, /作者：\[法\]安德烈·焦尔当<br><br>整理说明：仅摘录原文。/);
+  assert.doesNotMatch(rendered, /&lt;br&gt;/);
+});
+
+
 test('save button keeps mouse feedback until pointer exit and clears other inputs', () => {
   assert.match(
     template,
