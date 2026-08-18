@@ -15,7 +15,7 @@ Produce a complete local article package from the user's topic, draft, notes, or
 - If the user asks for "不配图", "只排版", "直接格式化", or similar, use the no-image path.
 - If the user asks to补图, continue, or fix missing assets, use the missing-image path and do not rebuild finished images.
 - If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.
-- Toutiao: use Chrome + Computer Use and [publishing-toutiao.md](references/publishing-toutiao.md).
+- Toutiao: use Computer Use to operate the user's real Chrome end to end and follow [publishing-toutiao.md](references/publishing-toutiao.md). Do not use Browser/Chrome browser automation, Playwright, CDP, DOM evaluation, or background tab objects for any Toutiao UI step.
 - Toutiao publish authorization: a user-authored instruction to “发头条”, “发布头条”, or schedule a Toutiao post is already the confirmation to submit that same content to Toutiao at the stated time. Do not ask for a second publish confirmation in the same workflow; pause only when a material choice is missing or changed, or for CAPTCHA, authentication, or a platform hard blocker.
 - Xiaohongshu: use Chrome + Computer Use and [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md).
 - Three-platform sync: read [publishing-three-platform.md](references/publishing-three-platform.md), initialize its state, then create WeChat → Toutiao → Xiaohongshu drafts.
@@ -114,7 +114,7 @@ Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run 
 
 Inspect every live WeChat API result immediately. On `40164` or an IP-allowlist error, stop the entire delivery chain: do not retry, upload, package, or continue to Toutiao/Xiaohongshu. Report the outbound IP, ask the user to allowlist it, end the turn, and resume only after acknowledgment.
 
-For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Chrome on the loopback workbench; use Computer Use only to paste into the external editor. Follow its state machine, one-shot paste rule, submission latch, and recovery budget.
+For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first Chrome UI action. Every Chrome action and observation in the Toutiao workflow must go through Computer Use: opening the workbench, choosing and copying the Toutiao format, navigating the same foreground tab to Toutiao, filling and verifying the editor, setting options, scheduling, submitting, and checking management/public pages. Never initialize or use Browser/Chrome browser automation for this path. Follow its foreground hard gate, state machine, one-shot paste rule, submission latch, and recovery budget.
 
 For Xiaohongshu, read [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md) before the first browser write. Use Computer Use for system-clipboard paste and Chrome for heading/image QA. Auto-save is not draft proof. Never repeat a possible final submission.
 
@@ -137,7 +137,7 @@ Before delivery, confirm:
 - `verify_wechat_article_package.py` reports `status: ok`; the persistence server remains running and its loopback URL is delivered before the HTML path
 - Markdown uses relative image paths; all previews derive from it and preserve semantic headings and image positions
 - image-bearing Toutiao copy has ordered HTTPS URLs from a successful WeChat receipt; Xiaohongshu embeds images during copy
-- Toutiao/Xiaohongshu handoff uses one workbench copy and one system paste; on a hard gate, preserve the diagnostic draft and stop
+- Toutiao uses only Computer Use against the real foreground Chrome, with one workbench copy and one system paste; Xiaohongshu keeps its own documented handoff. On a hard gate, preserve the diagnostic draft and stop
 - delivery reports result paths, status, verified structure/images, and any public URL; platform bodies contain no external links
 - without an HTML workbench, give the main artifact first
 
