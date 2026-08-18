@@ -252,6 +252,13 @@
       outline: 1px dashed rgba(23, 179, 148, .42);
       outline-offset: 4px;
     }
+    .preview:focus { outline: none; }
+    .preview .image-paste-anchor-before {
+      box-shadow: 0 -3px 0 var(--primary);
+    }
+    .preview .image-paste-anchor-after {
+      box-shadow: 0 3px 0 var(--primary);
+    }
 
     .preview h1,
     .preview h2,
@@ -629,14 +636,14 @@
       <div class="panel-head">
         <div>
           <div id="previewPanelTitle" class="panel-title">微信风格预览</div>
-          <div id="previewPanelDesc" class="panel-desc">可直接点击正文改字；排版仍由左侧 Markdown 控制。</div>
+          <div id="previewPanelDesc" class="panel-desc">可直接改字；点击段落之间后粘贴图片，自动写入 Markdown。</div>
         </div>
       </div>
       <div class="preview-shell">
         <div class="phone-frame">
           <div id="previewPlatformLabel" class="phone-top">公众号图文预览</div>
           <div class="preview-viewport">
-            <article id="preview" class="preview"></article>
+            <article id="preview" class="preview" tabindex="0"></article>
           </div>
         </div>
       </div>
@@ -646,7 +653,7 @@
           <span id="lastSavedLabel">未保存</span>
         </div>
         <div class="status-right">
-          <span>右侧正文可直接修改</span>
+          <span>右侧正文可改字、粘贴图片</span>
           <span>复制样式与预览同步</span>
         </div>
       </div>
@@ -675,6 +682,7 @@
     const CLIPBOARD_ASSETS_SCRIPT_URL = String(BOOTSTRAP.clipboardAssetsScript || '');
     const CLIPBOARD_IMAGE_CONCURRENCY = 3;
     const WORKBENCH_SAVE_ENDPOINT = '/__wechat_workbench/save';
+    const WORKBENCH_ASSET_ENDPOINT = '/__wechat_workbench/assets';
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const previewShell = document.querySelector('.preview-shell');
@@ -726,6 +734,8 @@
     let clipboardAssetsLoadPromise = null;
     let lastPlatformCopyResult = null;
     let lastSaveResult = null;
+    let imagePasteAnchor = null;
+    let imagePasteBusy = false;
 
     function platformAdapter(target) {
       return PLATFORM_ADAPTERS[target] || PLATFORM_ADAPTERS.wechat || {};
@@ -2162,6 +2172,124 @@
       };
     };
 
+    function clearImagePasteAnchor() {
+      preview.querySelectorAll('.image-paste-anchor-before,.image-paste-anchor-after').forEach(block => {
+        block.classList.remove('image-paste-anchor-before', 'image-paste-anchor-after');
+      });
+      imagePasteAnchor = null;
+    }
+
+    function setImagePasteAnchor(block, position) {
+      clearImagePasteAnchor();
+      if (!block) return;
+      const start = Number(block.dataset.sourceStart);
+      const end = Number(block.dataset.sourceEnd);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+      const before = position === 'before';
+      imagePasteAnchor = {
+        offset: before ? start : end,
+        position: before ? 'before' : 'after'
+      };
+      block.classList.add(before ? 'image-paste-anchor-before' : 'image-paste-anchor-after');
+    }
+
+    function findImagePasteAnchor(clientY) {
+      const blocks = getPreviewBlocks();
+      if (!blocks.length) return { block: null, position: 'after', offset: editor.value.length };
+      for (const block of blocks) {
+        const rect = block.getBoundingClientRect();
+        if (clientY < rect.top + rect.height / 2) {
+          return { block, position: 'before' };
+        }
+      }
+      return { block: blocks[blocks.length - 1], position: 'after' };
+    }
+
+    function clipboardImageFiles(clipboardData) {
+      if (!clipboardData) return [];
+      const fromItems = Array.from(clipboardData.items || [])
+        .filter(item => item.kind === 'file' && /^image\//i.test(item.type || ''))
+        .map(item => item.getAsFile())
+        .filter(Boolean);
+      if (fromItems.length) return fromItems;
+      return Array.from(clipboardData.files || []).filter(file => /^image\//i.test(file.type || ''));
+    }
+
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+      }
+      return btoa(binary);
+    }
+
+    async function uploadPastedImage(file) {
+      const response = await fetch(WORKBENCH_ASSET_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Workbench-Token': window.__workbenchToken || ''
+        },
+        body: JSON.stringify({
+          mimeType: file.type,
+          base64: arrayBufferToBase64(await file.arrayBuffer()),
+          originalName: file.name || ''
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.saved || !result.markdownPath) {
+        throw new Error(result.error || `image upload failed: ${response.status}`);
+      }
+      return result;
+    }
+
+    function insertImageMarkdownAt(offset, uploadedImages) {
+      const safeOffset = clamp(Number(offset) || 0, 0, editor.value.length);
+      const before = editor.value.slice(0, safeOffset);
+      const after = editor.value.slice(safeOffset);
+      const imageMarkdown = uploadedImages.map((image, index) => {
+        const alt = uploadedImages.length > 1 ? `粘贴图片 ${index + 1}` : '粘贴图片';
+        return `![${alt}](${image.markdownPath})`;
+      }).join('\n\n');
+      const leading = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
+      const trailing = after && !after.startsWith('\n\n') ? (after.startsWith('\n') ? '\n' : '\n\n') : '';
+      editor.value = `${before}${leading}${imageMarkdown}${trailing}${after}`;
+      updateEditorStats();
+      holdScrollLock('preview');
+      updatePreview('preview');
+      saveStatus.textContent = '图片已插入，正在保存正文…';
+      articleStatus.textContent = '正文和图片有修改';
+      scheduleSave();
+    }
+
+    async function pasteImagesIntoPreview(files, block) {
+      if (!files.length || imagePasteBusy || !persistenceReady || activePlatform !== 'wechat') return;
+      flushPreviewBlockSync();
+      let insertionOffset = imagePasteAnchor ? imagePasteAnchor.offset : editor.value.length;
+      if (block) {
+        const end = Number(block.dataset.sourceEnd);
+        if (Number.isFinite(end)) insertionOffset = end;
+      }
+      imagePasteBusy = true;
+      saveArticleButton.disabled = true;
+      saveStatus.textContent = `正在保存 ${files.length} 张粘贴图片…`;
+      articleStatus.textContent = '正在写入图片';
+      try {
+        const uploaded = [];
+        for (const file of files) uploaded.push(await uploadPastedImage(file));
+        clearImagePasteAnchor();
+        insertImageMarkdownAt(insertionOffset, uploaded);
+      } catch (error) {
+        saveStatus.textContent = `图片粘贴失败：${error && error.message ? error.message : '未知错误'}`;
+        articleStatus.textContent = '图片未插入';
+      } finally {
+        imagePasteBusy = false;
+        saveArticleButton.disabled = !persistenceReady;
+      }
+    }
+
     function closestEditablePreviewBlock(target) {
       const element = target && target.nodeType === Node.ELEMENT_NODE ? target : target && target.parentElement;
       return element ? element.closest('[data-preview-editable="true"][contenteditable="true"]') : null;
@@ -2200,10 +2328,24 @@
 
     preview.addEventListener('paste', event => {
       const block = closestEditablePreviewBlock(event.target);
+      const imageFiles = clipboardImageFiles(event.clipboardData || window.clipboardData);
+      if (imageFiles.length) {
+        event.preventDefault();
+        pasteImagesIntoPreview(imageFiles, block);
+        return;
+      }
       if (!block) return;
       event.preventDefault();
       const text = (event.clipboardData || window.clipboardData).getData('text/plain').replace(/\r\n?/g, '\n');
       document.execCommand('insertText', false, text);
+    });
+
+    preview.addEventListener('pointerdown', event => {
+      if (!persistenceReady || activePlatform !== 'wechat' || closestEditablePreviewBlock(event.target)) return;
+      const anchor = findImagePasteAnchor(event.clientY);
+      if (anchor.block) setImagePasteAnchor(anchor.block, anchor.position);
+      else imagePasteAnchor = { offset: anchor.offset, position: anchor.position };
+      requestAnimationFrame(() => preview.focus({ preventScroll: true }));
     });
 
     preview.addEventListener('compositionstart', event => {

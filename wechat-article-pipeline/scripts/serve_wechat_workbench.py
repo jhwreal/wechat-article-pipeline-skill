@@ -22,12 +22,21 @@ from typing import Any
 from urllib.parse import quote, urlparse
 
 import build_wechat_article_workbench as builder
-from atomic_files import atomic_replace, atomic_write_text, fsync_directory
+from atomic_files import atomic_replace, atomic_write_bytes, atomic_write_text, fsync_directory
 
 
 SAVE_ENDPOINT = "/__wechat_workbench/save"
+ASSET_ENDPOINT = "/__wechat_workbench/assets"
 STATUS_ENDPOINT = "/__wechat_workbench/status"
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
+MAX_ASSET_BYTES = 10 * 1024 * 1024
+MAX_ASSET_REQUEST_BYTES = 14 * 1024 * 1024
+ALLOWED_PASTED_IMAGE_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAKE_MANIFEST = SCRIPT_DIR / "make_wechat_publish_manifest.py"
 DEFAULT_ENV_FILE = SCRIPT_DIR.parent / ".env"
@@ -212,6 +221,28 @@ def is_allowed_host(host: str, port: int) -> bool:
     return normalized in (f"localhost:{port}", f"127.0.0.1:{port}")
 
 
+def validate_pasted_image(payload: bytes, mime_type: str) -> str:
+    extension = ALLOWED_PASTED_IMAGE_TYPES.get(mime_type)
+    if extension is None:
+        raise ValueError("unsupported image type; use PNG, JPEG, WebP, or GIF")
+    if not payload:
+        raise ValueError("pasted image is empty")
+    if len(payload) > MAX_ASSET_BYTES:
+        raise ValueError("pasted image exceeds the 10 MB limit")
+
+    signatures = {
+        "image/png": payload.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg": payload.startswith(b"\xff\xd8\xff"),
+        "image/gif": payload.startswith((b"GIF87a", b"GIF89a")),
+        "image/webp": len(payload) >= 12
+        and payload.startswith(b"RIFF")
+        and payload[8:12] == b"WEBP",
+    }
+    if not signatures[mime_type]:
+        raise ValueError("pasted image content does not match its MIME type")
+    return extension
+
+
 def manifest_refresh_metadata(manifest: dict[str, Any]) -> dict[str, Any]:
     compact = manifest.get("workbench_refresh")
     source = compact if isinstance(compact, dict) else manifest
@@ -263,6 +294,9 @@ class WorkbenchDocument:
         for path in (self.markdown_path, self.job_path, self.manifest_path):
             if not is_relative_to(path, self.workspace):
                 raise ValueError(f"Workbench companion path escapes the workspace: {path}")
+        self.image_dir = (self.workspace / "image" / self.html_path.stem).resolve()
+        if not is_relative_to(self.image_dir, self.workspace):
+            raise ValueError("Workbench image directory must be inside the workspace.")
         self.support_dir = (self.html_path.parent / "support").resolve()
         if not is_relative_to(self.support_dir, self.workspace):
             raise ValueError("Workbench support directory must be inside the workspace.")
@@ -290,6 +324,48 @@ class WorkbenchDocument:
         self._prune_job_snapshots()
         self._refresh_assets_from_job()
         self._resume_pending_manifest_refresh()
+
+    def upload_asset(self, payload: dict[str, Any]) -> dict[str, Any]:
+        mime_type = str(payload.get("mimeType") or "").strip().lower()
+        encoded = payload.get("base64")
+        if not isinstance(encoded, str) or not encoded:
+            raise ValueError("base64 image data is required")
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError("invalid base64 image data") from exc
+        extension = validate_pasted_image(image_bytes, mime_type)
+
+        with self._lock:
+            if self._state.get("recovery_required"):
+                raise RecoveryRequired(self.status())
+            self.image_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            for _attempt in range(20):
+                filename = f"pasted-{timestamp}-{secrets.token_hex(4)}{extension}"
+                image_path = (self.image_dir / filename).resolve()
+                if not is_relative_to(image_path, self.image_dir):
+                    raise ValueError("pasted image path escapes the article image directory")
+                if not image_path.exists():
+                    break
+            else:
+                raise OSError("could not allocate a unique pasted image filename")
+            atomic_write_bytes(image_path, image_bytes)
+
+        markdown_path = Path(
+            os.path.relpath(image_path, start=self.html_path.parent)
+        ).as_posix()
+        url_path = "/" + quote(
+            image_path.relative_to(self.workspace).as_posix(), safe="/"
+        )
+        return {
+            "saved": True,
+            "filename": filename,
+            "mimeType": mime_type,
+            "bytes": len(image_bytes),
+            "markdownPath": markdown_path,
+            "url": url_path,
+        }
 
     def _default_state(self) -> dict[str, Any]:
         manifest_state = "ready" if self._manifest_enabled else "not_configured"
@@ -964,7 +1040,7 @@ def make_handler(document: WorkbenchDocument):
                 "Permissions-Policy",
                 "camera=(), microphone=(), geolocation=(), payment=()",
             )
-            if request_path not in {STATUS_ENDPOINT, SAVE_ENDPOINT}:
+            if request_path not in {STATUS_ENDPOINT, SAVE_ENDPOINT, ASSET_ENDPOINT}:
                 suffix = Path(request_path).suffix.lower()
                 if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg", ".js"}:
                     self.send_header("Cache-Control", "private, max-age=60")
@@ -1005,7 +1081,8 @@ def make_handler(document: WorkbenchDocument):
             super().do_HEAD()
 
         def do_POST(self) -> None:
-            if urlparse(self.path).path != SAVE_ENDPOINT:
+            request_path = urlparse(self.path).path
+            if request_path not in {SAVE_ENDPOINT, ASSET_ENDPOINT}:
                 self.send_json(404, {"saved": False, "error": "not found"})
                 return
             try:
@@ -1016,12 +1093,16 @@ def make_handler(document: WorkbenchDocument):
                 if self.headers.get('X-Workbench-Token') != document.token: self.send_json(403,{"saved":False,"error":"invalid token"}); return
                 if self.headers.get('Content-Type','').split(';')[0].strip() != 'application/json': self.send_json(415,{"saved":False,"error":"content type"}); return
                 length = int(self.headers.get("Content-Length", "0"))
-                if length <= 0 or length > MAX_REQUEST_BYTES:
+                request_limit = MAX_ASSET_REQUEST_BYTES if request_path == ASSET_ENDPOINT else MAX_REQUEST_BYTES
+                if length <= 0 or length > request_limit:
                     raise ValueError("invalid request size")
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 if not isinstance(payload, dict):
                     raise ValueError("request body must be an object")
-                self.send_json(200, document.save(payload))
+                if request_path == ASSET_ENDPOINT:
+                    self.send_json(200, document.upload_asset(payload))
+                else:
+                    self.send_json(200, document.save(payload))
             except RevisionConflict as exc:
                 self.send_json(409, exc.current_status)
             except RecoveryRequired as exc:

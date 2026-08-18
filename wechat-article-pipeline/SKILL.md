@@ -66,7 +66,7 @@ python3 <skill>/scripts/serve_wechat_workbench.py \
 
 Keep it running. Deliver `WORKBENCH_URL` before `HTML_PATH`; direct-file mode is preview/copy-only.
 
-Mount only the active platform preview from the sole Markdown source. Cache semantic HTML and build copy adapters lazily. The platform selector drives one current-format copy button and a preflight summary. Toutiao uses WeChat HTTPS image receipts; Xiaohongshu embeds images only while copying.
+Mount only the active platform preview from the sole Markdown source. Cache semantic HTML. Toutiao uses WeChat HTTPS image receipts; Xiaohongshu embeds images only while copying.
 
 ## Fast Paths
 
@@ -112,7 +112,7 @@ Generate only listed images, then package without `--missing-only`.
 
 Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: current counter minus one, no advance. Never publish/group-send by default.
 
-After every live WeChat API command, inspect its result before doing any other work. If it returns `40164` or says the current IP is not in the Official Account API whitelist, treat that as an immediate hard stop for the entire delivery chain: do not retry, upload more assets, continue to Toutiao/Xiaohongshu, or perform unrelated packaging while the user waits. Immediately tell the user that publishing has stopped, show the outbound IP from the error, and ask them to add it to the WeChat Official Account IP whitelist. End the turn and resume only once the whitelist update is acknowledged.
+Inspect every live WeChat API result immediately. On `40164` or an IP-allowlist error, stop the entire delivery chain: do not retry, upload, package, or continue to Toutiao/Xiaohongshu. Report the outbound IP, ask the user to allowlist it, end the turn, and resume only after acknowledgment.
 
 For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first browser write. Use Chrome on the loopback workbench; use Computer Use only to paste into the external editor. Follow its state machine, one-shot paste rule, submission latch, and recovery budget.
 
@@ -128,36 +128,24 @@ For Xiaohongshu, read [publishing-xiaohongshu.md](references/publishing-xiaohong
 - Enable Toutiao `头条首发` only when the user confirms eligibility.
 - Do not use Xiaohongshu creator-platform private APIs, Cookie export, localStorage export, token extraction, or request replay for delivery.
 - Publish no external hyperlinks in WeChat, Toutiao, or Xiaohongshu bodies. Preserve source names as plain text and remove every external `href` before delivery.
-- Never absorb or defer a WeChat `40164` error inside a longer workflow. Surface it to the user immediately as a blocking result.
 
 ## Acceptance Checklist
 
 Before delivery, confirm:
 
-- final HTML is under `<workspace>/files/`
-- markdown, job JSON, image directory, and any requested manifest use the same slug
-- every requested visual is present or intentionally skipped by `--no-images`
-- every generated visual is strict 3:2 landscape unless the user explicitly requested another ratio
-- no unresolved `{{visual:*}}` remains in the HTML
-- workbench Markdown uses relative image paths; WeChat and Xiaohongshu copy inline image data, while image-bearing Toutiao copy requires an equal ordered set of HTTPS body-image URLs from the successful WeChat draft receipt
-- the platform dropdown renders WeChat, Toutiao, and Xiaohongshu from the same Markdown; Toutiao/Xiaohongshu copies retain semantic headings and original image positions
-- normal Toutiao/Xiaohongshu handoff is exactly one workbench copy and one system paste; if structure or platform-image hard gates fail, preserve the diagnostic draft and stop instead of silently repairing it paragraph by paragraph or image by image
-- `verify_wechat_article_package.py` reports `status: ok`
-- platform deliveries report result files, status, verified structure/images, and any public URL
-- WeChat, Toutiao, and Xiaohongshu body content contains zero external hyperlinks
-- workbench persistence server remains running and delivery gives its loopback URL before the HTML path
-- when no HTML workbench was produced, give the main artifact path first, then supporting paths
+- artifacts stay under the workspace, share one slug, contain every requested 3:2 visual, and leave no unresolved `{{visual:*}}`
+- `verify_wechat_article_package.py` reports `status: ok`; the persistence server remains running and its loopback URL is delivered before the HTML path
+- Markdown uses relative image paths; all previews derive from it and preserve semantic headings and image positions
+- image-bearing Toutiao copy has ordered HTTPS URLs from a successful WeChat receipt; Xiaohongshu embeds images during copy
+- Toutiao/Xiaohongshu handoff uses one workbench copy and one system paste; on a hard gate, preserve the diagnostic draft and stop
+- delivery reports result paths, status, verified structure/images, and any public URL; platform bodies contain no external links
+- without an HTML workbench, give the main artifact first
 
 ## References
 
-- [workflow.md](references/workflow.md): article structure, interaction defaults, and focus marking.
-- [image-production.md](references/image-production.md): single-pass image execution, capacity-aware image workers, and user-requested regeneration.
-- [image-rules.json](references/image-rules.json): the single source for image generation, avoid, selection, and image-influence rules.
-- [style-guide.md](references/style-guide.md): writing style, Secretary Mode, focus marks, and technical inline-code rules.
-- [job-schema.md](references/job-schema.md): image-job and workbench JSON contracts.
-- [publishing.md](references/publishing.md): official WeChat draft/preview API procedure.
-- [publishing-three-platform.md](references/publishing-three-platform.md): resumable WeChat → Toutiao → Xiaohongshu draft synchronization and aggregate results.
-- [publishing-toutiao.md](references/publishing-toutiao.md): Chrome + Computer Use Toutiao draft, publish, and public-page QA procedure.
-- [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md): Chrome + Computer Use Xiaohongshu long-article draft, two-level heading preservation, image verification, publish, and public-page QA procedure.
-- [assets/templates/wechat-md-workbench.template.v3.html](assets/templates/wechat-md-workbench.template.v3.html): template asset used by scripts; do not read it unless debugging template behavior.
+- Drafting: [workflow.md](references/workflow.md), [style-guide.md](references/style-guide.md).
+- Images: [image-production.md](references/image-production.md), [image-rules.json](references/image-rules.json).
+- Contracts: [job-schema.md](references/job-schema.md).
+- Delivery: [publishing.md](references/publishing.md), [publishing-three-platform.md](references/publishing-three-platform.md), [publishing-toutiao.md](references/publishing-toutiao.md), [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md).
+- Debug workbench rendering only: [wechat-md-workbench.template.v3.html](assets/templates/wechat-md-workbench.template.v3.html).
 - Read [.env.example](.env.example) only for requested API setup.

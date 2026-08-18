@@ -1,4 +1,4 @@
 interface:
-  display_name: "微信公众号文章流水线"
+  display_name: "wechat-article-pipeline"
   short_description: "撰写、配图、打包，并安全同步微信、头条和小红书草稿"
   default_prompt: "Use $wechat-article-pipeline to turn this topic or draft into a publish-ready Chinese article package and deliver drafts to WeChat, Toutiao, or Xiaohongshu when requested."

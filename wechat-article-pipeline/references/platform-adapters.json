@@ -5,7 +5,7 @@
     "displayName": "微信",
     "optionLabel": "微信格式",
     "panelTitle": "微信风格预览",
-    "panelDesc": "唯一内容源是左侧 Markdown；这里显示微信排版，可直接点击无图正文改字。",
+    "panelDesc": "唯一内容源是左侧 Markdown；右侧可直接改字，也可点击段落之间粘贴图片。",
     "previewLabel": "公众号图文预览",
     "copyLabel": "复制为微信格式",
     "titleMax": null,

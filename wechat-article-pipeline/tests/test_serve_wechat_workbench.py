@@ -52,6 +52,18 @@ class WorkbenchTemplateTests(unittest.TestCase):
         self.assertIn("status.assets", source)
         self.assertIn("catch", source)
 
+    def test_template_supports_pasting_images_into_preview(self):
+        source = TEMPLATE.read_text(encoding="utf-8")
+        adapters = (ROOT / "references" / "platform-adapters.json").read_text(encoding="utf-8")
+        self.assertIn("/__wechat_workbench/assets", source)
+        self.assertIn("clipboardImageFiles", source)
+        self.assertIn("uploadPastedImage", source)
+        self.assertIn("insertImageMarkdownAt", source)
+        self.assertIn("pasteImagesIntoPreview", source)
+        self.assertIn('id="preview" class="preview" tabindex="0"', source)
+        self.assertIn("点击段落之间后粘贴图片", source)
+        self.assertIn("右侧可直接改字，也可点击段落之间粘贴图片", adapters)
+
     def test_save_button_belongs_to_markdown_topbar_group_and_matches_primary_action(self):
         source = TEMPLATE.read_text(encoding="utf-8")
         self.assertIn('<div class="topbar-primary">', source)
@@ -106,6 +118,59 @@ class WorkbenchTemplateTests(unittest.TestCase):
 
 
 class WorkbenchDocumentTests(unittest.TestCase):
+    def test_pasted_image_is_saved_in_article_directory_with_relative_markdown_path(self):
+        module = load_server_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            files_dir = workspace / "files"
+            files_dir.mkdir()
+            html_path = files_dir / "demo.html"
+            html_path.write_text("<html></html>", encoding="utf-8")
+            document = module.WorkbenchDocument(html_path, workspace)
+
+            result = document.upload_asset(
+                {
+                    "mimeType": "image/png",
+                    "base64": module.base64.b64encode(
+                        b"\x89PNG\r\n\x1a\nclipboard-image"
+                    ).decode("ascii"),
+                    "originalName": "../../escape.png",
+                }
+            )
+            document.close()
+
+            saved = workspace / "image" / "demo" / result["filename"]
+            self.assertTrue(result["saved"])
+            self.assertTrue(saved.is_file())
+            self.assertEqual(result["markdownPath"], f"../image/demo/{result['filename']}")
+            self.assertEqual(result["url"], f"/image/demo/{result['filename']}")
+            self.assertEqual(saved.read_bytes(), b"\x89PNG\r\n\x1a\nclipboard-image")
+            self.assertFalse((workspace / "escape.png").exists())
+
+    def test_pasted_image_rejects_unsupported_or_mismatched_content(self):
+        module = load_server_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            html_path = workspace / "demo.html"
+            html_path.write_text("<html></html>", encoding="utf-8")
+            document = module.WorkbenchDocument(html_path, workspace)
+
+            with self.assertRaisesRegex(ValueError, "unsupported image type"):
+                document.upload_asset(
+                    {
+                        "mimeType": "image/svg+xml",
+                        "base64": module.base64.b64encode(b"<svg></svg>").decode("ascii"),
+                    }
+                )
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                document.upload_asset(
+                    {
+                        "mimeType": "image/png",
+                        "base64": module.base64.b64encode(b"not-a-png").decode("ascii"),
+                    }
+                )
+            document.close()
+
     def test_visual_staleness_tracks_relevant_text_until_asset_changes(self):
         module = load_server_module()
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -45,13 +45,13 @@ class SkillP0ContractTest(unittest.TestCase):
         self.assertIsNotNone(version_match)
         assert version_match is not None
         version = version_match.group(1)
-        self.assertEqual(version, "1.6.1")
+        self.assertEqual(version, "1.7.0")
         self.assertEqual(skill_version, version)
         self.assertIn(f"V {version}（当前版本）", readme)
         self.assertIn(f"V {version} (current version)", readme)
         self.assertIn("PROJECT_VERSION", workflow)
         self.assertIn("agents/openai.yaml", workflow)
-        self.assertIn('display_name: "微信公众号文章流水线"', agent_metadata)
+        self.assertIn('display_name: "wechat-article-pipeline"', agent_metadata)
         self.assertIn("$wechat-article-pipeline", agent_metadata)
 
     def test_platform_adapter_registry_is_the_workbench_rule_source(self) -> None:
