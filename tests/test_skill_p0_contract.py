@@ -120,6 +120,17 @@ class SkillP0ContractTest(unittest.TestCase):
         self.assertIn("不得在填写标题、粘贴正文、进入预览、点击最终发布或定时发布前再次询问", guide)
         self.assertIn("如果用户已经把日期、小时和分钟说清楚，不得再次确认", guide)
 
+    def test_toutiao_scheduled_publish_uses_exact_button_allowlist(self) -> None:
+        guide = (SKILL_DIR / "references" / "publishing-toutiao.md").read_text(encoding="utf-8")
+
+        self.assertIn("### 定时发布入口白名单", guide)
+        self.assertIn("`预览`、`定时发布`、`预览并发布` 三个相邻按钮", guide)
+        self.assertIn("只允许点击文字精确等于 `定时发布` 的按钮", guide)
+        self.assertIn("`预览并发布` 和任何仅标为 `发布` 的按钮属于立即发布路径", guide)
+        self.assertIn("定时任务中禁止点击", guide)
+        self.assertIn("旧元素序号立即失效", guide)
+        self.assertIn("不得按位置猜测、使用坐标点击或改点 `预览并发布`", guide)
+
     def test_workbench_template_keeps_wechat_data_images_without_polluting_markdown(self) -> None:
         template = (SKILL_DIR / "assets" / "templates" / "wechat-md-workbench.template.v3.html").read_text(encoding="utf-8")
 
