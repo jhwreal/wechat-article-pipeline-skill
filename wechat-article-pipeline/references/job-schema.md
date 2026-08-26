@@ -146,4 +146,4 @@ Author, optional preview account, AppID, and AppSecret are local defaults. Keep 
 
 New manifests include `source_fingerprint`. Package verification recomputes it from the current job and resolved image bytes, so an old manifest left beside a newly edited article or regenerated image is reported as stale. Historical manifests without this field remain readable.
 
-Access tokens are cached locally in `~/.codex/wechat-article-pipeline/wechat-token-cache.json`, outside the repo.
+Access tokens are cached locally in `~/.codex/wechat-article-pipeline/wechat-token-cache.json`, outside the repo. The `.codex` directory name is historical; every agent runtime shares this same local cache path.

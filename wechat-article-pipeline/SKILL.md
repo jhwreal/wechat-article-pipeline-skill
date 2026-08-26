@@ -12,7 +12,7 @@ Produce a complete local article package from the user's topic, draft, notes, or
 - Use this skill for writing, packaging, formatting, or polishing a WeChat/公众号 article.
 - If the user says "打开秘书模式", enable it for this request only and read its section in [style-guide.md](references/style-guide.md). Do not infer or mention it unless asked.
 - Infer a brief from rough ideas. Ask only when ambiguity changes the conclusion, audience, legal risk, account, or delivery target.
-- If the user asks for "不配图", "只排版", "直接格式化", or similar, use the no-image path.
+- If the user asks for "不配图", "只排版", "直接格式化", or similar — or the runtime cannot generate images (say so) — use the no-image path.
 - If the user asks to补图, continue, or fix missing assets, use the missing-image path and do not rebuild finished images.
 - If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.
 - Toutiao: use Computer Use to operate the user's real Chrome end to end and follow [publishing-toutiao.md](references/publishing-toutiao.md). Do not use Browser/Chrome browser automation, Playwright, CDP, DOM evaluation, or background tab objects for any Toutiao UI step.
@@ -122,8 +122,8 @@ For Xiaohongshu, read [publishing-xiaohongshu.md](references/publishing-xiaohong
 
 - Do not overwrite an existing package unless the user asked for that exact slug or file.
 - Do not delete old markdown, images, jobs, manifests, or support files without explicit permission.
-- Do not install dependencies, modify Codex config, switch accounts, or edit `.env` credentials unless the user explicitly approves that action.
-- Do not start nested Codex runtimes or custom image API runners for normal image work.
+- Do not install dependencies, modify agent config, switch accounts, or edit `.env` credentials unless the user explicitly approves that action.
+- Do not start nested agent runtimes or custom image API runners for normal image work.
 - Keep `cover.png` as the hero; derived WeChat crop previews never replace it.
 - Enable Toutiao `头条首发` only when the user confirms eligibility.
 - Do not use Xiaohongshu creator-platform private APIs, Cookie export, localStorage export, token extraction, or request replay for delivery.

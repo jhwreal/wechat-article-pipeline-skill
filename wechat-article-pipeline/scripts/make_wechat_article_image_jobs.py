@@ -41,7 +41,7 @@ _IMAGE_RULES_CACHE: dict[str, Any] | None = None
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Create built-in Codex image generation jobs from a finished WeChat article markdown file."
+        description="Create image generation jobs from a finished WeChat article markdown file."
     )
     parser.add_argument("article", type=Path, help="Path to the article markdown file.")
     parser.add_argument("out", type=Path, help="Path to write the image jobs JSON.")

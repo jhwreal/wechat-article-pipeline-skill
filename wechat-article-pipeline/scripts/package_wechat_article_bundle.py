@@ -145,7 +145,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Reuse the selected account's current original-issue counter minus one for a revision "
-            "of the same article in the current Codex conversation. The resulting signed manifest "
+            "of the same article in the current agent conversation. The resulting signed manifest "
             "will not consume another issue after draft creation."
         ),
     )

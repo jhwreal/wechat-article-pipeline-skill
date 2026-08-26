@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Derive WeChat article image jobs and package the final HTML once images "
-            "have been generated directly by Codex's built-in image tool."
+            "have been generated directly by the agent's image generation tool."
         )
     )
     parser.add_argument("article", type=Path, help="Path to the source markdown article.")
@@ -79,7 +79,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Treat this package as a revision of the same article already drafted in the current "
-            "Codex conversation. Reuse the current original-issue counter minus one and do not "
+            "agent conversation. Reuse the current original-issue counter minus one and do not "
             "consume another issue when the draft is created."
         ),
     )
@@ -96,7 +96,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--plan-only",
         action="store_true",
-        help="Only write the image jobs JSON. Use this before direct Codex image generation.",
+        help="Only write the image jobs JSON. Use this before direct agent image generation.",
     )
     return parser.parse_args()
 
@@ -166,7 +166,7 @@ def assert_images_ready(jobs_path: Path, images_dir: Path) -> None:
         image_dir_text = str(images_dir)
         names = ", ".join(missing)
         raise SystemExit(
-            "Image files are not ready yet. Generate them directly with Codex's built-in image_gen tool, "
+            "Image files are not ready yet. Generate them directly with the agent's image generation tool, "
             f"save them into {image_dir_text}, then rerun this command. Missing: {names}"
         )
 
@@ -307,7 +307,7 @@ def main() -> None:
 
     if args.plan_only:
         print(f"Wrote image jobs to {jobs_out}")
-        print(f"Generate images directly with Codex image_gen and save them under {images_dir}")
+        print(f"Generate images directly with the agent's image generation tool and save them under {images_dir}")
         return
 
     assert_images_ready(jobs_out, images_dir)

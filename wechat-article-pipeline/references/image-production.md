@@ -2,6 +2,8 @@
 
 Use this file after `postprocess_wechat_article.py --plan-only` creates `<slug>.image-jobs.json` and before final packaging.
 
+Capability check first: image generation relies on whatever the running agent provides — a built-in image tool (for example Codex `image_gen`), or an image-generation skill, CLI, or MCP tool configured in the user's environment. If no such capability is available, stop before the queue: tell the user plainly that images cannot be generated in this environment, and offer either the no-image path or packaging with user-supplied images saved under `<workspace>/image/<slug>/`. Do not fabricate image files, substitute placeholder graphics, or silently skip slots.
+
 All generation, avoid, regeneration, and image-influence rules live in [image-rules.json](image-rules.json). Do not duplicate or edit those rules here.
 
 Default execution is single-pass: no A/B candidates and no agent-side image review of any slot, including the cover. Unless the user explicitly requests another ratio, every generated cover, body, and closing image must be strict 3:2 landscape; prefer a native 1536×1024 result. The user decides whether any image needs another generation pass.

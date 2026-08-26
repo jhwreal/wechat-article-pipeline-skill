@@ -18,7 +18,7 @@ IGNORED_SUFFIXES = {".pyc", ".pyo"}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Check release metadata and Codex installation consistency for the article skill."
+        description="Check release metadata and installed-skill consistency for the article skill."
     )
     parser.add_argument(
         "--source",
@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
         "--installed",
         type=Path,
         default=Path.home() / ".codex" / "skills" / "wechat-article-pipeline",
-        help="Installed Codex skill directory.",
+        help="Installed skill directory (for example ~/.codex/skills/... or ~/.claude/skills/...).",
     )
     parser.add_argument("--skip-installed", action="store_true")
     parser.add_argument("--require-installed-sync", action="store_true")
@@ -145,7 +145,7 @@ def main() -> None:
     report = inspect(args.source, installed)
     if args.require_installed_sync and not report["installed"].get("synced"):
         report["status"] = "error"
-        report["errors"].append("installed Codex skill is not synchronized")
+        report["errors"].append("installed skill copy is not synchronized")
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
