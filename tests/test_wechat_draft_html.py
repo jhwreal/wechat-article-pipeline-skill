@@ -138,6 +138,31 @@ PROJECTS.md
             html,
         )
 
+    def test_malformed_bold_wrapped_table_row_blocks_draft_generation(self) -> None:
+        markdown = """| 路线 | Codex | Instinct |
+|---|---|---|
+| 本质 | 专业执行 Agent | 私人助理 |
+**| 最适合谁 | 专业用户 | 普通消费者 |**
+"""
+
+        with self.assertRaisesRegex(
+            SystemExit,
+            r"Malformed Markdown table.*Do not wrap a whole row as \*\*\|",
+        ):
+            manifest_builder.markdown_to_wechat_html(markdown)
+
+    def test_bold_table_cells_remain_a_real_table(self) -> None:
+        markdown = """| 路线 | Codex | Instinct |
+|---|---|---|
+| **最适合谁** | **专业用户** | **普通消费者** |
+"""
+
+        html = manifest_builder.markdown_to_wechat_html(markdown)
+
+        self.assertEqual(html.count("<table "), 1)
+        self.assertEqual(html.count("<strong "), 3)
+        self.assertNotIn("|---", html)
+
     def test_publisher_rejects_unstable_draft_tags(self) -> None:
         manifest = {
             "title": "标题",

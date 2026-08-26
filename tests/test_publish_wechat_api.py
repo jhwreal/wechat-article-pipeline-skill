@@ -259,6 +259,25 @@ class PublishWechatApiTest(unittest.TestCase):
         self.assertEqual(result["table_count"], 1)
         self.assertEqual(result["raw_markdown_table_header_count"], 0)
 
+    def test_verify_draft_rejects_lost_tables(self) -> None:
+        original_api_post_json = publisher.api_post_json
+        publisher.api_post_json = lambda *_args, **_kwargs: {
+            "news_item": [{
+                "title": "预期标题",
+                "content": "<p>| 表头 | 内容 |</p>",
+            }]
+        }
+        try:
+            with self.assertRaisesRegex(RuntimeError, "expected number of tables"):
+                publisher.verify_draft_preserves_tables(
+                    "media-id",
+                    "预期标题",
+                    "token",
+                    expected_table_count=1,
+                )
+        finally:
+            publisher.api_post_json = original_api_post_json
+
     def test_open_draft_switch_implies_switch_check(self) -> None:
         args = SimpleNamespace(
             dry_run=False,

@@ -860,11 +860,13 @@ def validate_manifest(manifest: dict[str, Any], content_html: str) -> dict[str, 
         content_html,
     )
     validate_draft_html_safety(safety_html)
+    table_count = len(re.findall(r"<table\b", content_html, re.I))
     return {
         "title": title,
         "digest_length": len(digest),
         "content_html_length": len(content_html),
         "body_data_image_count": len(body_image_sources),
+        "table_count": table_count,
         "cover_is_data_uri": True,
         "draft_html_mode": "paragraph_and_table_safe",
     }
@@ -1014,13 +1016,30 @@ def verify_draft(media_id: str, expected_title: str, access_token: str) -> dict[
             f"({returned_title!r} != {expected_title!r})."
         )
     returned_content = str(first.get("content", "")) if isinstance(first, dict) else ""
+    table_count = len(re.findall(r"<table\b", returned_content, re.I))
     return {
         "verified": True,
         "title": returned_title,
         "article_count": len(articles) if isinstance(articles, list) else 0,
-        "table_count": len(re.findall(r"<table\b", returned_content, re.I)),
+        "table_count": table_count,
         "raw_markdown_table_header_count": returned_content.count("| 模型 |"),
     }
+
+
+def verify_draft_preserves_tables(
+    media_id: str,
+    expected_title: str,
+    access_token: str,
+    expected_table_count: int,
+) -> dict[str, Any]:
+    result = verify_draft(media_id, expected_title, access_token)
+    actual_table_count = int(result.get("table_count", 0))
+    if actual_table_count != expected_table_count:
+        raise RuntimeError(
+            "Draft verification failed: WeChat did not preserve the expected number of tables "
+            f"({actual_table_count} != {expected_table_count})."
+        )
+    return result
 
 
 def send_preview(
@@ -1346,7 +1365,12 @@ def resume_publish_run(
             run,
             "verify_draft",
             "draft_verification",
-            lambda: verify_draft(media_id, validation["title"], access_token),
+            lambda: verify_draft_preserves_tables(
+                media_id,
+                validation["title"],
+                access_token,
+                validation["table_count"],
+            ),
         )
     if operation_requested(run, "send_preview") and operation_state_value(run, "send_preview") != "succeeded":
         run_checkpointed_operation(
@@ -1443,7 +1467,12 @@ def create_publish_run(
             run,
             "verify_draft",
             "draft_verification",
-            lambda: verify_draft(media_id, validation["title"], access_token),
+            lambda: verify_draft_preserves_tables(
+                media_id,
+                validation["title"],
+                access_token,
+                validation["table_count"],
+            ),
         )
     if args.send_preview:
         run_checkpointed_operation(

@@ -382,14 +382,36 @@ def markdown_table_html(block: str) -> str | None:
         line.removeprefix("|").removesuffix("|").split("|")
         for line in lines
     ]
-    if len(raw_rows[0]) == 0 or len(raw_rows[1]) != len(raw_rows[0]):
+    delimiters = [cell.strip() for cell in raw_rows[1]]
+    looks_like_table = (
+        "|" in lines[0]
+        and "|" in lines[1]
+        and bool(delimiters)
+        and all(re.fullmatch(r":?-{3,}:?", cell) for cell in delimiters)
+    )
+    if not looks_like_table:
         return None
 
-    delimiters = [cell.strip() for cell in raw_rows[1]]
-    if not all(re.fullmatch(r":?-{3,}:?", cell) for cell in delimiters):
-        return None
-    if any(len(row) != len(raw_rows[0]) for row in raw_rows[2:]):
-        return None
+    expected_columns = len(raw_rows[0])
+    malformed_row_index = next(
+        (
+            index
+            for index, row in enumerate(raw_rows[1:], start=2)
+            if len(row) != expected_columns
+        ),
+        None,
+    )
+    if expected_columns == 0 or malformed_row_index is not None:
+        offending_index = malformed_row_index or 1
+        offending_row = lines[offending_index - 1]
+        raise SystemExit(
+            "Malformed Markdown table in the WeChat publish body: "
+            f"row {offending_index} has "
+            f"{len(raw_rows[offending_index - 1])} columns; expected {expected_columns}. "
+            f"Offending row: {offending_row!r}. "
+            "Do not wrap a whole row as **| ... |**; bold the individual cell contents instead, "
+            "for example: | **label** | **value** |. Draft creation is blocked until the table is fixed."
+        )
 
     alignments: list[str] = []
     for delimiter in delimiters:
@@ -586,6 +608,10 @@ def main() -> None:
     }
     env_file_manifest = str(args.env_file.expanduser())
 
+    content_html = inject_signature_html(
+        markdown_to_wechat_html(draft_markdown),
+        signature_label(job),
+    )
     manifest = {
         "schema_version": 1,
         "workbench_refresh": {
@@ -599,7 +625,7 @@ def main() -> None:
         "title": title,
         "author": author,
         "digest": extract_digest(markdown, title),
-        "content_html": inject_signature_html(markdown_to_wechat_html(draft_markdown), signature_label(job)),
+        "content_html": content_html,
         "content_text": strip_markdown(draft_markdown),
         "source_fingerprint": compute_source_fingerprint(
             job,
