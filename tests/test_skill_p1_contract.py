@@ -484,8 +484,12 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("必须保留全部图片、单级标题、列表、加粗和原始顺序", toutiao)
         self.assertIn("不自行改换正文导入方式", toutiao)
         self.assertIn("提交前硬门槛", toutiao)
-        self.assertIn("外部链接数量必须为 0", toutiao)
-        self.assertIn("按头条私有图片 URL 去重后的图片数等于预期图片数", toutiao)
+        self.assertIn("正文中的外部 `href` 数量为 0", toutiao)
+        self.assertIn(
+            "Computer Use 逐屏核验的可见图片块与工作台复制状态中的预期图片数一致",
+            toutiao,
+        )
+        self.assertNotIn("按头条私有图片 URL", toutiao)
         self.assertIn("头条图文默认选择 `投放广告赚收益`", toutiao)
         self.assertIn("不要把“去除微信正文里的广告卡片”误解为关闭头条广告收益", toutiao)
         self.assertIn("两个广告选项都未选中时，不得保存草稿或提交", toutiao)
