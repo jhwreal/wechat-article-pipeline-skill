@@ -43,12 +43,97 @@ test('line number is derived from the caret offset', () => {
   assert.equal(getLineNumberAtOffset('第一行\n第二行\n第三行', 999), 3);
 });
 
+test('line start offsets keep preview-driven scrolling and textarea focus aligned', () => {
+  const source = [
+    extractFunction('getLineStartOffset'),
+    'return getLineStartOffset;'
+  ].join('\n');
+  const getLineStartOffset = new Function(source)();
+  const markdown = '第一行\n第二行很长\n第三行';
+
+  assert.equal(getLineStartOffset(markdown, 1), 0);
+  assert.equal(getLineStartOffset(markdown, 2), 4);
+  assert.equal(getLineStartOffset(markdown, 3), 10);
+  assert.equal(getLineStartOffset(markdown, 99), markdown.length);
+});
+
 test('caret events and viewport scrolling use different sync anchors', () => {
   assert.match(template, /schedulePreviewUpdate\('editor',\s*'caret'\)/);
-  assert.match(template, /addEventListener\('click',\s*scheduleCaretSync\)/);
-  assert.match(template, /addEventListener\('keyup',\s*scheduleCaretSync\)/);
-  assert.match(template, /addEventListener\('select',\s*scheduleCaretSync\)/);
+  assert.match(template, /addEventListener\('click',\s*scheduleEditorCaretSync\)/);
+  assert.match(template, /addEventListener\('keyup',\s*scheduleEditorCaretSync\)/);
+  assert.match(template, /addEventListener\('select',\s*handleEditorSelectionSync\)/);
+  assert.match(template, /const scheduleEditorCaretSync = \(\) => \{[\s\S]*?scheduleCaretSync\(\)/);
   assert.match(template, /syncPreviewToEditor\('viewport'\)/);
+});
+
+test('clicking the preview maps the pointer position back to a markdown line', () => {
+  const source = [
+    'const clamp = (value, min, max) => Math.min(Math.max(value, min), max);',
+    extractFunction('getPreviewLineAtPoint'),
+    'return getPreviewLineAtPoint;'
+  ].join('\n');
+  const getPreviewLineAtPoint = new Function(source)();
+  const block = {
+    dataset: { sourceLine: '10', sourceEndLine: '14' },
+    getBoundingClientRect: () => ({ top: 100, height: 200 })
+  };
+
+  assert.equal(getPreviewLineAtPoint(block, 100), 10);
+  assert.equal(getPreviewLineAtPoint(block, 200), 12);
+  assert.equal(getPreviewLineAtPoint(block, 300), 14);
+  assert.match(template, /preview\.addEventListener\('click',\s*syncEditorToPreviewPoint\)/);
+});
+
+test('preview-driven selection marks the matching wrapped markdown line', () => {
+  const source = [
+    extractFunction('findEditorLineForScrollTop'),
+    'return findEditorLineForScrollTop;'
+  ].join('\n');
+  const findEditorLineForScrollTop = new Function(source)();
+
+  assert.equal(findEditorLineForScrollTop(0, [0, 26, 78, 104]), 1);
+  assert.equal(findEditorLineForScrollTop(50, [0, 26, 78, 104]), 2);
+  assert.equal(findEditorLineForScrollTop(80, [0, 26, 78, 104]), 3);
+  assert.match(template, /id="editorSyncMarker"[^>]*>▶<\/span>/);
+  assert.match(template, /scrollEditorToLine\(lineNo, true\)/);
+  assert.match(template, /setEditorSelectionToLine\(lineIndex \+ 1\)/);
+  assert.match(template, /editorSyncMarker\.title = `右侧对应 Markdown 第 \$\{editorSyncMarkerLine\} 行`/);
+});
+
+test('delayed programmatic scroll events cannot pull focus back to the other pane', () => {
+  const source = [
+    extractFunction('classifyScrollEvent'),
+    'return classifyScrollEvent;'
+  ].join('\n');
+  const classifyScrollEvent = new Function(source)();
+
+  assert.equal(classifyScrollEvent(500, 500, null, 'editor'), 'programmatic');
+  assert.equal(classifyScrollEvent(520, 500, 'editor', 'editor'), 'user');
+  assert.equal(classifyScrollEvent(500, null, 'editor', 'editor'), 'locked');
+  assert.equal(classifyScrollEvent(500, null, null, 'editor'), 'user');
+  assert.match(template, /pendingPreviewScrollTop = next;\s*previewShell\.scrollTop = next/);
+  assert.match(template, /pendingEditorScrollTop = next;\s*editor\.scrollTop = next/);
+});
+
+test('leaving the preview for the editor keeps the markdown caret authoritative', () => {
+  assert.match(
+    template,
+    /preview\.addEventListener\('focusout',[\s\S]*?document\.activeElement === editor[\s\S]*?updatePreview\('editor', 'caret'\)/
+  );
+});
+
+test('preview scroll drives the editor only after real preview interaction', () => {
+  const source = [
+    extractFunction('shouldPreviewScrollDriveEditor'),
+    'return shouldPreviewScrollDriveEditor;'
+  ].join('\n');
+  const shouldPreviewScrollDriveEditor = new Function(source)();
+
+  assert.equal(shouldPreviewScrollDriveEditor('programmatic', true), false);
+  assert.equal(shouldPreviewScrollDriveEditor('user', false), false);
+  assert.equal(shouldPreviewScrollDriveEditor('user', true), true);
+  assert.match(template, /editor\.addEventListener\('pointerdown',[\s\S]*?clearPreviewScrollIntent\(\)/);
+  assert.match(template, /previewShell\.addEventListener\('wheel',\s*notePreviewScrollIntent/);
 });
 
 test('preview synchronization adds no artificial bottom space', () => {

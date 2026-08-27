@@ -45,7 +45,7 @@ class SkillP0ContractTest(unittest.TestCase):
         self.assertIsNotNone(version_match)
         assert version_match is not None
         version = version_match.group(1)
-        self.assertEqual(version, "1.7.0")
+        self.assertEqual(version, "1.7.1")
         self.assertEqual(skill_version, version)
         self.assertIn(f"V {version}（当前版本）", readme)
         self.assertIn(f"V {version} (current version)", readme)

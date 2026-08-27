@@ -67,7 +67,7 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 ["https://mmbiz.qpic.cn/body.png?from=appmsg"],
             )
             self.assertEqual(bootstrap["platformImageSource"], str(receipt.resolve()))
-            self.assertEqual(bootstrap["buildInfo"]["skillVersion"], "1.7.0")
+            self.assertEqual(bootstrap["buildInfo"]["skillVersion"], "1.7.1")
             self.assertEqual(bootstrap["buildInfo"]["workbenchSchemaVersion"], 3)
             self.assertEqual(
                 set(bootstrap["platformAdapters"]),

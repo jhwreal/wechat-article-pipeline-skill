@@ -180,7 +180,7 @@
     .panel-title { font-size: 14px; font-weight: 700; }
     .panel-desc { font-size: 12px; color: var(--muted); }
 
-    .editor-wrap { flex: 1; min-height: 0; background: var(--panel); }
+    .editor-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--panel); }
     #editor {
       width: 100%;
       height: 100%;
@@ -188,13 +188,36 @@
       border: 0;
       outline: none;
       resize: none;
-      padding: 22px 22px 30px;
+      padding: 22px 22px 30px 38px;
       font-size: 15px;
       line-height: 1.75;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
       background: linear-gradient(180deg, #ffffff, #fbfcff);
       color: #0f172a;
       tab-size: 2;
+    }
+    .editor-sync-marker {
+      position: absolute;
+      left: 12px;
+      z-index: 2;
+      color: var(--primary);
+      font-size: 13px;
+      line-height: 1;
+      transform: translateY(-50%);
+      pointer-events: none;
+      text-shadow: 0 1px 0 #fff;
+      transition: top 70ms ease, opacity 100ms ease;
+    }
+    .editor-sync-marker[hidden] { display: none; }
+    .editor-line-measure {
+      position: absolute;
+      left: -100000px;
+      top: 0;
+      height: auto;
+      min-height: 0;
+      overflow: hidden;
+      visibility: hidden;
+      pointer-events: none;
     }
 
     .preview-shell {
@@ -615,6 +638,8 @@
         </div>
       </div>
       <div class="editor-wrap">
+        <span id="editorSyncMarker" class="editor-sync-marker" aria-hidden="true" hidden>▶</span>
+        <div id="editorLineMeasure" class="editor-line-measure" aria-hidden="true"></div>
         <textarea id="editor" spellcheck="false"></textarea>
       </div>
       <div class="statusbar">
@@ -684,6 +709,8 @@
     const WORKBENCH_SAVE_ENDPOINT = '/__wechat_workbench/save';
     const WORKBENCH_ASSET_ENDPOINT = '/__wechat_workbench/assets';
     const editor = document.getElementById('editor');
+    const editorSyncMarker = document.getElementById('editorSyncMarker');
+    const editorLineMeasure = document.getElementById('editorLineMeasure');
     const preview = document.getElementById('preview');
     const previewShell = document.querySelector('.preview-shell');
     const phoneFrame = document.querySelector('.phone-frame');
@@ -715,7 +742,16 @@
     let persistenceReady = false;
     let activeScrollSource = null;
     let scrollReleaseTimer = null;
+    let pendingEditorScrollTop = null;
+    let pendingPreviewScrollTop = null;
+    let pendingEditorSelectionOffset = null;
+    let previewPointerActive = false;
+    let previewScrollIntentUntil = 0;
     let caretSyncFrame = null;
+    let editorSyncMarkerLine = null;
+    let editorLineLayoutSource = null;
+    let editorLineLayoutSignature = '';
+    let editorLineLayoutTops = [0];
     let saveFeedbackTimer = null;
     let saveFeedbackPointerType = 'keyboard';
     let previewComposing = false;
@@ -1258,8 +1294,105 @@
       return getLineNumberAtOffset(editor.value, getActiveSelectionOffset(editor));
     }
 
+    function getLineStartOffset(text, lineNo) {
+      const targetLine = Math.max(1, Math.round(Number(lineNo) || 1));
+      let offset = 0;
+      for (let currentLine = 1; currentLine < targetLine; currentLine += 1) {
+        const newline = text.indexOf('\n', offset);
+        if (newline === -1) return text.length;
+        offset = newline + 1;
+      }
+      return offset;
+    }
+
+    function getEditorLineLayout() {
+      const styles = getComputedStyle(editor);
+      const signature = [
+        editor.clientWidth,
+        styles.fontFamily,
+        styles.fontSize,
+        styles.fontWeight,
+        styles.letterSpacing,
+        styles.lineHeight,
+        styles.paddingLeft,
+        styles.paddingRight,
+        styles.tabSize,
+        styles.wordBreak,
+        styles.overflowWrap
+      ].join('|');
+      if (editorLineLayoutSource === editor.value && editorLineLayoutSignature === signature) {
+        return editorLineLayoutTops;
+      }
+
+      const copiedStyles = [
+        'fontFamily', 'fontSize', 'fontStyle', 'fontWeight', 'letterSpacing', 'lineHeight',
+        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tabSize',
+        'textIndent', 'textTransform', 'wordBreak', 'overflowWrap'
+      ];
+      copiedStyles.forEach(name => {
+        editorLineMeasure.style[name] = styles[name];
+      });
+      editorLineMeasure.style.width = `${editor.clientWidth}px`;
+      editorLineMeasure.style.boxSizing = 'border-box';
+      editorLineMeasure.style.whiteSpace = 'pre-wrap';
+
+      const fragment = document.createDocumentFragment();
+      editor.value.split('\n').forEach(text => {
+        const line = document.createElement('div');
+        line.style.minHeight = styles.lineHeight;
+        line.textContent = text || '\u200b';
+        fragment.appendChild(line);
+      });
+      editorLineMeasure.replaceChildren(fragment);
+
+      const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+      editorLineLayoutTops = Array.from(editorLineMeasure.children).map(line => line.offsetTop - paddingTop);
+      if (!editorLineLayoutTops.length) editorLineLayoutTops = [0];
+      editorLineLayoutSource = editor.value;
+      editorLineLayoutSignature = signature;
+      return editorLineLayoutTops;
+    }
+
+    function findEditorLineForScrollTop(scrollTop, lineTops) {
+      let low = 0;
+      let high = Math.max(0, lineTops.length - 1);
+      while (low < high) {
+        const middle = Math.ceil((low + high) / 2);
+        if (lineTops[middle] <= scrollTop + 1) low = middle;
+        else high = middle - 1;
+      }
+      return low + 1;
+    }
+
     function getFirstVisibleEditorLine() {
-      return Math.max(1, Math.floor(editor.scrollTop / getEditorLineHeight()) + 1);
+      return findEditorLineForScrollTop(editor.scrollTop, getEditorLineLayout());
+    }
+
+    function clearEditorSyncMarker() {
+      editorSyncMarkerLine = null;
+      editorSyncMarker.hidden = true;
+    }
+
+    function updateEditorSyncMarker() {
+      if (editorSyncMarkerLine === null) {
+        editorSyncMarker.hidden = true;
+        return;
+      }
+      const lineTops = getEditorLineLayout();
+      const lineIndex = clamp(editorSyncMarkerLine - 1, 0, lineTops.length - 1);
+      const styles = getComputedStyle(editor);
+      const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+      const markerTop = editor.offsetTop + paddingTop + lineTops[lineIndex] - editor.scrollTop + getEditorLineHeight() / 2;
+      const editorTop = editor.offsetTop;
+      const editorBottom = editorTop + editor.clientHeight;
+      editorSyncMarker.hidden = markerTop < editorTop || markerTop > editorBottom;
+      if (!editorSyncMarker.hidden) editorSyncMarker.style.top = `${markerTop}px`;
+    }
+
+    function setEditorSyncMarker(lineNo) {
+      editorSyncMarkerLine = Math.max(1, Math.round(Number(lineNo) || 1));
+      editorSyncMarker.title = `右侧对应 Markdown 第 ${editorSyncMarkerLine} 行`;
+      updateEditorSyncMarker();
     }
 
     function getMarkdownLineCount() {
@@ -1327,6 +1460,15 @@
       return 1;
     }
 
+    function getPreviewLineAtPoint(block, clientY) {
+      if (!block) return null;
+      const startLine = Number(block.dataset.sourceLine) || 1;
+      const endLine = Math.max(startLine, Number(block.dataset.sourceEndLine) || startLine);
+      const rect = block.getBoundingClientRect();
+      const ratio = rect.height > 0 ? clamp((clientY - rect.top) / rect.height, 0, 1) : 0;
+      return Math.round(startLine + (endLine - startLine) * ratio);
+    }
+
     function holdScrollLock(source) {
       activeScrollSource = source;
       clearTimeout(scrollReleaseTimer);
@@ -1335,19 +1477,95 @@
       }, 80);
     }
 
+    function classifyScrollEvent(currentScrollTop, expectedScrollTop, source, blockedSource) {
+      if (expectedScrollTop !== null) {
+        return Math.abs(currentScrollTop - expectedScrollTop) <= 1 ? 'programmatic' : 'user';
+      }
+      return source === blockedSource ? 'locked' : 'user';
+    }
+
+    function notePreviewScrollIntent(event) {
+      if (event.type === 'pointerdown') previewPointerActive = true;
+      previewScrollIntentUntil = performance.now() + 800;
+      holdScrollLock('preview');
+    }
+
+    function clearPreviewScrollIntent() {
+      previewPointerActive = false;
+      previewScrollIntentUntil = 0;
+    }
+
+    function hasPreviewScrollIntent() {
+      return previewPointerActive || performance.now() <= previewScrollIntentUntil;
+    }
+
+    function shouldPreviewScrollDriveEditor(eventKind, hasUserIntent) {
+      return eventKind === 'user' && hasUserIntent;
+    }
+
+    function setPreviewScrollTop(target) {
+      const maxScroll = Math.max(0, previewShell.scrollHeight - previewShell.clientHeight);
+      const next = clamp(target, 0, maxScroll);
+      if (Math.abs(previewShell.scrollTop - next) <= 1) {
+        pendingPreviewScrollTop = null;
+        return;
+      }
+      pendingPreviewScrollTop = next;
+      previewShell.scrollTop = next;
+    }
+
+    function setEditorScrollTop(target) {
+      const maxScroll = Math.max(0, editor.scrollHeight - editor.clientHeight);
+      const next = clamp(target, 0, maxScroll);
+      if (Math.abs(editor.scrollTop - next) <= 1) {
+        pendingEditorScrollTop = null;
+        return;
+      }
+      pendingEditorScrollTop = next;
+      editor.scrollTop = next;
+    }
+
+    function setEditorSelectionToLine(lineNo) {
+      const offset = getLineStartOffset(editor.value, lineNo);
+      if (editor.selectionStart === offset && editor.selectionEnd === offset) {
+        pendingEditorSelectionOffset = null;
+        return;
+      }
+      pendingEditorSelectionOffset = offset;
+      editor.setSelectionRange(offset, offset);
+    }
+
     function syncPreviewToEditor(anchorMode = 'viewport') {
       const lineNo = anchorMode === 'caret' ? getCaretLine() : getFirstVisibleEditorLine();
       const target = findPreviewScrollForLine(lineNo);
-      const maxScroll = Math.max(0, previewShell.scrollHeight - previewShell.clientHeight);
-      previewShell.scrollTop = clamp(target, 0, maxScroll);
+      setPreviewScrollTop(target);
+    }
+
+    function scrollEditorToLine(lineNo, markLine = false) {
+      const lineTops = getEditorLineLayout();
+      const lineIndex = clamp(Math.round(lineNo) - 1, 0, lineTops.length - 1);
+      const target = Math.max(0, lineTops[lineIndex]);
+      setEditorScrollTop(target);
+      if (markLine) {
+        setEditorSelectionToLine(lineIndex + 1);
+        setEditorSyncMarker(lineIndex + 1);
+      }
     }
 
     function syncEditorToPreview() {
-      const lineHeight = getEditorLineHeight();
-      const lineNo = findEditorLineForPreviewScroll(previewShell.scrollTop);
-      const target = Math.max(0, (lineNo - 1) * lineHeight);
-      const maxScroll = Math.max(0, editor.scrollHeight - editor.clientHeight);
-      editor.scrollTop = clamp(target, 0, maxScroll);
+      scrollEditorToLine(findEditorLineForPreviewScroll(previewShell.scrollTop), true);
+    }
+
+    function syncEditorToPreviewPoint(event) {
+      const target = event.target;
+      const block = target && typeof target.closest === 'function'
+        ? target.closest('[data-source-line]')
+        : null;
+      if (!block || !preview.contains(block)) return;
+      const lineNo = getPreviewLineAtPoint(block, event.clientY);
+      if (lineNo === null) return;
+      holdScrollLock('preview');
+      scrollEditorToLine(lineNo, true);
     }
 
     function syncAfterRender(preferredSource = 'editor', editorAnchor = 'viewport') {
@@ -2384,31 +2602,83 @@
     preview.addEventListener('focusout', () => {
       flushPreviewBlockSync();
       setTimeout(() => {
-        if (!closestEditablePreviewBlock(document.activeElement)) updatePreview('preview');
+        if (closestEditablePreviewBlock(document.activeElement)) return;
+        if (document.activeElement === editor) {
+          updatePreview('editor', 'caret');
+        } else {
+          updatePreview('preview');
+        }
       }, 0);
     });
 
     editor.addEventListener('input', () => {
+      clearEditorSyncMarker();
       holdScrollLock('editor');
       schedulePreviewUpdate('editor', 'caret');
       scheduleSave();
     });
 
-    editor.addEventListener('click', scheduleCaretSync);
-    editor.addEventListener('keyup', scheduleCaretSync);
-    editor.addEventListener('select', scheduleCaretSync);
+    editor.addEventListener('pointerdown', () => {
+      clearPreviewScrollIntent();
+      holdScrollLock('editor');
+    });
+
+    const scheduleEditorCaretSync = () => {
+      clearEditorSyncMarker();
+      scheduleCaretSync();
+    };
+    const handleEditorSelectionSync = () => {
+      const expectedOffset = pendingEditorSelectionOffset;
+      pendingEditorSelectionOffset = null;
+      if (
+        expectedOffset !== null
+        && editor.selectionStart === expectedOffset
+        && editor.selectionEnd === expectedOffset
+      ) return;
+      scheduleEditorCaretSync();
+    };
+    editor.addEventListener('click', scheduleEditorCaretSync);
+    editor.addEventListener('keyup', scheduleEditorCaretSync);
+    editor.addEventListener('select', handleEditorSelectionSync);
 
     editor.addEventListener('scroll', () => {
-      if (activeScrollSource === 'preview') return;
+      const eventKind = classifyScrollEvent(
+        editor.scrollTop,
+        pendingEditorScrollTop,
+        activeScrollSource,
+        'preview'
+      );
+      pendingEditorScrollTop = null;
+      if (eventKind === 'programmatic' || eventKind === 'locked') {
+        updateEditorSyncMarker();
+        return;
+      }
+      clearEditorSyncMarker();
       holdScrollLock('editor');
       syncPreviewToEditor('viewport');
     });
 
     previewShell.addEventListener('scroll', () => {
-      if (activeScrollSource === 'editor') return;
+      const eventKind = classifyScrollEvent(
+        previewShell.scrollTop,
+        pendingPreviewScrollTop,
+        activeScrollSource,
+        'editor'
+      );
+      pendingPreviewScrollTop = null;
+      if (!shouldPreviewScrollDriveEditor(eventKind, hasPreviewScrollIntent())) return;
       holdScrollLock('preview');
       syncEditorToPreview();
     });
+
+    previewShell.addEventListener('pointerdown', notePreviewScrollIntent);
+    previewShell.addEventListener('wheel', notePreviewScrollIntent, { passive: true });
+    previewShell.addEventListener('touchstart', notePreviewScrollIntent, { passive: true });
+    previewShell.addEventListener('keydown', notePreviewScrollIntent);
+    window.addEventListener('pointerup', () => { previewPointerActive = false; });
+    window.addEventListener('pointercancel', () => { previewPointerActive = false; });
+    preview.addEventListener('click', syncEditorToPreviewPoint);
+    window.addEventListener('resize', updateEditorSyncMarker);
 
     platformMode.addEventListener('change', () => {
       copyWarning.hidden = true;
