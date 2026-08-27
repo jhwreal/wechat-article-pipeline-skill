@@ -63,9 +63,9 @@ Keep `<ALIAS>` to uppercase ASCII letters, numbers, and underscores. Avoid alias
 
 `WECHAT_AUTHOR` and `WECHAT_ACCOUNT_<ALIAS>_AUTHOR` are only for the official draft API author field. The visible byline under the cover image is separate: use `WECHAT_SIGNATURE_AUTHOR` / `WECHAT_ORIGINAL_ISSUE` for the default account, or `WECHAT_ACCOUNT_<ALIAS>_SIGNATURE_AUTHOR` / `WECHAT_ACCOUNT_<ALIAS>_ORIGINAL_ISSUE` for named accounts. The workbench renders `<signature author>的第<issue>篇原创` as a centered theme-green label with 14px regular-weight white text below the cover image. If the issue is missing, packaging uses `1`; packaging does not advance `.env` by default.
 
-For the first draft of an article in the current Codex conversation, package normally. Its signed manifest uses `counter_policy=consume_on_success`: before upload, the publisher requires the current `.env` counter to equal the manifest issue, then advances it exactly once after successful draft creation.
+For the first draft of an article in the current agent conversation, package normally. Its signed manifest uses `counter_policy=consume_on_success`: before upload, the publisher requires the current `.env` counter to equal the manifest issue, then advances it exactly once after successful draft creation.
 
-If that same conversation creates another draft for the same article slug, treat it as a revision and rebuild the package with `--same-session-revision`. Packaging uses the selected account's current counter minus one and writes `counter_policy=reuse_previous`. Before upload, the publisher requires the current counter to equal the reused issue plus one; after success it leaves `.env` unchanged. Use this flag only when both the current Codex conversation and article slug match a prior successful draft. Do not infer revision state merely from old receipt files in the workspace, and do not manually roll the counter backward for revisions.
+If that same conversation creates another draft for the same article slug, treat it as a revision and rebuild the package with `--same-session-revision`. Packaging uses the selected account's current counter minus one and writes `counter_policy=reuse_previous`. Before upload, the publisher requires the current counter to equal the reused issue plus one; after success it leaves `.env` unchanged. Use this flag only when both the current agent conversation and article slug match a prior successful draft. Do not infer revision state merely from old receipt files in the workspace, and do not manually roll the counter backward for revisions.
 
 `--increment-original-issue` remains accepted for compatibility but is unnecessary for a signed first-draft manifest and is rejected for a same-session revision manifest. Use the package script's explicit `--increment-original-issue` only in a workflow that will not subsequently create the draft from that same manifest.
 
@@ -80,6 +80,8 @@ Access token cache is local-only and outside the repo:
 ```text
 ~/.codex/wechat-article-pipeline/wechat-token-cache.json
 ```
+
+The `.codex` directory name is historical; the same local cache path is shared no matter which agent (Codex, Claude Code, or others) runs this skill.
 
 Never commit `.env` or token cache files.
 

@@ -49,6 +49,7 @@ KEYWORD_PATTERNS = [
     "HTML",
     "API",
     "Codex",
+    "Claude",
     "skill",
     "草稿",
     "确认",
