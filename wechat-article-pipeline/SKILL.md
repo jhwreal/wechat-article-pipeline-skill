@@ -11,7 +11,7 @@ Produce a complete local article package from the user's topic, draft, notes, or
 
 - Use this skill for writing, packaging, formatting, or polishing a WeChat/公众号 article.
 - If the user says "打开秘书模式", enable it for this request only and read its section in [style-guide.md](references/style-guide.md). Do not infer or mention it unless asked.
-- Infer a brief from rough ideas. Ask only when ambiguity changes the conclusion, audience, legal risk, account, or delivery target.
+- Treat rough ideas and follow-ups as briefs under [workflow.md](references/workflow.md); ask only when ambiguity changes delivery.
 - If the user asks for "不配图", "只排版", "直接格式化", or similar — or the runtime cannot generate images (say so) — use the no-image path.
 - If the user asks to补图, continue, or fix missing assets, use the missing-image path and do not rebuild finished images.
 - If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.

@@ -28,6 +28,18 @@ Default assumptions:
 - When editing an existing article package, preserve the existing slug and asset relationship unless the user asks for a new package.
 - When the task is title/body/image/package-only, handle only that layer instead of rerunning the whole path.
 
+## Reader-Facing Revision Gate
+
+Apply this hard gate whenever the user asks to add, correct, compare, verify, or expand material in an existing article.
+
+- Treat the follow-up message as an editing brief and evidence source, never as publishable article copy.
+- Rewrite every insertion so it makes complete sense to a reader who has never seen the assistant-user conversation.
+- Remove request narration and editing meta-talk such as `你问到的`, `按你的要求`, `刚才提到`, `我查了一下`, `这里补充一下`, and `回答你的问题`.
+- Integrate corrections as facts. Write `腾讯的表中列出的是 Claude Opus 5，并未包含 Claude Fable 5`, not `你问到的 Claude Fable 5，其实不在腾讯这张表里`.
+- Direct address to the article reader is allowed when it belongs to the intended voice; references to what the user asked in chat are not.
+- First-person language is allowed only for the author's real experience or stance, never for the assistant's research or editing process.
+- Read each inserted paragraph in isolation before packaging. If it depends on the conversation or describes the request, rewrite it. Do not deliver until every insertion passes.
+
 ## Markdown Rules
 
 - Use one `#` title.
