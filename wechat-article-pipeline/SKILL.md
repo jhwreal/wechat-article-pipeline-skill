@@ -5,11 +5,12 @@ description: Use when producing Chinese WeChat/公众号 article packages, edita
 
 # WeChat Article Pipeline
 
-Produce a complete local article package from the user's topic, draft, notes, or markdown. Call delivery stages only when requested.
+Produce a complete local article package; run delivery only when requested.
 
 ## Core Decisions
 
 - Use this skill for writing, packaging, formatting, or polishing a WeChat/公众号 article.
+- The first Markdown H1 is the canonical title; rename it there and require it.
 - If the user says "打开秘书模式", enable it for this request only and read its section in [style-guide.md](references/style-guide.md). Do not infer or mention it unless asked.
 - Treat rough ideas and follow-ups as briefs under [workflow.md](references/workflow.md); ask only when ambiguity changes delivery.
 - If the user asks for "不配图", "只排版", "直接格式化", or similar — or the runtime cannot generate images (say so) — use the no-image path.

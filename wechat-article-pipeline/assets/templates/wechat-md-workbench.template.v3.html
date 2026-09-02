@@ -588,7 +588,7 @@
       <div class="brand">
         <div class="brand-badge"></div>
         <div class="brand-text">
-          <div class="brand-title">公众号 Markdown 工作台</div>
+          <div class="brand-title" id="articleWorkbenchTitle">公众号 Markdown 工作台</div>
           <div class="brand-sub">HTML 工作台 · 相对路径配图 · 自动保存</div>
         </div>
       </div>
@@ -722,6 +722,7 @@
     const fontSize = document.getElementById('fontSize');
     const fontFamily = document.getElementById('fontFamily');
     const saveStatus = document.getElementById('saveStatus');
+    const articleWorkbenchTitle = document.getElementById('articleWorkbenchTitle');
     const articleStatus = document.getElementById('articleStatus');
     const manifestStatus = document.getElementById('manifestStatus');
     const assetsStatus = document.getElementById('assetsStatus');
@@ -1775,6 +1776,7 @@
       const text = editor.value.replace(/\s+/g, '');
       wordCount.textContent = `${text.length} 字`;
       lineCount.textContent = `${editor.value.split('\n').length} 行`;
+      syncArticleTitle();
     }
 
     function updatePreviewSourceRanges(editedBlock, oldEnd, newEnd) {
@@ -2091,6 +2093,7 @@
       );
       const warnings = [];
       const blockers = [];
+      if (!titleLength) blockers.push('Markdown 缺少一级标题（# 标题）');
       if (titleMax && titleLength > titleMax) {
         warnings.push(`标题 ${titleLength}/${titleMax} 字`);
       }
@@ -2308,8 +2311,33 @@
     }
 
     function getArticleTitle() {
-      const match = editor.value.match(/^\s*#\s+(.+?)\s*$/m);
-      return match ? match[1].trim() : document.title.replace(/工作台$/, '').trim();
+      let fenceChar = '';
+      let fenceLength = 0;
+      for (const line of editor.value.split('\n')) {
+        const fence = line.match(/^ {0,3}(`{3,}|~{3,})/);
+        if (fence) {
+          const marker = fence[1];
+          if (!fenceChar) {
+            fenceChar = marker[0];
+            fenceLength = marker.length;
+          } else if (marker[0] === fenceChar && marker.length >= fenceLength) {
+            fenceChar = '';
+            fenceLength = 0;
+          }
+          continue;
+        }
+        if (fenceChar) continue;
+        const match = line.match(/^ {0,3}#(?!#)\s+(.+?)\s*$/);
+        if (match) return match[1].trim();
+      }
+      return '';
+    }
+
+    function syncArticleTitle() {
+      const title = getArticleTitle();
+      const displayTitle = title || '未命名文章';
+      document.title = displayTitle;
+      if (articleWorkbenchTitle) articleWorkbenchTitle.textContent = `${displayTitle}工作台`;
     }
 
     function getArticleDigest(limit = 120) {

@@ -15,7 +15,7 @@ from pathlib import Path
 import build_wechat_article_workbench as builder
 import release_info
 import wechat_account_config as account_config
-from article_core import extract_title
+from article_core import require_title
 from atomic_files import atomic_write_text
 from image_jobs_contract import normalize_image_jobs, derive_image_plan, render_image_plan_markdown
 
@@ -90,8 +90,14 @@ def parse_args() -> argparse.Namespace:
         default=builder.DEFAULT_TEMPLATE,
         help="Path to the editable HTML workbench template.",
     )
-    parser.add_argument("--page-title", help="Optional page title override.")
-    parser.add_argument("--brand-title", help="Optional brand title override.")
+    parser.add_argument(
+        "--page-title",
+        help="Deprecated and ignored. Edit the first Markdown H1 to rename the article.",
+    )
+    parser.add_argument(
+        "--brand-title",
+        help="Deprecated and ignored. The workbench title is derived from the first Markdown H1.",
+    )
     parser.add_argument(
         "--brand-subtitle",
         default="HTML 工作台 · 相对路径配图 · 可继续编辑",
@@ -765,8 +771,10 @@ def main() -> None:
         same_session_revision=args.same_session_revision,
     )
 
-    metadata_title = str(article_metadata.get("title", "")).strip()
-    page_title = args.page_title or extract_title(markdown, metadata_title or args.article.stem)
+    try:
+        page_title = require_title(markdown)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     image_dir_name = infer_article_slug(args.article.resolve(), plan, article_metadata)
     slug_source = image_dir_name or args.article.stem or page_title
     images_dir = (args.images_dir or (DEFAULT_IMAGE_ROOT / image_dir_name)).resolve()
@@ -774,7 +782,7 @@ def main() -> None:
     if (has_visual_placeholders or not args.no_images) and (not images_dir.exists() or not images_dir.is_dir()):
         raise SystemExit(f"Images directory does not exist: {images_dir}")
 
-    brand_title = args.brand_title or f"{page_title}工作台"
+    brand_title = f"{page_title}工作台"
     job_out = (args.job_out or args.out.with_suffix(".job.json")).resolve()
 
     job = build_job(

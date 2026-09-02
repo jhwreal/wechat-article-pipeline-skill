@@ -42,7 +42,7 @@ Apply this hard gate whenever the user asks to add, correct, compare, verify, or
 
 ## Markdown Rules
 
-- Use one `#` title.
+- Use exactly one `#` title. Its first occurrence is the complete article title and the sole title source for the workbench, image plan, and every publishing target; rename the article by editing this H1, never by adding separate title metadata.
 - Use `##` headings when the article has real internal turns.
 - Use short paragraphs.
 - Add visual placeholders only when images are wanted: `cover`, `body-1`, `body-2`, ..., `closing`.

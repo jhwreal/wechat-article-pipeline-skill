@@ -854,6 +854,7 @@ class WorkbenchDocument:
             except (ValueError, json.JSONDecodeError):
                 updated_html = builder.replace_default_markdown(html_text, markdown)
                 updated_html = replace_default_workbench_state(updated_html, state)
+            updated_html, canonical_title = builder.replace_workbench_title(updated_html, markdown)
 
             source_markdown = markdown
             job: dict[str, Any] | None = None
@@ -865,6 +866,8 @@ class WorkbenchDocument:
                     raise ValueError("rendered job must be a JSON object")
                 source_markdown = restore_visual_placeholders(markdown, job, self.html_path)
                 job["article_markdown"] = source_markdown
+                job["page_title"] = canonical_title
+                job["brand_title"] = f"{canonical_title}工作台" if canonical_title else "未命名文章工作台"
                 job["theme_color"] = state["themeColor"]
                 assets = inspect_visuals(
                     source_markdown,

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import build_wechat_article_workbench as builder
-from article_core import extract_title
+from article_core import require_title
 from atomic_files import atomic_write_text
 from image_jobs_contract import (
     filter_missing_image_jobs,
@@ -877,7 +877,7 @@ def build_closing_prompt(slot: dict[str, Any], article_summary: str, article_ess
 
 
 def empty_image_payload(article_path: Path, article_slug: str, markdown: str) -> dict[str, Any]:
-    title = extract_title(markdown, article_path.stem)
+    title = require_title(markdown)
     entries = parse_article_entries(markdown)
     text_entries = [entry for entry in entries if entry["kind"] == "text"]
     article_summary = build_article_summary(title, text_entries) if text_entries else ""
@@ -969,7 +969,7 @@ def build_jobs(
             "Article markdown must include at least one {{visual:body-N}} placeholder before image generation."
         )
 
-    title = extract_title(markdown, article_path.stem)
+    title = require_title(markdown)
     entries = parse_article_entries(markdown)
     text_entries = [entry for entry in entries if entry["kind"] == "text"]
     if not text_entries:
@@ -1211,7 +1211,7 @@ def main() -> None:
         raise SystemExit("--missing-only requires --images-dir.")
     article = args.article.resolve()
     markdown, _article_metadata = builder.split_front_matter(article.read_text(encoding="utf-8"))
-    title = extract_title(markdown, article.stem)
+    title = require_title(markdown)
     article_slug = args.article_slug or infer_article_slug(article, title)
     payload = build_jobs(
         article_path=article,

@@ -263,6 +263,59 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
             self.assertNotIn("{{visual:", html)
             self.assertFalse(out.with_suffix(".publish-manifest.json").exists())
 
+    def test_first_h1_overrides_legacy_title_options_everywhere(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            article = root / "article.md"
+            out = root / "article.html"
+            article.write_text(
+                "# H1 才是真标题\n\n正文。\n\n# 后面的 H1 不参与标题\n",
+                encoding="utf-8",
+            )
+            old_argv = sys.argv
+            sys.argv = [
+                "package_wechat_article_bundle.py",
+                str(article),
+                str(out),
+                "--no-images",
+                "--page-title",
+                "旧页面标题",
+                "--brand-title",
+                "旧工作台标题",
+            ]
+            try:
+                packager.main()
+            finally:
+                sys.argv = old_argv
+
+            job = json.loads(out.with_suffix(".job.json").read_text(encoding="utf-8"))
+            html = out.read_text(encoding="utf-8")
+            self.assertEqual(job["page_title"], "H1 才是真标题")
+            self.assertEqual(job["brand_title"], "H1 才是真标题工作台")
+            self.assertIn("<title>H1 才是真标题</title>", html)
+            self.assertIn(">H1 才是真标题工作台</div>", html)
+            self.assertNotIn("旧页面标题", html)
+            self.assertNotIn("旧工作台标题", html)
+
+    def test_packaging_requires_an_h1_title(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            article = root / "article.md"
+            out = root / "article.html"
+            article.write_text("只有正文，没有一级标题。\n", encoding="utf-8")
+            old_argv = sys.argv
+            sys.argv = [
+                "package_wechat_article_bundle.py",
+                str(article),
+                str(out),
+                "--no-images",
+            ]
+            try:
+                with self.assertRaisesRegex(SystemExit, "first H1 is the canonical"):
+                    packager.main()
+            finally:
+                sys.argv = old_argv
+
     def test_no_image_packaging_removes_existing_visual_placeholders(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

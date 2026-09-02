@@ -2,9 +2,9 @@
 
 ```json
 {
-  "page_title": "Harness 到底是什么？给普通人讲明白",
+  "page_title": "标题",
   "storage_key": "wechat-md-workbench-harness-plain-v1",
-  "brand_title": "Harness 文章工作台",
+  "brand_title": "标题工作台",
   "brand_subtitle": "HTML 工作台 · 相对路径配图 · 可继续编辑",
   "theme_color": "#17b394",
   "image_plan": {
@@ -60,6 +60,7 @@ Each `visuals` entry supports one of these source forms:
 - `url` - external image URL; allowed only for the local workbench. Publish-manifest generation rejects non-embedded body and cover images.
 
 Recommended contract:
+- the first H1 in `article_markdown` is the sole canonical article title; `page_title`, `brand_title`, image-plan titles, workbench chrome, and publish manifests are derived values and must never override it
 - image meaning comes from the finished article, not from a preselected layout name
 - visual style and role choices follow `style-guide.md`
 - in-body placeholders use `body-1`, `body-2`, `body-3` ...

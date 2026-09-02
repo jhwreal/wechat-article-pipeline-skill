@@ -17,9 +17,10 @@
 python3 <skill>/scripts/platform_delivery_state.py init \
   <workspace>/files/<slug>.three-platform-result.json \
   --slug <slug> \
-  --title "<最终标题>" \
   --markdown <workspace>/files/<slug>.md
 ```
+
+状态文件的文章标题由 `--markdown` 中的第一个 H1 自动读取，不接受另一份独立标题。
 
 每个平台完成、失败或结果未知后，先写它自己的结果文件，再合并到总状态：
 

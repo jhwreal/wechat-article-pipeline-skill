@@ -90,3 +90,13 @@ test('save button keeps mouse feedback until pointer exit and clears other input
   assert.match(template, /setTimeout\(clearSaveButtonFeedback, 260\)/);
   assert.match(template, /id="saveStatus" role="status" aria-live="polite"/);
 });
+
+
+test('the first Markdown H1 is the only editable article title', () => {
+  assert.match(template, /id="articleWorkbenchTitle"/);
+  assert.match(template, /function syncArticleTitle\(\)/);
+  assert.match(template, /document\.title = displayTitle/);
+  assert.match(template, /articleWorkbenchTitle\.textContent = `\$\{displayTitle\}工作台`/);
+  assert.match(template, /Markdown 缺少一级标题/);
+  assert.doesNotMatch(template, /document\.title\.replace\(\/工作台\$\//);
+});

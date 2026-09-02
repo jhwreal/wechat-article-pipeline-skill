@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from article_core import require_title
 from atomic_files import atomic_write_json
 
 
@@ -147,8 +148,11 @@ def parse_args() -> argparse.Namespace:
     init = subparsers.add_parser("init")
     init.add_argument("state", type=Path)
     init.add_argument("--slug", required=True)
-    init.add_argument("--title", required=True)
-    init.add_argument("--markdown", type=Path)
+    init.add_argument(
+        "--title",
+        help="Deprecated and ignored. The first H1 in --markdown is the article title.",
+    )
+    init.add_argument("--markdown", type=Path, required=True)
 
     record = subparsers.add_parser("record")
     record.add_argument("state", type=Path)
@@ -170,15 +174,19 @@ def read_json(path: Path) -> dict[str, Any]:
 def main() -> None:
     args = parse_args()
     if args.command == "init":
+        try:
+            title = require_title(args.markdown.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         if args.state.exists():
             existing = read_json(args.state)
             validate_state(existing)
             article = existing.get("article") or {}
-            if article.get("slug") != args.slug or article.get("title") != args.title:
+            if article.get("slug") != args.slug or article.get("title") != title:
                 raise SystemExit("existing delivery state belongs to a different article")
             state = existing
         else:
-            state = new_state(args.slug, args.title, args.markdown)
+            state = new_state(args.slug, title, args.markdown)
             atomic_write_json(args.state, state)
     elif args.command == "record":
         state = record_result(read_json(args.state), args.platform, read_json(args.result), args.result)

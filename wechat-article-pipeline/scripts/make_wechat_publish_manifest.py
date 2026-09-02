@@ -11,7 +11,7 @@ from typing import Any
 
 import build_wechat_article_workbench as builder
 import wechat_account_config as account_config
-from article_core import extract_title
+from article_core import extract_title, require_title
 from atomic_files import atomic_write_json
 
 
@@ -590,7 +590,10 @@ def main() -> None:
             names = ", ".join(sorted(set(missing)))
             raise SystemExit(f"Missing visual assets for publish manifest placeholders: {names}")
 
-    title = extract_title(markdown, str(job.get("page_title", args.job.stem)))
+    try:
+        title = require_title(markdown)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     draft_markdown = markdown_for_draft_body(markdown, title)
     visuals = job.get("visuals", {}) if isinstance(job.get("visuals"), dict) else {}
     cover, candidates = select_cover_candidate(markdown, visuals, args.job.resolve().parent)

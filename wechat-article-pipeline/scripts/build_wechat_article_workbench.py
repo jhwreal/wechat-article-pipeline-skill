@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import unquote_to_bytes
 
 import release_info
+from article_core import extract_title, require_title
 from atomic_files import atomic_write_bytes, atomic_write_text
 from platform_assets import (
     discover_platform_image_urls,
@@ -268,6 +269,22 @@ def replace_first(pattern: str, repl: str, text: str) -> str:
     return re.sub(pattern, repl, text, count=1, flags=re.S)
 
 
+def replace_workbench_title(html_text: str, markdown: str) -> tuple[str, str]:
+    title = extract_title(markdown)
+    display_title = title or "未命名文章"
+    html_text = replace_first(
+        r"<title>.*?</title>",
+        f"<title>{html.escape(display_title)}</title>",
+        html_text,
+    )
+    html_text = replace_first(
+        r'<div class="brand-title"(?: id="articleWorkbenchTitle")?>.*?</div>',
+        f'<div class="brand-title" id="articleWorkbenchTitle">{html.escape(display_title)}工作台</div>',
+        html_text,
+    )
+    return html_text, title
+
+
 def apply_template(
     job: dict[str, Any],
     template: str,
@@ -280,9 +297,9 @@ def apply_template(
 ) -> str:
     markdown, markdown_metadata = split_front_matter(markdown)
     article_metadata = job.get("article_metadata") or markdown_metadata
-    page_title = str(job.get("page_title", "公众号 Markdown 工作台"))
+    page_title = require_title(markdown)
     storage_key = str(job.get("storage_key", "wechat-md-workbench-generated"))
-    brand_title = str(job.get("brand_title", "公众号 Markdown 工作台"))
+    brand_title = f"{page_title}工作台"
     brand_subtitle = str(job.get("brand_subtitle", "HTML 工作台 · 相对路径配图 · 可继续编辑"))
     theme_color = str(job.get("theme_color", "#17b394"))
     platform_mode = str(job.get("platform_mode", "wechat"))
@@ -290,8 +307,7 @@ def apply_template(
         platform_mode = "wechat"
 
     html_text = template
-    html_text = replace_first(r"<title>.*?</title>", f"<title>{html.escape(page_title)}</title>", html_text)
-    html_text = replace_first(r'<div class="brand-title">.*?</div>', f'<div class="brand-title">{html.escape(brand_title)}</div>', html_text)
+    html_text, _canonical_title = replace_workbench_title(html_text, markdown)
     html_text = replace_first(r'<div class="brand-sub">.*?</div>', f'<div class="brand-sub">{html.escape(brand_subtitle)}</div>', html_text)
     html_text = replace_first(r'(<input id="themeColor"[^>]*value=")[^"]+(")', rf"\g<1>{html.escape(theme_color, quote=True)}\2", html_text)
     html_text = replace_first(r"const STORAGE_KEY = .*?;", f"const STORAGE_KEY = {json.dumps(storage_key, ensure_ascii=False)};", html_text)
