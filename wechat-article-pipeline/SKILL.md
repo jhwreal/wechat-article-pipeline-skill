@@ -9,6 +9,8 @@ Produce a complete local article package; run delivery only when requested.
 
 ## Core Decisions
 
+- When the user asks to annotate a term, follow [annotations.md](references/annotations.md): use “（注1）” in the text and numbered explanations in a final appendix.
+- Before drafting or revising, read [writing-donts.md](references/writing-donts.md). Before delivery, repackaging, or publishing, check the current article against the prohibited expressions and writing behaviors and follow its contextual scope and user-text preservation rules.
 - Use this skill for writing, packaging, formatting, or polishing a WeChat/公众号 article.
 - The first Markdown H1 is the canonical title; rename it there and require it.
 - If the user says "打开秘书模式", enable it for this request only and read its section in [style-guide.md](references/style-guide.md). Do not infer or mention it unless asked.

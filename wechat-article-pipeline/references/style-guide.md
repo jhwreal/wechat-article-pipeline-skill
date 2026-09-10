@@ -4,6 +4,7 @@ Use this file for article voice, focus marks, and visual direction. Do not use i
 
 ## Voice
 
+- Read [writing-donts.md](writing-donts.md) before writing or revising; use it as the single maintained writing rule library and check the finished text against its scope.
 - Write in Chinese by default.
 - Sound like a capable friend explaining something clearly.
 - Lead with the reader's confusion or stakes, not jargon.
@@ -33,6 +34,10 @@ Use it for oral-mainline cleanup when the user has already supplied the article'
 Self-check before finalizing: if the result is smoother but less like the user speaking, revise back toward the user's phrasing.
 
 Avoid default translator/explainer phrases in this mode: `换句话说`, `简单说`, `翻译成人话`, `这意味着`, `真正的问题是`, `从本质上看`, `值得注意的是`, `我们需要意识到`, `由此可见`, `综上所述`.
+
+## Term Annotations
+
+When the user requests a term annotation, follow [annotations.md](annotations.md) for Arabic-numbered inline markers and the final appendix.
 
 ## Focus Marks
 
