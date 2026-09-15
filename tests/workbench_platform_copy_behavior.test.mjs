@@ -46,7 +46,7 @@ test('platform heading adapters preserve each editor schema', () => {
 test('platform copy uses the image representation accepted by each editor', () => {
   assert.equal(platformHelpers.platformClipboardImagePolicy('wechat', 6, 6), 'embedded-data');
   assert.equal(platformHelpers.platformClipboardImagePolicy('toutiao', 6, 6), 'hosted-url');
-  assert.equal(platformHelpers.platformClipboardImagePolicy('toutiao', 6, 5), 'unavailable');
+  assert.equal(platformHelpers.platformClipboardImagePolicy('toutiao', 6, 5), 'embedded-data');
   assert.equal(platformHelpers.platformClipboardImagePolicy('xiaohongshu', 6, 6), 'embedded-data');
   assert.equal(platformHelpers.platformClipboardImagePolicy('xiaohongshu', 6, 0), 'embedded-data');
   assert.equal(platformHelpers.platformUsesNativeSelection('wechat'), false);
@@ -62,7 +62,7 @@ test('platform preview selector precedes typography and drives one semantic sour
   assert.equal((template.match(/id="copyCurrentPlatform"/g) || []).length, 1);
   assert.doesNotMatch(template, /id="copy(?:Wechat|Toutiao|Xiaohongshu)"/);
   assert.match(template, /preview\.innerHTML = buildPlatformPreviewHtml\(activePlatform\)/);
-  assert.match(template, /activePlatform === 'wechat'/);
+  assert.doesNotMatch(extractFunction('setPreviewEditingEnabled'), /activePlatform/);
 });
 
 test('Toutiao and Xiaohongshu copy from semantic HTML instead of flattened WeChat HTML', () => {
@@ -74,7 +74,7 @@ test('Toutiao and Xiaohongshu copy from semantic HTML instead of flattened WeCha
   assert.match(template, /applyHostedImagesForClipboard/);
   assert.doesNotMatch(template, /wrapXiaohongshuImagesForClipboard/);
   assert.match(template, /platformAdapter\(target\)\.imagePolicy/);
-  assert.match(template, /imagePolicy === 'unavailable'/);
+  assert.match(template, /将内嵌原图复制/);
   assert.match(template, /张图片未准备完成，已停止复制/);
   assert.match(template, /ensureClipboardAssetsLoaded/);
   assert.match(template, /releaseClipboardAssets/);
@@ -88,4 +88,45 @@ test('Toutiao refreshes WeChat-hosted image receipts without a manual page reloa
   assert.match(refresh, /latest\.platformImageUrls/);
   assert.match(refresh, /PLATFORM_IMAGE_URLS = urls/);
   assert.match(copy, /target === 'toutiao'[^;]*await refreshPlatformImagesFromWorkbench\(\)/);
+});
+
+test('Toutiao manual copy does not require a WeChat draft', () => {
+  assert.equal(platformHelpers.platformClipboardImagePolicy('toutiao', 2, 0), 'embedded-data');
+  assert.equal(platformHelpers.platformClipboardImagePolicy('toutiao', 2, 1), 'embedded-data');
+  assert.equal(platformHelpers.platformClipboardImagePolicy('toutiao', 2, 2), 'hosted-url');
+  assert.doesNotMatch(extractFunction('evaluatePlatformReadiness'), /blockers.push.*公众号 HTTPS/);
+});
+
+test('manual Toutiao copy embeds every image and refuses incomplete preparation', async () => {
+  const images = [{ src: '../a.gif' }, { src: '../b.png' }];
+  const box = { querySelectorAll: selector => selector === 'img' ? images : [] };
+  let copied = 0, removed = 0, released = 0, fail = false;
+  const copy = new Function('evaluatePlatformReadiness', 'createClipboardBox', 'document',
+    'platformClipboardImagePolicy', 'PLATFORM_IMAGE_URLS', 'inlineImagesForClipboard',
+    'applyHostedImagesForClipboard', 'absolutizeImagesForClipboard', 'platformUsesNativeSelection',
+    'copyBoxBySelection', 'writeClipboardHtml', 'releaseClipboardAssets',
+    `return ${template.match(/async function copyRichHtmlForPlatform[\s\S]*?(?=\n    function )/)[0]};`)(
+    () => ({ blockers: [] }), () => box,
+    { body: { appendChild() {}, removeChild() { removed++; } } },
+    platformHelpers.platformClipboardImagePolicy, [],
+    async () => {
+      if (fail) return { converted: 1, failed: 1 };
+      images[0].src = 'data:image/gif;base64,R0lGODlh';
+      images[1].src = 'data:image/png;base64,iVBORw0KGgo=';
+      return { converted: 2, failed: 0 };
+    },
+    () => { throw Error('must not use incomplete hosted receipts'); },
+    () => { throw Error('must not copy local URLs'); },
+    () => true, () => { copied++; return true; }, async () => {}, () => { released++; },
+  );
+  const result = await copy('toutiao');
+  assert.equal(result.imagePolicy, 'embedded-data');
+  assert.equal(result.structure.images, 2);
+  assert.match(images[0].src, /^data:image\/gif;/);
+  assert.equal(copied, 1);
+  fail = true;
+  await assert.rejects(copy('toutiao'), /图片未准备完成/);
+  assert.equal(copied, 1);
+  assert.equal(removed, 2);
+  assert.equal(released, 2);
 });

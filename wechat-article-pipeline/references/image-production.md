@@ -2,7 +2,7 @@
 
 Use this file after `postprocess_wechat_article.py --plan-only` creates `<slug>.image-jobs.json` and before final packaging.
 
-Capability check first: image generation relies on whatever the running agent provides — a built-in image tool (for example Codex `image_gen`), or an image-generation skill, CLI, or MCP tool configured in the user's environment. If no such capability is available, stop before the queue: tell the user plainly that images cannot be generated in this environment, and offer either the no-image path or packaging with user-supplied images saved under `<workspace>/image/<slug>/`. Do not fabricate image files, substitute placeholder graphics, or silently skip slots.
+Capability check first: use the image tool available in the current agent, respecting the project’s tool choice. If generation is unavailable, finish independent text/planning work and explain the missing capability. Use supplied images or a no-image package when the user has authorized that option; otherwise offer those options and mark requested images incomplete. Never fabricate images, substitute placeholder graphics, or silently skip slots.
 
 All generation, avoid, regeneration, and image-influence rules live in [image-rules.json](image-rules.json). Do not duplicate or edit those rules here.
 

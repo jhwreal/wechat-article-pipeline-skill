@@ -41,7 +41,8 @@ wechat-article-pipeline/
 
 ```bash
 mkdir -p ~/.codex/skills
-rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
+rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclude="*.pyc" --exclude=".DS_Store" \
+  wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 python3 wechat-article-pipeline/scripts/doctor_wechat_article_skill.py \
   --source wechat-article-pipeline \
   --installed ~/.codex/skills/wechat-article-pipeline \
@@ -50,13 +51,20 @@ python3 wechat-article-pipeline/scripts/doctor_wechat_article_skill.py \
 
 安装后重启或刷新 Codex。
 
+### 本地维护与交付约定
+
+以仓库中的 `wechat-article-pipeline/` 为唯一源码。更新前比较源码与安装目录，合并安装版独有的有效改动，再运行上述同步与 doctor 检查；不要直接覆盖尚未合并的安装版。同步排除本机 `.env`、账号篇号和缓存，不使用 `--delete` 清理运行目录。
+
+交付规则统一维护在 [delivery.md](wechat-article-pipeline/references/delivery.md)：可编辑工作台先给经验证的运行 URL，再给 HTML 文件；静态文件请求直接给文件，不启动服务。服务失败时明确编辑保存未完成。
+
 ### Claude Code
 
 将 skill 目录复制到 Claude Code 的个人 skills 目录：
 
 ```bash
 mkdir -p ~/.claude/skills
-rsync -a wechat-article-pipeline/ ~/.claude/skills/wechat-article-pipeline/
+rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclude="*.pyc" --exclude=".DS_Store" \
+  wechat-article-pipeline/ ~/.claude/skills/wechat-article-pipeline/
 ```
 
 也可以放进某个项目的 `.claude/skills/` 目录，只在该项目内生效。重启 Claude Code 后，直接描述公众号写作任务即可触发。
@@ -248,7 +256,8 @@ You can also copy the skill directory manually:
 
 ```bash
 mkdir -p ~/.codex/skills
-rsync -a wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
+rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclude="*.pyc" --exclude=".DS_Store" \
+  wechat-article-pipeline/ ~/.codex/skills/wechat-article-pipeline/
 python3 wechat-article-pipeline/scripts/doctor_wechat_article_skill.py \
   --source wechat-article-pipeline \
   --installed ~/.codex/skills/wechat-article-pipeline \
@@ -263,7 +272,8 @@ Copy the skill directory into the personal Claude Code skills directory:
 
 ```bash
 mkdir -p ~/.claude/skills
-rsync -a wechat-article-pipeline/ ~/.claude/skills/wechat-article-pipeline/
+rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclude="*.pyc" --exclude=".DS_Store" \
+  wechat-article-pipeline/ ~/.claude/skills/wechat-article-pipeline/
 ```
 
 You can also place it under a project's `.claude/skills/` directory to scope it to that project. Restart Claude Code, then simply describe the article task to trigger the skill.

@@ -122,3 +122,17 @@ test('preview editing is enabled without a toolbar and excludes fragile blocks',
   assert.match(template, /new MutationObserver/);
   assert.doesNotMatch(template, /id="previewEditToggle"|id="previewToolbar"/);
 });
+
+
+test('all platform text blocks are editable only while persistence is available', () => {
+  for (const activePlatform of ['wechat', 'toutiao', 'xiaohongshu']) {
+    const blocks = [false, true].map(hasImage => ({ querySelector: () => hasImage }));
+    const preview = { querySelectorAll: () => blocks };
+    const enable = new Function('preview', 'activePlatform', `${extractFunction('setPreviewEditingEnabled')}; return setPreviewEditingEnabled;`)(preview, activePlatform);
+    enable(true);
+    assert.equal(blocks[0].contentEditable, 'true');
+    assert.equal(blocks[1].contentEditable, 'false');
+    enable(false);
+    assert.equal(blocks[0].contentEditable, 'false');
+  }
+});

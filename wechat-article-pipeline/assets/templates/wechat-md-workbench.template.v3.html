@@ -201,7 +201,7 @@
       left: 12px;
       z-index: 2;
       color: var(--primary);
-      font-size: 13px;
+      font-size: 26px;
       line-height: 1;
       transform: translateY(-50%);
       pointer-events: none;
@@ -1646,9 +1646,8 @@
     }
 
     function setPreviewEditingEnabled(enabled) {
-      const platformAllowsEditing = activePlatform === 'wechat';
       preview.querySelectorAll('[data-preview-editable="true"]').forEach(block => {
-        const canEdit = enabled && platformAllowsEditing && !block.querySelector('img');
+        const canEdit = enabled && !block.querySelector('img');
         block.contentEditable = canEdit ? 'true' : 'false';
         block.spellcheck = canEdit;
       });
@@ -2097,8 +2096,8 @@
       if (titleMax && titleLength > titleMax) {
         warnings.push(`标题 ${titleLength}/${titleMax} 字`);
       }
-      if (imagePolicy === 'unavailable') {
-        blockers.push(`需要 ${structure.images} 张公众号 HTTPS 图片，当前 ${PLATFORM_IMAGE_URLS.length} 张`);
+      if (target === 'toutiao' && structure.images > 0 && imagePolicy === 'embedded-data') {
+        warnings.push('将内嵌原图复制（保留 GIF）；粘贴后请核验图片是否上传成功');
       }
       if (!adapter.version) blockers.push('平台适配器配置缺失');
       return {
@@ -2134,7 +2133,7 @@
     function platformClipboardImagePolicy(target, imageCount = 0, hostedImageCount = 0) {
       const configured = platformAdapter(target).imagePolicy || 'absolute-url';
       if (configured === 'hosted-url' && imageCount > 0 && hostedImageCount !== imageCount) {
-        return 'unavailable';
+        return 'embedded-data';
       }
       return configured;
     }
@@ -2279,7 +2278,7 @@
         const imageMessage = result.structure.images
           ? `${result.structure.images} 张图片（${result.imagePolicy}）`
           : '无正文图片';
-        const qaMessage = target === 'xiaohongshu' ? '；粘贴后仍需核验平台图片托管' : '';
+        const qaMessage = (target === 'xiaohongshu' || (target === 'toutiao' && result.imagePolicy === 'embedded-data')) ? '；粘贴后仍需核验平台图片托管' : '';
         saveStatus.textContent = `已复制${adapter.displayName || '平台'}格式：${headingMessage}、${imageMessage}${qaMessage}`;
         lastPlatformCopyResult = {
           status: 'success',
@@ -2510,29 +2509,61 @@
       scheduleSave();
     }
 
-    async function pasteImagesIntoPreview(files, block) {
-      if (!files.length || imagePasteBusy || !persistenceReady || activePlatform !== 'wechat') return;
-      flushPreviewBlockSync();
-      let insertionOffset = imagePasteAnchor ? imagePasteAnchor.offset : editor.value.length;
-      if (block) {
-        const end = Number(block.dataset.sourceEnd);
-        if (Number.isFinite(end)) insertionOffset = end;
+    function capturePreviewImageInsertion(block) {
+      const fallback = imagePasteAnchor ? imagePasteAnchor.offset : editor.value.length;
+      if (!block) return { offset: fallback };
+      const start = Number(block.dataset.sourceStart);
+      const end = Number(block.dataset.sourceEnd);
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount) return { offset: end };
+      const caret = selection.getRangeAt(0).cloneRange();
+      if (!block.contains(caret.startContainer) || !block.contains(caret.endContainer)) {
+        return { offset: end };
       }
+      // Capture both halves before the asynchronous upload can move focus.
+      // Clone the inline ancestors so a split inside bold/link text stays valid.
+      caret.collapse(true);
+      const before = document.createRange();
+      before.selectNodeContents(block);
+      before.setEnd(caret.startContainer, caret.startOffset);
+      const after = document.createRange();
+      after.selectNodeContents(block);
+      after.setStart(caret.startContainer, caret.startOffset);
+      const original = editor.value.slice(start, end);
+      const serializeHalf = range => {
+        if (!range.toString()) return '';
+        const half = block.cloneNode(false);
+        half.appendChild(range.cloneContents());
+        return serializePreviewBlock(half, original);
+      };
+      return { start, end, before: serializeHalf(before), after: serializeHalf(after) };
+    }
+
+    async function pasteImagesIntoPreview(files, block) {
+      if (!files.length || imagePasteBusy || !persistenceReady) return;
+      flushPreviewBlockSync();
+      const insertion = capturePreviewImageInsertion(block);
       imagePasteBusy = true;
-      saveArticleButton.disabled = true;
+      setEditingEnabled(false);
       saveStatus.textContent = `正在保存 ${files.length} 张粘贴图片…`;
       articleStatus.textContent = '正在写入图片';
       try {
         const uploaded = [];
         for (const file of files) uploaded.push(await uploadPastedImage(file));
         clearImagePasteAnchor();
+        let insertionOffset = insertion.offset;
+        if (insertion.start !== undefined) {
+          editor.value = editor.value.slice(0, insertion.start) + insertion.before
+            + insertion.after + editor.value.slice(insertion.end);
+          insertionOffset = insertion.start + insertion.before.length;
+        }
         insertImageMarkdownAt(insertionOffset, uploaded);
       } catch (error) {
         saveStatus.textContent = `图片粘贴失败：${error && error.message ? error.message : '未知错误'}`;
         articleStatus.textContent = '图片未插入';
       } finally {
         imagePasteBusy = false;
-        saveArticleButton.disabled = !persistenceReady;
+        setEditingEnabled(persistenceReady);
       }
     }
 
@@ -2587,7 +2618,7 @@
     });
 
     preview.addEventListener('pointerdown', event => {
-      if (!persistenceReady || activePlatform !== 'wechat' || closestEditablePreviewBlock(event.target)) return;
+      if (!persistenceReady || closestEditablePreviewBlock(event.target)) return;
       const anchor = findImagePasteAnchor(event.clientY);
       if (anchor.block) setImagePasteAnchor(anchor.block, anchor.position);
       else imagePasteAnchor = { offset: anchor.offset, position: anchor.position };

@@ -5,17 +5,16 @@ description: Use when producing Chinese WeChat/公众号 article packages, edita
 
 # WeChat Article Pipeline
 
-Produce a complete local article package; run delivery only when requested.
+Produce a complete local article package; run external draft creation or publishing only when requested.
 
 ## Core Decisions
 
 - When the user asks to annotate a term, follow [annotations.md](references/annotations.md): use “（注1）” in the text and numbered explanations in a final appendix.
 - Before drafting or revising, read [writing-donts.md](references/writing-donts.md). Before delivery, repackaging, or publishing, check the current article against the prohibited expressions and writing behaviors and follow its contextual scope and user-text preservation rules.
-- Use this skill for writing, packaging, formatting, or polishing a WeChat/公众号 article.
 - The first Markdown H1 is the canonical title; rename it there and require it.
 - If the user says "打开秘书模式", enable it for this request only and read its section in [style-guide.md](references/style-guide.md). Do not infer or mention it unless asked.
-- Treat rough ideas and follow-ups as briefs under [workflow.md](references/workflow.md); ask only when ambiguity changes delivery.
-- If the user asks for "不配图", "只排版", "直接格式化", or similar — or the runtime cannot generate images (say so) — use the no-image path.
+- Infer the brief from rough ideas. For additions and corrections, follow the reader-facing revision gate in [workflow.md](references/workflow.md): integrate them as article prose, preserving explicit verbatim instructions and quotations.
+- For "不配图", "只排版", or "直接格式化", use the no-image path. If image generation is unavailable, follow the capability fallback in [image-production.md](references/image-production.md); do not silently drop requested images.
 - If the user asks to补图, continue, or fix missing assets, use the missing-image path and do not rebuild finished images.
 - If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.
 - Toutiao: use Computer Use to operate the user's real Chrome end to end and follow [publishing-toutiao.md](references/publishing-toutiao.md). Do not use Browser/Chrome browser automation, Playwright, CDP, DOM evaluation, or background tab objects for any Toutiao UI step.
@@ -59,17 +58,9 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
 5. Read [image-production.md](references/image-production.md), run its single-pass queue with currently available worker slots, and enforce strict 3:2 visuals.
 6. Rerun without `--plan-only` to build the package. Add `--publish-manifest` only for requested API draft handoff.
 7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html` and fix any failures before delivery.
-8. Start the local persistence server after every verified workbench build:
+8. Follow [delivery.md](references/delivery.md): an editable workbench gets a verified running URL first, then its HTML file; static-file requests get files directly.
 
-```bash
-python3 <skill>/scripts/serve_wechat_workbench.py \
-  <workspace>/files/<slug>.html \
-  --workspace <workspace>
-```
-
-Keep it running. Deliver `WORKBENCH_URL` before `HTML_PATH`; direct-file mode is preview/copy-only.
-
-Mount only the active platform preview from the sole Markdown source. Cache semantic HTML. Toutiao uses WeChat HTTPS image receipts; Xiaohongshu embeds images only while copying.
+Mount only the active platform preview from the sole Markdown source. Cache semantic HTML; embed images only while copying.
 
 ## Fast Paths
 
@@ -117,9 +108,7 @@ Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run 
 
 Inspect every live WeChat API result immediately. On `40164` or an IP-allowlist error, stop the entire delivery chain: do not retry, upload, package, or continue to Toutiao/Xiaohongshu. Report the outbound IP, ask the user to allowlist it, end the turn, and resume only after acknowledgment.
 
-For Toutiao, read [publishing-toutiao.md](references/publishing-toutiao.md) before the first Chrome UI action. Every Chrome action and observation in the Toutiao workflow must go through Computer Use: opening the workbench, choosing and copying the Toutiao format, navigating the same foreground tab to Toutiao, filling and verifying the editor, setting options, scheduling, submitting, and checking management/public pages. Never initialize or use Browser/Chrome browser automation for this path. Follow its foreground hard gate, state machine, one-shot paste rule, submission latch, and recovery budget.
-
-For Xiaohongshu, read [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md) before the first browser write. Use Computer Use for system-clipboard paste and Chrome for heading/image QA. Auto-save is not draft proof. Never repeat a possible final submission.
+For Toutiao and Xiaohongshu, load their publishing reference before the first browser write. Follow each platform’s handoff, verification, submission latch, and recovery limits. Never repeat a possible final submission.
 
 ## Safety Rules
 
@@ -137,12 +126,12 @@ For Xiaohongshu, read [publishing-xiaohongshu.md](references/publishing-xiaohong
 Before delivery, confirm:
 
 - artifacts stay under the workspace, share one slug, contain every requested 3:2 visual, and leave no unresolved `{{visual:*}}`
-- `verify_wechat_article_package.py` reports `status: ok`; the persistence server remains running and its loopback URL is delivered before the HTML path
+- `verify_wechat_article_package.py` reports `status: ok`; delivery matches [delivery.md](references/delivery.md), including a reachable server for editable workbenches
 - Markdown uses relative image paths; all previews derive from it and preserve semantic headings and image positions
-- image-bearing Toutiao copy has ordered HTTPS URLs from a successful WeChat receipt; Xiaohongshu embeds images during copy
+- Toutiao manual copy must not require a WeChat draft: use complete HTTPS receipts when available, otherwise embed all original images (including GIF), never loopback image URLs. Verify target-editor uploads before claiming delivery; Xiaohongshu embeds images during copy
 - Toutiao uses only Computer Use against the real foreground Chrome, with one workbench copy and one system paste; Xiaohongshu keeps its own documented handoff. On a hard gate, preserve the diagnostic draft and stop
 - delivery reports result paths, status, verified structure/images, and any public URL; platform bodies contain no external links
-- without an HTML workbench, give the main artifact first
+- added or revised prose stands alone for readers without chat residue, respecting requested verbatim text and quotations
 
 ## References
 

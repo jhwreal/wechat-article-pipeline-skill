@@ -185,3 +185,7 @@ The script performs:
 - QR login and browser security prompts are not part of the API flow.
 - Admin confirmation, IP whitelist, permission, and risk-control errors are user-handled.
 - Final publish/group-send APIs are out of scope by default.
+
+## GIF 与手工插入图片
+
+正文中的相对路径图片必须在生成发布 manifest 时相对于 job 目录解析并内嵌，不能只处理 visual 占位符。GIF 不得静默转为首帧 JPEG；当前上传通道无法保留动画时必须明确阻断该上传，并保留工作台的手工原图复制能力。复制成功不代表目标编辑器已接收动画。

@@ -32,8 +32,8 @@ Default assumptions:
 
 Apply this hard gate whenever the user asks to add, correct, compare, verify, or expand material in an existing article.
 
-- Treat the follow-up message as an editing brief and evidence source, never as publishable article copy.
-- Rewrite every insertion so it makes complete sense to a reader who has never seen the assistant-user conversation.
+- Treat follow-ups as editing briefs and evidence; integrate additions as reader-facing prose. Preserve text the user explicitly asks to keep verbatim and clearly marked quotations.
+- Apply the following checks to agent-written prose; explicit verbatim text and quotations keep their wording. Make each generated insertion understandable without the assistant-user conversation.
 - Remove request narration and editing meta-talk such as `你问到的`, `按你的要求`, `刚才提到`, `我查了一下`, `这里补充一下`, and `回答你的问题`.
 - Integrate corrections as facts. Write `腾讯的表中列出的是 Claude Opus 5，并未包含 Claude Fable 5`, not `你问到的 Claude Fable 5，其实不在腾讯这张表里`.
 - Direct address to the article reader is allowed when it belongs to the intended voice; references to what the user asked in chat are not.
@@ -63,7 +63,7 @@ The orchestration script runs `mark_wechat_article_focus.py` unless disabled. It
 
 - Full package with images: use the default `postprocess_wechat_article.py --plan-only`, generate listed images, then rerun without `--plan-only`.
 - Image production: use `image-production.md`; generate one image per slot from `generation_queue[].generation_prompt`, save directly to the final output, and let the user request regeneration if needed.
-- Workbench delivery and saving: after every verified HTML workbench build, start `serve_wechat_workbench.py`, keep it running, and deliver its loopback URL first. Do this by default whenever an HTML workbench exists, without waiting for the user to ask to open it. Edits are cached immediately and sent to the server after 3 idle seconds; Save sends immediately. A directly opened HTML file is preview/copy-only and must lock editing. Show saved/saving/error/recovery-required states explicitly.
+- Local handoff and saving: follow [delivery.md](delivery.md) for editable workbench URLs, static-file delivery, and service failures.
 - No generated images: use `postprocess_wechat_article.py --no-images`.
 - No body images + API draft delivery: still provide one cover image and use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>`.
 - Missing images only: use `postprocess_wechat_article.py --missing-only --plan-only`, generate only listed files, then rerun the normal package command.
@@ -72,4 +72,4 @@ The orchestration script runs `mark_wechat_article_focus.py` unless disabled. It
 
 ## Completion
 
-When an HTML workbench was produced, deliver the running loopback workbench URL first and the local HTML path second. Mention markdown, image directory, image jobs, manifest, and API result only when relevant. State any skipped images, missing account fields, API limitations, or unresolved risks plainly.
+Follow [delivery.md](delivery.md) for output order, service verification, and reporting unfinished work.

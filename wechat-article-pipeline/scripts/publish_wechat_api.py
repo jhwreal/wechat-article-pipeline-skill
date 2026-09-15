@@ -390,6 +390,8 @@ def cleanup_temp_image(image: LocalImage | None) -> None:
 
 
 def normalize_body_image(image: LocalImage) -> LocalImage:
+    if image.mime == "image/gif":
+        raise SystemExit("GIF 动图不能通过当前微信正文上传流程保留动画；已停止，未转换为静态图。请使用保留原图的手工复制流程，或明确选择静态替代图。")
     allowed = {"image/jpeg", "image/png"}
     original_size = image.path.stat().st_size
     image.original_bytes = image.original_bytes or original_size

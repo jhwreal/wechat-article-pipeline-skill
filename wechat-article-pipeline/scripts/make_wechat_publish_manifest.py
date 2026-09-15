@@ -187,6 +187,17 @@ def image_candidates(markdown: str, visuals: dict[str, Any]) -> list[dict[str, s
     return candidates
 
 
+def embed_local_markdown_images(markdown: str, job_dir: Path) -> str:
+    """Resolve authored/pasted local images just like planned visual assets."""
+    def replace(match: re.Match[str]) -> str:
+        src = match.group(2).strip()
+        if is_data_image_uri(src) or re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", src) or src.startswith("//"):
+            return match.group(0)
+        uri, _ = builder.resolve_image_asset({"path": src}, job_dir)
+        return f"![{match.group(1)}]({uri})"
+    return IMAGE_RE.sub(replace, markdown)
+
+
 def validate_publish_image_sources(markdown: str, cover: dict[str, str]) -> None:
     for match in IMAGE_RE.finditer(markdown):
         source = match.group(2).strip()
@@ -594,6 +605,7 @@ def main() -> None:
         title = require_title(markdown)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+    markdown = embed_local_markdown_images(markdown, args.job.resolve().parent)
     draft_markdown = markdown_for_draft_body(markdown, title)
     visuals = job.get("visuals", {}) if isinstance(job.get("visuals"), dict) else {}
     cover, candidates = select_cover_candidate(markdown, visuals, args.job.resolve().parent)
