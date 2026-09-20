@@ -8,12 +8,15 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from unittest.mock import patch
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'wechat-article-pipeline/scripts'
 sys.path.insert(0, str(SCRIPTS))
 import build_wechat_article_workbench as builder
 import serve_wechat_workbench as server
+import publish_wechat_api as publisher
+from article_identity import compute_source_fingerprint
 
 
 class WorkbenchRevisionSafetyTest(unittest.TestCase):
@@ -50,6 +53,37 @@ class WorkbenchRevisionSafetyTest(unittest.TestCase):
         self.article(markdown='# 标题\n\n外部新稿')
         with self.assertRaises(server.RevisionConflict):
             doc.save({'markdown': '# 标题\n\n旧稿', 'baseRevision': 0, 'baseFingerprint': fingerprint})
+
+    def test_receipt_updates_and_browser_saves_use_the_same_file_lock(self):
+        html = self.article()
+        doc = self.document(html)
+        job = json.loads(html.with_suffix('.job.json').read_text())
+        fingerprint = compute_source_fingerprint(job, self.root)
+        manifest = {'workbench_html':str(html), 'source_fingerprint':fingerprint}
+        result = {'status':'success', 'source_fingerprint':fingerprint, 'body_uploads':[{'url':'https://mmbiz.qpic.cn/a'}]}
+        entered, release, saved = threading.Event(), threading.Event(), threading.Event()
+        original = builder.replace_bootstrap
+        outcomes = []
+        def gated(source, updates):
+            if 'platformImageUrls' in updates:
+                entered.set()
+                if not release.wait(5): raise RuntimeError('test gate timed out')
+            return original(source, updates)
+        def writer():
+            outcomes.append(doc.save({'markdown':'# 标题\n\n并发保存的新稿', 'baseRevision':0}))
+            saved.set()
+        with patch.object(builder, 'replace_bootstrap', side_effect=gated):
+            upload = threading.Thread(target=lambda: outcomes.append(publisher.sync_platform_images_to_workbench(manifest, result, self.root/'receipt.json')))
+            upload.start()
+            self.assertTrue(entered.wait(5))
+            save = threading.Thread(target=writer); save.start()
+            try:
+                self.assertFalse(saved.wait(0.05))
+            finally:
+                release.set(); upload.join(5); save.join(5)
+        self.assertTrue(saved.is_set())
+        self.assertIn('并发保存的新稿', html.with_suffix('.md').read_text())
+        self.assertEqual(len(outcomes), 2)
 
     def test_backslashes_and_html_characters_are_literal_titles(self):
         for title in (r'Windows C:\Users 路径', r'引用 \1 与 \g<1>', '<标题> & 内容'):

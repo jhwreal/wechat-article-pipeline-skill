@@ -49,9 +49,10 @@
   }
   global.createWorkbenchSaveController = createWorkbenchSaveController;
   global.reconcileWorkbenchCache = function (cached, current) {
-    if (!cached || !cached.markdown || cached.markdown === current.markdown) return 'current';
-    return cached.documentId === current.documentId
+    if (!cached || !cached.markdown) return 'current';
+    const compatible = cached.documentId === current.documentId
       && cached.baseRevision === current.coreRevision
-      && cached.baseFingerprint === current.contentFingerprint ? 'restore' : 'conflict';
+      && cached.baseFingerprint === current.contentFingerprint;
+    return compatible ? 'restore' : cached.markdown === current.markdown ? 'current' : 'conflict';
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -1,9 +1,10 @@
+import { loadWorkbenchTemplate } from './workbench-template.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const template = fs.readFileSync('wechat-article-pipeline/assets/templates/wechat-md-workbench.template.v3.html', 'utf8');
+const template = loadWorkbenchTemplate();
 function extract(name) {
   const start = template.search(new RegExp(`^    (?:async )?function ${name}\\(`, 'm'));
   assert.ok(start >= 0, name);

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import build_wechat_article_workbench as workbench_builder
-from atomic_files import atomic_write_json, atomic_write_text, manifest_fingerprint
+from atomic_files import locked_file, atomic_write_json, atomic_write_text, manifest_fingerprint
 import publish_run_state as run_state
 import wechat_account_config as account_config
 from article_identity import validate_source_freshness, delivery_source_fingerprint
@@ -1262,30 +1262,32 @@ def sync_platform_images_to_workbench(
             "workbench_html": str(workbench_path),
         }
     try:
-        validate_source_freshness(manifest)
-        if not manifest.get("source_fingerprint") or result.get("source_fingerprint") != manifest["source_fingerprint"]:
-            return {"status": "skipped", "reason": "image receipt is not bound to the current source"}
-        current = workbench_path.read_text(encoding="utf-8")
-        updated = workbench_builder.replace_bootstrap(
-            current,
-            {
-                "platformImageUrls": urls,
-                "platformImageSource": str(receipt_path.resolve()),
-            },
-        )
-        if updated == current and 'id="wechat-bootstrap"' not in current:
+        lock = workbench_path.parent / "support" / (workbench_path.stem + ".workbench-state.lock")
+        with locked_file(lock):
+            validate_source_freshness(manifest)
+            if not manifest.get("source_fingerprint") or result.get("source_fingerprint") != manifest["source_fingerprint"]:
+                return {"status": "skipped", "reason": "image receipt is not bound to the current source"}
+            current = workbench_path.read_text(encoding="utf-8")
+            updated = workbench_builder.replace_bootstrap(
+                current,
+                {
+                    "platformImageUrls": urls,
+                    "platformImageSource": str(receipt_path.resolve()),
+                },
+            )
+            if updated == current and 'id="wechat-bootstrap"' not in current:
+                return {
+                    "status": "skipped",
+                    "reason": "workbench template does not support platform image URLs",
+                    "workbench_html": str(workbench_path),
+                }
+            if updated != current:
+                atomic_write_text(workbench_path, updated)
             return {
-                "status": "skipped",
-                "reason": "workbench template does not support platform image URLs",
+                "status": "updated",
                 "workbench_html": str(workbench_path),
+                "image_count": len(urls),
             }
-        if updated != current:
-            atomic_write_text(workbench_path, updated)
-        return {
-            "status": "updated",
-            "workbench_html": str(workbench_path),
-            "image_count": len(urls),
-        }
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return {
             "status": "failed",

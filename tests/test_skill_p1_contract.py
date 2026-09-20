@@ -458,7 +458,7 @@ class SkillP1ContractTest(unittest.TestCase):
 
         self.assertIn("First draft consumes its issue", skill_md)
         self.assertIn("--same-session-revision", skill_md)
-        self.assertIn("current counter minus one", skill_md)
+        self.assertNotIn("current counter minus one", skill_md)
         self.assertIn("no advance", skill_md)
 
     def test_skill_keeps_platform_views_lazy(self) -> None:

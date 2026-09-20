@@ -307,6 +307,8 @@ def apply_template(
         platform_mode = "wechat"
 
     html_text = template
+    renderer_path = Path(__file__).resolve().parents[1] / "assets" / "workbench-markdown.js"
+    html_text = html_text.replace("{{MARKDOWN_RENDERER_JS}}", renderer_path.read_text(encoding="utf-8"))
     html_text, _canonical_title = replace_workbench_title(html_text, markdown)
     html_text = replace_first(r'<div class="brand-sub">.*?</div>', f'<div class="brand-sub">{html.escape(brand_subtitle)}</div>', html_text)
     html_text = re.sub(r'(<input id="themeColor"[^>]*value=")[^"]+(")', lambda match: match[1] + html.escape(theme_color, quote=True) + match[2], html_text, count=1)

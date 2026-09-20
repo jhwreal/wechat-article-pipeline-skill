@@ -1,11 +1,9 @@
+import { loadWorkbenchTemplate } from './workbench-template.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-const template = fs.readFileSync(
-  new URL('../wechat-article-pipeline/assets/templates/wechat-md-workbench.template.v3.html', import.meta.url),
-  'utf8',
-);
+const template = loadWorkbenchTemplate();
 const adapterRegistry = JSON.parse(fs.readFileSync(
   new URL('../wechat-article-pipeline/references/platform-adapters.json', import.meta.url),
   'utf8',

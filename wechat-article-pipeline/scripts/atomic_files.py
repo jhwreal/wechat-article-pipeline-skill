@@ -6,8 +6,22 @@ import json
 import os
 import stat
 import tempfile
+import fcntl
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Mapping
+
+
+@contextmanager
+def locked_file(path: Path):
+    """Use a stable lock file around a complete read/modify/write operation."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def fsync_directory(path: Path) -> None:
