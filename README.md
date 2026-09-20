@@ -221,7 +221,7 @@ https://developers.weixin.qq.com/platform
 
 ## 七、版本说明
 
-- `V 1.8.0（当前版本）`：新增由“检查”或“检查一下”触发的检查模式，覆盖错别字、事实核查、表达结构与主题、对象感及优化建议；提供带来源和核查边界的独立报告，并支持明确要求后的直接改稿。
+- `V 1.9.0（当前版本）`：新增由“检查”或“检查一下”触发的检查模式，覆盖错别字、事实核查、表达结构与主题、对象感及优化建议；提供带来源和核查边界的独立报告，并支持明确要求后的直接改稿。
 - `V 1.7.2`：优化跨平台图片复制与预览插图，保留 GIF 原图；统一交付与安全同步规则，调整同步三角为 26px。
 - `V 1.7.1`：工作台新增右侧预览与 Markdown 的双向行定位、软换行行高测量和 `▶` 同步标记，避免程序滚动反向抢夺编辑焦点；Skill 文案改为兼容 Codex、Claude Code 等 Agent Skills 运行时，并补充无生图能力时的明确降级路径。
 - `V 1.7.0`：工作台支持在右侧微信预览中点击段落之间直接粘贴图片，自动把图片保存到文章目录并写回 Markdown；Skill 的界面显示名与调用名统一为 `wechat-article-pipeline`，并汇总 1.6.0 之后的草稿修订、发布确认、表格保留和白名单错误处理修复。
@@ -449,7 +449,7 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 
 ## 7. Release Notes
 
-- `V 1.8.0 (current version)`: Added Check Mode triggered by “检查” or “检查一下”, covering typos, fact verification, structure and theme, audience fit, and prioritized improvements; reports preserve evidence and verification limits, with direct editing when requested.
+- `V 1.9.0 (current version)`: Added Check Mode triggered by “检查” or “检查一下”, covering typos, fact verification, structure and theme, audience fit, and prioritized improvements; reports preserve evidence and verification limits, with direct editing when requested.
 - `V 1.7.2`: Improved cross-platform image copying and preview insertion, preserved original GIF assets, unified delivery and safe synchronization guidance, and resized the synchronization marker to 26px.
 - `V 1.7.1`: Added bidirectional line navigation between the preview and Markdown editor, wrapped-line height measurement, and a `▶` synchronization marker while preventing programmatic scrolling from stealing editing focus; generalized the skill for Codex, Claude Code, and other Agent Skills runtimes, with an explicit no-image fallback when generation is unavailable.
 - `V 1.7.0`: Added direct image pasting between blocks in the WeChat preview, with automatic asset storage and Markdown insertion; aligned the UI display name with `wechat-article-pipeline`, and rolled up post-1.6.0 fixes for draft revisions, publish confirmation, table preservation, and IP-allowlist failures.
