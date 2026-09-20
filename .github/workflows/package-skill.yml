@@ -164,3 +164,38 @@ jobs:
               "${NOTES_ARGS[@]}" \
               --verify-tag
           fi
+
+  sync-release-notes:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout notes and release tags
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Synchronize documentation-only release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          RELEASE_VERSION="$(tr -d '[:space:]' < wechat-article-pipeline/VERSION)"
+          [[ "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          RELEASE_TAG="v${RELEASE_VERSION}"
+          RELEASE_NOTES="docs/releases/${RELEASE_TAG}.md"
+          if [ ! -f "${RELEASE_NOTES}" ] || ! git rev-parse --verify "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            exit 0
+          fi
+          # Only update prose when the installable skill still matches the tag.
+          # Runtime changes must be published as a new version with new assets.
+          if ! git diff --quiet "${RELEASE_TAG}" HEAD -- wechat-article-pipeline; then
+            exit 0
+          fi
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" --notes-file "${RELEASE_NOTES}"
+          fi

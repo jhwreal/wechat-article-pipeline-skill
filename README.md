@@ -58,6 +58,8 @@ python3 wechat-article-pipeline/scripts/doctor_wechat_article_skill.py \
 
 每次维护发布都更新 [CHANGELOG.md](CHANGELOG.md)，在 commit 正文写明问题、修改及验证结果，并为版本创建带说明的 annotated tag。详细说明保存在 `docs/releases/<tag>.md`，发布工作流会同步到 GitHub Release；已发布 tag 保留不移动。本次记录和回退方法见 [v1.9.1 发布说明](docs/releases/v1.9.1.md)。
 
+发布后的说明勘误以新提交记录。当安装包源码与当前版本标签一致时，`main` 的测试通过后会自动同步对应的 Release 说明，不替换标签或安装包；源码变化需要发布新版本。
+
 交付规则统一维护在 [delivery.md](wechat-article-pipeline/references/delivery.md)：可编辑工作台先给经验证的运行 URL，再给 HTML 文件；静态文件请求直接给文件，不启动服务。服务失败时明确编辑保存未完成。
 
 ### Claude Code
