@@ -19,7 +19,7 @@ wechat-article-pipeline/
 - 情绪/故事类内容使用插画逻辑，而不是步骤图或流程图
 - 可根据正文自动规划题图、正文配图和尾图
 - 输出可持续编辑的本地 HTML 工作台，可将修改写回 Markdown、HTML 和发布数据；同一份 Markdown 可切换微信、头条、小红书三种可视化预览，页面只挂载当前预览，并用一个随平台切换的主按钮复制当前格式
-- 复制前显示标题长度、标题层级、图片数量和平台准备状态；头条托管图缺失、小红书图片转码失败时会在写入剪贴板前停止
+- 复制前显示标题长度、标题层级、图片数量和平台准备状态；头条缺少有效托管回执时回退内嵌原图，原图读取或小红书图片转码失败时会在写入剪贴板前停止
 - 支持无配图排版、只补缺失图片、单张图片重做，以及只修改标题、正文或配图等增量处理路径
 - 可通过微信官方 API 上传正文图片、上传封面素材、创建并验证草稿；中断后可保留进度继续处理，并可在成功创建新草稿后安全递增原创篇号
 - 可通过 Chrome + macOS 系统剪贴板同步今日头条和小红书长文草稿；两者优先复制语义化富文本，头条使用单级大标题，小红书保留两级标题与原始图片位置
@@ -83,7 +83,7 @@ rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclu
 1. 先写文章正文
 2. 根据写好的文章内容生成按角色划分的图片计划
 3. 直接调用 Agent 可用的图片生成能力（如 Codex 内置图片工具）生成题图、正文配图和尾图
-4. 将文章打包成可编辑 HTML 工作台，并用相对路径引用独立图片目录；微信和小红书在复制时临时内嵌图片，头条使用公众号回执中的 HTTPS 图片地址
+4. 将文章打包成可编辑 HTML 工作台，并用相对路径引用独立图片目录；微信和小红书在复制时临时内嵌图片，头条优先使用与当前内容匹配的公众号回执 HTTPS 图片地址，缺失或失效时回退内嵌原图
 5. 如果你要求导入公众号草稿箱，再使用微信官方 API 创建草稿
 6. 如果你要求三平台同步，再把同一份已确认终稿分别保存到微信、今日头条和小红书草稿
 
@@ -219,7 +219,7 @@ https://developers.weixin.qq.com/platform
 ## 六、说明
 
 - 使用 Codex 时，内置图片工具通常会把生成图片保存到 `$CODEX_HOME/generated_images`，打包前请将选中的图片复制到项目的图片目录；使用其他 Agent 时，请让图片生成工具直接把结果保存到项目的图片目录。
-- 打包脚本会校验生成的 HTML 没有未解析的 `{{visual:*}}` 占位符，并确认工作台里的图片引用已经落成相对路径；微信和小红书复制时临时内嵌图片，头条使用 HTTPS 托管图片，三者都从版本化平台适配器和语义 DOM 生成富文本且不会污染左侧 Markdown。本地 Base64 侧车不会在打开页面时常驻内存。
+- 打包脚本会校验生成的 HTML 没有未解析的 `{{visual:*}}` 占位符，并确认工作台里的图片引用已经落成相对路径；微信和小红书复制时临时内嵌图片，头条优先使用有效回执中的 HTTPS 托管图片，否则内嵌原图；三者都从版本化平台适配器和语义 DOM 生成富文本且不会污染左侧 Markdown。本地 Base64 侧车不会在打开页面时常驻内存。
 - 非 macOS 环境运行图片打包/发布流程前请安装 Pillow；macOS 对部分封面裁剪预览可使用系统 `sips`，但 Pillow 仍建议用于发布前正文图片压缩。
 - CI 会在 Ubuntu 和 macOS 上运行 Python/Node 测试、Skill 结构与版本校验、性能行为检查、完整“图片规划 + 工作台打包 + 发布清单 + API dry-run”冒烟测试，并在测试通过后验证安装包与源码一致。
 - 工作台 HTTP 入口、文章事务模型和 Markdown 解析分别维护在 `serve_wechat_workbench.py`、`workbench_document.py`、`assets/workbench-markdown.js`；解析模块打包时内嵌，仍交付单文件 HTML。检查模式的人工行为验收素材见 [evals](evals/README.md)，不计入自动测试通过数。
@@ -318,7 +318,7 @@ Describe to the agent the WeChat Official Account article topic, direction, or d
 1. Write the article first
 2. Derive a role-based visual plan from the finished article
 3. Generate cover/body/closing images directly with the agent's available image generation capability (for example Codex's built-in image tool)
-4. Package the article into an editable HTML workbench that references the separate image folder; WeChat and Xiaohongshu embed image data only during copy, while Toutiao uses hosted HTTPS image URLs from the WeChat receipt
+4. Package the article into an editable HTML workbench that references the separate image folder; WeChat and Xiaohongshu embed image data only during copy, while Toutiao prefers hosted HTTPS URLs from a receipt matching the current article and falls back to embedded originals when no valid mapping is available
 5. If you ask to import it into WeChat, create a draft through the official WeChat API
 6. If you ask for three-platform sync, save the same approved final article as drafts in WeChat, Toutiao, and Xiaohongshu
 
@@ -451,7 +451,7 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 ## 6. Notes
 
 - When running under Codex, the built-in image tool normally saves generated files under `$CODEX_HOME/generated_images`; copy accepted images into the project image directory before packaging. Under other agents, have the image generation tool save results directly into the project image directory.
-- The packager validates that generated HTML has no unresolved `{{visual:*}}` placeholders and that workbench image references have been resolved to relative paths. WeChat and Xiaohongshu embed images during copy, while Toutiao uses hosted HTTPS images; all three derive semantic rich HTML from versioned adapters without changing the editable Markdown. The local Base64 sidecar is lazy and released after copying.
+- The packager validates that generated HTML has no unresolved `{{visual:*}}` placeholders and that workbench image references have been resolved to relative paths. WeChat and Xiaohongshu embed images during copy, while Toutiao prefers valid hosted HTTPS images and otherwise embeds originals; all three derive semantic rich HTML from versioned adapters without changing the editable Markdown. The local Base64 sidecar is lazy and released after copying.
 - Install Pillow before running image packaging/publishing workflows on non-macOS systems. macOS can use the built-in `sips` fallback for some cover-crop previews, but Pillow is still recommended for pre-upload body-image compression.
 - CI runs Python and Node tests on Ubuntu and macOS, validates release metadata and the installable skill, executes the full image-plan + package + manifest + API dry-run smoke path, checks performance behavior, and verifies that the distributable archive matches the source skill.
 - `.env`, token cache files, generated article packages, and generated images should not be committed to GitHub.
