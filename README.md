@@ -14,6 +14,7 @@ wechat-article-pipeline/
 
 - 面向微信公众号/公众号风格的长文创作流程
 - 支持“秘书模式”：忠实整理用户已经口述出的文章主线，保留原有观点、顺序、例子、语气和节奏，不擅自改写成新的 AI 大纲
+- 支持“检查模式”：用“检查”或“检查一下”检查错别字、核实重要事实、梳理表达结构与主题、判断对象感，并给出按优先级排列的优化建议
 - 支持方法类、分析类、情绪/故事类视觉模式
 - 情绪/故事类内容使用插画逻辑，而不是步骤图或流程图
 - 可根据正文自动规划题图、正文配图和尾图
@@ -99,6 +100,22 @@ rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclu
 
 秘书模式不会自行扩大主题，不会补写一套更完整的观点。原素材存在关键缺口时，Agent 会指出缺口或询问，不会替你发明新的主张。
 
+### 检查模式
+
+在当前文章的对话中说“检查”或“检查一下”，或指定“帮我检查一下这篇文章”，即可进入检查模式。当前稿件明确时直接检查最新稿；用户只要求检查某一项时，按指定范围执行。
+
+默认依次完成五项工作：
+
+1. **检查错别字**：定位错字、漏字、误用、标点和名称不一致，给出原文与建议改法。
+2. **核实事实**：优先核对支撑核心结论的重要事实，实际查阅可靠来源、核对时间与数据口径，区分“已核实”“存在错误”“证据不足”“暂时无法核实”，并列出依据和重大风险。
+3. **梳理表达结构与主题**：判断核心主题是否清楚、段落如何展开、论据能否支撑结论，指出跳跃、重复或偏题的位置。
+4. **检查对象感**：判断写给谁、回应什么具体问题，以及术语、例子、语气与读者需求是否匹配。
+5. **给出优化建议**：按“必须修正”“建议优化”“可选润色”排序，提供能落实到原句或段落的修改建议。
+
+仅要求检查时，默认输出报告，保留正文。已有文章文件的报告保存为 `files/<slug>.check.md`；重复检查保留旧报告并使用时间戳文件名。只粘贴文字时，也可直接在回复中给完整结果。无法联网或缺少证据时，会明确标注未完成的事实核查。
+
+如果同时要求“检查并直接修改”，Agent 会直接落实授权范围内的修改，并同步已有文章包中受影响的资产。完整流程见 [检查模式说明](wechat-article-pipeline/references/article-check.md)。
+
 ### 配图方式
 
 配图也可以来自两种方式：
@@ -120,7 +137,7 @@ rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclu
 
 ### 审稿和发布
 
-审稿有两种方式：
+除上述检查模式外，还可以通过两种方式人工审稿：
 
 1. 输出 HTML 工作台。通过 Agent 启动的本地工作台地址打开后，可以继续修改 Markdown，并将最新内容写回 HTML、源 Markdown、任务数据和已配置的发布清单；输入内容会先保存到浏览器缓存，停止编辑后自动写入，也可以点击“保存”立即写入。顶部平台下拉框默认显示微信格式，也可切换头条和小红书格式；唯一复制按钮、复制前检查和右侧预览会同步切换。三种格式共享同一份 Markdown，只挂载当前预览，语义解析结果复用，图片只在复制时转码。完全相同的保存不会重复写盘。直接打开独立 HTML 时为预览/复制只读模式，工作台会明确提示改用本地服务地址。
 2. 在已绑定公众号凭据的情况下，让 Agent 调用微信官方 API 直接创建公众号草稿，然后到公众号草稿箱里检查。
@@ -204,7 +221,8 @@ https://developers.weixin.qq.com/platform
 
 ## 七、版本说明
 
-- `V 1.7.2（当前版本）`：优化跨平台图片复制与预览插图，保留 GIF 原图；统一交付与安全同步规则，调整同步三角为 26px。
+- `V 1.8.0（当前版本）`：新增由“检查”或“检查一下”触发的检查模式，覆盖错别字、事实核查、表达结构与主题、对象感及优化建议；提供带来源和核查边界的独立报告，并支持明确要求后的直接改稿。
+- `V 1.7.2`：优化跨平台图片复制与预览插图，保留 GIF 原图；统一交付与安全同步规则，调整同步三角为 26px。
 - `V 1.7.1`：工作台新增右侧预览与 Markdown 的双向行定位、软换行行高测量和 `▶` 同步标记，避免程序滚动反向抢夺编辑焦点；Skill 文案改为兼容 Codex、Claude Code 等 Agent Skills 运行时，并补充无生图能力时的明确降级路径。
 - `V 1.7.0`：工作台支持在右侧微信预览中点击段落之间直接粘贴图片，自动把图片保存到文章目录并写回 Markdown；Skill 的界面显示名与调用名统一为 `wechat-article-pipeline`，并汇总 1.6.0 之后的草稿修订、发布确认、表格保留和白名单错误处理修复。
 - `V 1.6.1`：同一 Codex 会话重复发送同一文章 slug 时可标记为修改稿，沿用首次草稿的原创篇号，并只在第一次成功创建草稿后递增系统计数。
@@ -230,6 +248,7 @@ wechat-article-pipeline/
 
 - WeChat/official-account style long-form article workflow
 - Secretary Mode for faithfully organizing an already-spoken article mainline while preserving the user's judgments, order, examples, voice, and cadence instead of replacing them with a new AI outline
+- Check Mode triggered by “检查” or “检查一下” in article context: typo review, fact verification, structure and theme, audience fit, and prioritized improvements
 - Method, analysis, and emotional/story visual modes
 - Emotional/story content uses illustration logic instead of step diagrams
 - Automatic cover/body/closing image planning based on the finished article
@@ -309,6 +328,22 @@ If you have already supplied the article's main judgment, narrative order, examp
 
 Secretary Mode does not broaden the thesis, invent a more complete argument, add a balancing framework, or replace your structure with a report-like AI outline. If the source has a material gap, the agent identifies or asks about it instead of inventing a new claim.
 
+### Check Mode
+
+Say “检查” or “检查一下” while working on an article, or identify the article to check. The agent uses the latest available draft when the target is clear and respects requests limited to a single check.
+
+The default review covers five steps:
+
+1. **Typos and wording accuracy:** locate spelling, omission, punctuation, and naming errors, with suggested corrections.
+2. **Fact verification:** inspect reliable sources for claims supporting the main argument, check dates and data definitions, and distinguish verified facts, errors, insufficient evidence, and claims that cannot currently be verified.
+3. **Structure and theme:** assess the central claim, progression, supporting evidence, repetition, gaps, and digressions.
+4. **Audience fit:** identify the intended reader and their needs, then assess explanations, examples, tone, and practical relevance.
+5. **Prioritized improvements:** give actionable sentence or paragraph changes, ordered as required corrections, recommended improvements, and optional polish.
+
+A check-only request produces a report and preserves the article. Existing article files receive `files/<slug>.check.md`; repeated checks keep earlier reports and use timestamped filenames. Pasted text can receive a complete review in the response. Fact-checking limitations and evidence links remain explicit in the report.
+
+When the user also asks to apply changes, the agent edits within that scope and synchronizes affected assets in an existing package. See [Check Mode](wechat-article-pipeline/references/article-check.md) for the full procedure.
+
 ### Images
 
 Images can also come from either of two ways:
@@ -330,7 +365,7 @@ You do not need to rebuild the complete article package for every change. The sk
 
 ### Review And Publishing
 
-There are two review paths:
+In addition to Check Mode, there are two paths for manual review:
 
 1. Output an editable HTML workbench. When opened through the local workbench URL started by the agent, Markdown edits can be written back to the HTML, source Markdown, job data, and any configured publishing manifest. Input is cached immediately, saved to project files after editing pauses, and can also be persisted with Save. The platform selector drives the preview, readiness summary, and one current-format copy button. Identical snapshots skip disk writes. Opening the standalone HTML directly is preview/copy-only; it locks editing and points back to the loopback service URL. Only the active platform preview is mounted; semantic parsing is reused and image data is embedded only during the relevant copy action.
 2. After binding Official Account credentials, ask the agent to create a WeChat draft through the official API, then review it in the WeChat draft box.
@@ -414,7 +449,8 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 
 ## 7. Release Notes
 
-- `V 1.7.2 (current version)`: Improved cross-platform image copying and preview insertion, preserved original GIF assets, unified delivery and safe synchronization guidance, and resized the synchronization marker to 26px.
+- `V 1.8.0 (current version)`: Added Check Mode triggered by “检查” or “检查一下”, covering typos, fact verification, structure and theme, audience fit, and prioritized improvements; reports preserve evidence and verification limits, with direct editing when requested.
+- `V 1.7.2`: Improved cross-platform image copying and preview insertion, preserved original GIF assets, unified delivery and safe synchronization guidance, and resized the synchronization marker to 26px.
 - `V 1.7.1`: Added bidirectional line navigation between the preview and Markdown editor, wrapped-line height measurement, and a `▶` synchronization marker while preventing programmatic scrolling from stealing editing focus; generalized the skill for Codex, Claude Code, and other Agent Skills runtimes, with an explicit no-image fallback when generation is unavailable.
 - `V 1.7.0`: Added direct image pasting between blocks in the WeChat preview, with automatic asset storage and Markdown insertion; aligned the UI display name with `wechat-article-pipeline`, and rolled up post-1.6.0 fixes for draft revisions, publish confirmation, table preservation, and IP-allowlist failures.
 - `V 1.6.1`: Added same-conversation article revision semantics: repeated drafts for the same article slug reuse the first draft's original-issue number, while the system counter advances only after the first successful draft.

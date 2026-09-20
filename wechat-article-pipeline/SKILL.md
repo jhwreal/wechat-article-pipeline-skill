@@ -1,21 +1,22 @@
 ---
 name: wechat-article-pipeline
-description: Use when producing Chinese WeChat/公众号 article packages, editable workbenches, image planning, WeChat draft API delivery, Toutiao/Xiaohongshu Chrome sync, three-platform drafts, or explicit "打开秘书模式" requests.
+description: Use when producing Chinese WeChat/公众号 article packages, checking articles on "检查" or "检查一下", editable workbenches, image planning, WeChat draft API delivery, Toutiao/Xiaohongshu Chrome sync, three-platform drafts, or explicit "打开秘书模式" requests.
 ---
 
 # WeChat Article Pipeline
 
-Produce a complete local article package; run external draft creation or publishing only when requested.
+Create local article packages or check existing drafts; run external draft creation or publishing only when requested.
 
 ## Core Decisions
 
+- For article "检查" or "检查一下", read [Check Mode](references/article-check.md) before drafting. Report findings and improvements; edit only when requested. Respect narrower checks.
 - When the user asks to annotate a term, follow [annotations.md](references/annotations.md): use “（注1）” in the text and numbered explanations in a final appendix.
-- Before drafting or revising, read [writing-donts.md](references/writing-donts.md). Before delivery, repackaging, or publishing, check the current article against the prohibited expressions and writing behaviors and follow its contextual scope and user-text preservation rules.
+- Read [writing-donts.md](references/writing-donts.md) before drafting or revising; check articles against it before delivery, repackaging, or publishing, preserving its contextual scope and user-text rules.
 - The first Markdown H1 is the canonical title; rename it there and require it.
-- If the user says "打开秘书模式", enable it for this request only and read its section in [style-guide.md](references/style-guide.md). Do not infer or mention it unless asked.
-- Infer the brief from rough ideas. For additions and corrections, follow the reader-facing revision gate in [workflow.md](references/workflow.md): integrate them as article prose, preserving explicit verbatim instructions and quotations.
+- Enable secretary mode only on explicit "打开秘书模式", for this request; read [style-guide.md](references/style-guide.md). Do not mention it unless asked.
+- Infer briefs from rough ideas. Integrate additions and corrections as reader-facing prose per [workflow.md](references/workflow.md), preserving explicit verbatim instructions and quotations.
 - For "不配图", "只排版", or "直接格式化", use the no-image path. If image generation is unavailable, follow the capability fallback in [image-production.md](references/image-production.md); do not silently drop requested images.
-- If the user asks to补图, continue, or fix missing assets, use the missing-image path and do not rebuild finished images.
+- For 补图, continuation, or missing assets, use the missing-image path; preserve finished images.
 - If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.
 - Toutiao: use Computer Use to operate the user's real Chrome end to end and follow [publishing-toutiao.md](references/publishing-toutiao.md). Do not use Browser/Chrome browser automation, Playwright, CDP, DOM evaluation, or background tab objects for any Toutiao UI step.
 - Toutiao publish authorization: a user-authored instruction to “发头条”, “发布头条”, or schedule a Toutiao post is already the confirmation to submit that same content to Toutiao at the stated time. Do not ask for a second publish confirmation in the same workflow; pause only when a material choice is missing or changed, or for CAPTCHA, authentication, or a platform hard blocker.
@@ -27,6 +28,7 @@ Produce a complete local article package; run external draft creation or publish
 Keep final artifacts in the current workspace unless the user names another location:
 
 - markdown: `<workspace>/files/<slug>.md`
+- check report: `<workspace>/files/<slug>.check.md`
 - focused markdown: `<workspace>/files/<slug>.focused.md`
 - image jobs: `<workspace>/files/<slug>.image-jobs.json`
 - HTML workbench: `<workspace>/files/<slug>.html`
@@ -119,11 +121,11 @@ For Toutiao and Xiaohongshu, load their publishing reference before the first br
 - Keep `cover.png` as the hero; derived WeChat crop previews never replace it.
 - Enable Toutiao `头条首发` only when the user confirms eligibility.
 - Do not use Xiaohongshu creator-platform private APIs, Cookie export, localStorage export, token extraction, or request replay for delivery.
-- Publish no external hyperlinks in WeChat, Toutiao, or Xiaohongshu bodies. Preserve source names as plain text and remove every external `href` before delivery.
+- Publish no external hyperlinks in WeChat, Toutiao, or Xiaohongshu bodies. Keep source names as plain text; evidence links belong in separate check reports or support files.
 
 ## Acceptance Checklist
 
-Before delivery, confirm:
+For article packages, confirm:
 
 - artifacts stay under the workspace, share one slug, contain every requested 3:2 visual, and leave no unresolved `{{visual:*}}`
 - `verify_wechat_article_package.py` reports `status: ok`; delivery matches [delivery.md](references/delivery.md), including a reachable server for editable workbenches

@@ -27,7 +27,9 @@ class ReleaseDoctorTest(unittest.TestCase):
             report = doctor.inspect(SKILL_DIR, installed)
 
             self.assertEqual(report["status"], "ok")
-            self.assertEqual(report["version"], "1.7.1")
+            self.assertEqual(
+                report["version"], (SKILL_DIR / "VERSION").read_text(encoding="utf-8").strip()
+            )
             self.assertTrue(report["installed"]["synced"])
             self.assertEqual(report["installed"]["missing"], [])
             self.assertEqual(report["installed"]["changed"], [])

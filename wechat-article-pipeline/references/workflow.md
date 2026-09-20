@@ -2,6 +2,8 @@
 
 Use this file for article structure and interaction choices. Use `style-guide.md` for prose style and visual language. Use `publishing.md` only for official WeChat API delivery.
 
+For article requests saying “检查” or “检查一下”, use [article-check.md](article-check.md) before the drafting path. A check-only request produces findings and suggestions; an explicit request to check and edit also uses the revision rules below.
+
 ## Default Structure
 
 For ordinary WeChat or Toutiao-style explanatory posts:
@@ -30,7 +32,7 @@ Default assumptions:
 
 ## Reader-Facing Revision Gate
 
-Apply this hard gate whenever the user asks to add, correct, compare, verify, or expand material in an existing article.
+Apply this hard gate to article prose written when adding, correcting, comparing, verifying, or expanding material in an existing article. Check-only findings stay in the separate report and do not authorize article edits.
 
 - Treat follow-ups as editing briefs and evidence; integrate additions as reader-facing prose. Preserve text the user explicitly asks to keep verbatim and clearly marked quotations.
 - Apply the following checks to agent-written prose; explicit verbatim text and quotations keep their wording. Make each generated insertion understandable without the assistant-user conversation.
