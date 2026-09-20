@@ -46,6 +46,7 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 json.dumps(
                     {
                         "status": "success",
+                        "source_fingerprint": manifest_builder.compute_source_fingerprint(json.loads(job_path.read_text()), root),
                         "body_uploads": [
                             {"kind": "body", "url": "http://mmbiz.qpic.cn/body.png?from=appmsg"}
                         ],

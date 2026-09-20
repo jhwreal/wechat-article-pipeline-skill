@@ -25,6 +25,7 @@ import build_wechat_article_workbench as workbench_builder
 from atomic_files import atomic_write_json, atomic_write_text, manifest_fingerprint
 import publish_run_state as run_state
 import wechat_account_config as account_config
+from article_identity import validate_source_freshness
 
 
 DEFAULT_API_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-api-config.json"
@@ -179,8 +180,8 @@ def save_config(path: Path, config: dict[str, Any]) -> None:
     atomic_write_json(path, config, mode=0o600)
 
 
-def save_token_cache(path: Path, token: str, expires_in: int) -> None:
-    data = {"access_token": token, "expires_at": int(time.time()) + expires_in}
+def save_token_cache(path: Path, token: str, expires_in: int, appid: str) -> None:
+    data = {"appid": appid, "access_token": token, "expires_at": int(time.time()) + expires_in}
     save_config(path, data)
 
 
@@ -278,12 +279,12 @@ def get_access_token(
     if args.access_token:
         return args.access_token.strip()
 
+    appid = (args.appid or account.get("appid") or config.get("appid") or "").strip()
     token_cache = read_config(args.token_cache)
     cached = token_cache or (config.get("access_token_cache") or {})
-    if not args.force_refresh_token and cached.get("access_token") and float(cached.get("expires_at", 0)) > time.time() + 300:
+    if appid and cached.get("appid") == appid and not args.force_refresh_token and cached.get("access_token") and float(cached.get("expires_at", 0)) > time.time() + 300:
         return str(cached["access_token"])
 
-    appid = (args.appid or account.get("appid") or config.get("appid") or "").strip()
     appsecret = (args.appsecret or account.get("appsecret") or config.get("appsecret") or "").strip()
     if not appid or not appsecret:
         raise SystemExit(
@@ -299,7 +300,7 @@ def get_access_token(
     token = str(token_resp["access_token"])
     expires_in = int(token_resp.get("expires_in", 7200))
     if args.remember:
-        save_token_cache(args.token_cache, token, expires_in)
+        save_token_cache(args.token_cache, token, expires_in, appid)
     return token
 
 
@@ -1259,6 +1260,9 @@ def sync_platform_images_to_workbench(
             "workbench_html": str(workbench_path),
         }
     try:
+        validate_source_freshness(manifest)
+        if not manifest.get("source_fingerprint") or result.get("source_fingerprint") != manifest["source_fingerprint"]:
+            return {"status": "skipped", "reason": "image receipt is not bound to the current source"}
         current = workbench_path.read_text(encoding="utf-8")
         updated = workbench_builder.replace_bootstrap(
             current,
@@ -1410,6 +1414,10 @@ def create_publish_run(
     content_html: str,
     validation: dict[str, Any],
 ) -> dict[str, Any]:
+    try:
+        validate_source_freshness(manifest)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
     validate_new_run_side_effect_parameters(args, manifest, account, env_file)
     run = run_state.new_publish_run(
         base_result,
@@ -1515,14 +1523,23 @@ def main() -> None:
     account = account_config.find_account_profile(env, args.account, include_credentials=not dry_run)
     token_cache = args.token_cache.expanduser()
     if token_cache == DEFAULT_TOKEN_CACHE:
-        token_cache = account_config.account_token_cache_path(DEFAULT_TOKEN_CACHE, account)
+        token_cache = account_config.account_token_cache_path(
+            DEFAULT_TOKEN_CACHE,
+            {**account, "appid": args.appid or account.get("appid") or config.get("appid") or ""},
+        )
     args.token_cache = token_cache
 
     content_html = str(manifest.get("content_html", ""))
     validation = validate_manifest(manifest, content_html)
+    if not args.resume:
+        try:
+            validate_source_freshness(manifest)
+        except (OSError, ValueError) as exc:
+            raise SystemExit(str(exc)) from exc
 
     result: dict[str, Any] = {
         "manifest": str(args.manifest),
+        "source_fingerprint": str(manifest.get("source_fingerprint") or ""),
         "dry_run": dry_run,
         "env_file": str(env_file.resolve()) if env_file and env_file.exists() else "",
         "account": {

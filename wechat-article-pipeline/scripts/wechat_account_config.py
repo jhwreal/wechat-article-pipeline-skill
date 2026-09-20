@@ -267,6 +267,9 @@ def find_account_profile(
 
 def account_token_cache_path(default_path: Path, profile: dict[str, str]) -> Path:
     path = default_path.expanduser()
+    if profile.get("appid"):
+        digest = hashlib.sha256(profile["appid"].encode("utf-8")).hexdigest()[:16]
+        return path.with_name(f"{path.stem}-appid-{digest}{path.suffix}")
     if not profile.get("alias"):
         return path
     label = profile.get("name") or profile["alias"]

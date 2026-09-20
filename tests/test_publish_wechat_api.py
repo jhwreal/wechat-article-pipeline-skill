@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "wechat-article-pipeline" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from article_identity import compute_source_fingerprint
 import publish_wechat_api as publisher  # noqa: E402
 
 
@@ -45,7 +46,11 @@ class PublishWechatApiTest(unittest.TestCase):
                 '{"markdown":"# 标题"}</script>',
                 encoding="utf-8",
             )
+            job = {"article_markdown": "# 标题", "visuals": {}}
+            workbench.with_suffix(".job.json").write_text(json.dumps(job))
+            fingerprint = compute_source_fingerprint(job, root)
             result = {
+                "source_fingerprint": fingerprint,
                 "status": "success",
                 "body_uploads": [
                     {"kind": "body", "url": "http://mmbiz.qpic.cn/body.png"}
@@ -53,7 +58,7 @@ class PublishWechatApiTest(unittest.TestCase):
             }
 
             update = publisher.sync_platform_images_to_workbench(
-                {"workbench_html": str(workbench)},
+                {"workbench_html": str(workbench), "source_fingerprint": fingerprint},
                 result,
                 receipt,
             )

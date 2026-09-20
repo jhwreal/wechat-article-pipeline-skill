@@ -703,7 +703,7 @@
     const ARTICLE_SIGNATURE = BOOTSTRAP.signature || {};
     const STORAGE_KEY = BOOTSTRAP.storageKey;
     const DEFAULT_WORKBENCH_STATE = BOOTSTRAP.workbenchState || {};
-    let PLATFORM_IMAGE_URLS = Array.isArray(BOOTSTRAP.platformImageUrls)
+    let PLATFORM_IMAGE_URLS = BOOTSTRAP.documentId && Array.isArray(BOOTSTRAP.platformImageUrls)
       ? BOOTSTRAP.platformImageUrls.filter(value => /^https:\/\//i.test(String(value || '')))
       : [];
     let PLATFORM_IMAGE_SOURCE = String(BOOTSTRAP.platformImageSource || '');
@@ -1619,6 +1619,7 @@
     }
 
     async function refreshPlatformImagesFromWorkbench() {
+      PLATFORM_IMAGE_URLS = [];
       if (!isLoopbackServer()) return false;
       try {
         const response = await fetch(location.pathname, { cache: 'no-store' });
@@ -1627,6 +1628,7 @@
         const bootstrapNode = documentCopy.getElementById('wechat-bootstrap');
         if (!bootstrapNode) return false;
         const latest = JSON.parse(bootstrapNode.textContent);
+        if (latest.documentId !== window.__workbenchDocumentId || latest.markdown !== editor.value) return false;
         const urls = Array.isArray(latest.platformImageUrls)
           ? latest.platformImageUrls.filter(value => /^https:\/\//i.test(String(value || '')))
           : [];

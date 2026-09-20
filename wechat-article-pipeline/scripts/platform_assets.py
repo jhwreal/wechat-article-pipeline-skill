@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from article_identity import compute_source_fingerprint
+
 
 def normalize_platform_image_url(value: Any) -> str:
     """Return a public HTTPS image URL suitable for cross-platform rich paste."""
@@ -56,8 +58,12 @@ def platform_image_result_path(job_path: Path) -> Path:
 def discover_platform_image_urls(
     job: dict[str, Any], job_path: Path
 ) -> tuple[list[str], str]:
+    try:
+        fingerprint = compute_source_fingerprint(job, job_path.parent)
+    except (OSError, ValueError, SystemExit):
+        return [], ""
     explicit = normalize_platform_image_urls(job.get("platform_image_urls"))
-    if explicit:
+    if explicit and job.get("platform_image_fingerprint") == fingerprint:
         return explicit, "job.platform_image_urls"
 
     result_path = platform_image_result_path(job_path)
@@ -66,6 +72,8 @@ def discover_platform_image_urls(
     try:
         result = json.loads(result_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return [], ""
+    if not isinstance(result, dict) or result.get("source_fingerprint") != fingerprint:
         return [], ""
     urls = platform_image_urls_from_wechat_result(result)
     return (urls, str(result_path.resolve())) if urls else ([], "")

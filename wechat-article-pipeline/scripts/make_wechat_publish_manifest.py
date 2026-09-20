@@ -12,6 +12,7 @@ from typing import Any
 import build_wechat_article_workbench as builder
 import wechat_account_config as account_config
 from article_core import extract_title, require_title
+from article_identity import compute_source_fingerprint
 from atomic_files import atomic_write_json
 
 
@@ -47,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("job", type=Path, help="Rendered or source job JSON from package_wechat_article_bundle.py.")
     parser.add_argument("out", type=Path, help="Path to write <html-stem>.publish-manifest.json.")
     parser.add_argument("--workbench-html", type=Path, help="Path to the generated HTML workbench.")
+    parser.add_argument("--source-directory", type=Path, help="Original job directory when rendering an internal snapshot.")
     parser.add_argument("--article-slug", help="Optional article slug override.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="Local publisher config path.")
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="Local .env with publisher defaults.")
@@ -212,59 +214,6 @@ def validate_publish_image_sources(markdown: str, cover: dict[str, str]) -> None
             "Publish manifest cover must resolve to an embedded data:image URI; "
             f"unsupported source: {cover_source!r}."
         )
-
-
-def compute_source_fingerprint(
-    job: dict[str, Any],
-    job_dir: Path,
-    rendered_visuals: dict[str, str] | None = None,
-) -> str:
-    canonical_job = json.loads(json.dumps(job, ensure_ascii=False))
-    canonical_visuals = canonical_job.get("visuals", {}) or {}
-    if not isinstance(canonical_visuals, dict):
-        raise ValueError("job visuals must be an object")
-    for spec in canonical_visuals.values():
-        if not isinstance(spec, dict) or not str(spec.get("path", "")).strip():
-            continue
-        raw_path = Path(str(spec["path"]))
-        spec["path"] = str(
-            raw_path.resolve()
-            if raw_path.is_absolute()
-            else (job_dir / raw_path).resolve()
-        )
-    digest = hashlib.sha256()
-    digest.update(b"wechat-publish-source-v1\0")
-    digest.update(
-        json.dumps(
-            canonical_job,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    )
-    visuals = job.get("visuals", {}) or {}
-    if not isinstance(visuals, dict):
-        raise ValueError("job visuals must be an object")
-    resolved = dict(rendered_visuals or {})
-    for raw_name in sorted(visuals, key=str):
-        name = str(raw_name)
-        spec = visuals[raw_name]
-        if not isinstance(spec, dict):
-            raise ValueError(f"visual {name!r} must be an object")
-        source = resolved.get(name)
-        if source is None:
-            source, _audit = builder.resolve_image_asset(spec, job_dir)
-        digest.update(b"\0visual\0")
-        digest.update(name.encode("utf-8"))
-        digest.update(b"\0")
-        if source.startswith("data:image/"):
-            payload, mime_type = builder.decode_data_uri(source)
-            digest.update(mime_type.lower().encode("utf-8"))
-            digest.update(b"\0")
-            digest.update(payload)
-        else:
-            digest.update(source.encode("utf-8"))
-    return digest.hexdigest()
 
 
 def visual_candidate(name: str, spec: Any, job_dir: Path, alt: str) -> dict[str, str]:
@@ -529,20 +478,17 @@ def markdown_to_wechat_html(markdown: str) -> str:
             style = BASE_TEXT_STYLE + f";margin:18px 8px;padding:14px 16px;background:#f7f8fa;border-left:4px solid {color};color:#3b4552;font-size:16px;line-height:1.75;border-radius:8px"
             html_blocks.append(paragraph(quote, style))
             continue
-        if re.match(r"^[-*+]\s+", block):
-            items = [
-                "• " + inline_format(re.sub(r"^[-*+]\s+", "", line).strip())
-                for line in block.splitlines()
-                if re.match(r"^[-*+]\s+", line)
-            ]
-            html_blocks.append(paragraph("<br>".join(items)))
-            continue
-        if re.match(r"^\d+\.\s+", block):
-            items = [
-                inline_format(line.strip())
-                for line in block.splitlines()
-                if re.match(r"^\d+\.\s+", line)
-            ]
+        if re.match(r"^(?:[-*+]|\d+\.)\s+", block):
+            items = []
+            for line in block.splitlines():
+                match = re.match(r"^(\s*)([-*+]|\d+\.)\s+(.*)$", line)
+                indentation = len(line) - len(line.lstrip())
+                prefix = "&#160;" * indentation
+                if match:
+                    marker = "•" if match[2] in {"-", "*", "+"} else match[2]
+                    items.append(prefix + marker + " " + inline_format(match[3]))
+                else:
+                    items.append(prefix + inline_format(line.strip()))
             html_blocks.append(paragraph("<br>".join(items)))
             continue
         html_blocks.append(paragraph(format_text_lines(block.splitlines())))
@@ -565,12 +511,13 @@ def inject_signature_html(content_html: str, label: str) -> str:
         f'<span style="{SIGNATURE_TEXT_STYLE}">{html.escape(label)}</span>'
         "</p>"
     )
-    return re.sub(r"(<p\b[^>]*>\s*<img\b[^>]*>\s*</p>)", r"\1" + signature_html, content_html, count=1, flags=re.I)
+    return re.sub(r"(<p\b[^>]*>\s*<img\b[^>]*>\s*</p>)", lambda match: match[1] + signature_html, content_html, count=1, flags=re.I)
 
 
 def main() -> None:
     args = parse_args()
     job = read_json(args.job.resolve())
+    job_dir = (args.source_directory or args.job.resolve().parent).resolve()
     config = read_config(args.config.expanduser())
     env = account_config.read_env_file(args.env_file)
     account = account_config.find_account_profile(env, args.account, include_credentials=True)
@@ -593,7 +540,7 @@ def main() -> None:
     for name, visual_spec in (job.get("visuals", {}) or {}).items():
         if not isinstance(visual_spec, dict):
             continue
-        asset_uri, _ = builder.resolve_image_asset(visual_spec, args.job.resolve().parent)
+        asset_uri, _ = builder.resolve_image_asset(visual_spec, job_dir)
         rendered_visuals[str(name)] = asset_uri
     if rendered_visuals:
         markdown, missing = builder.replace_visual_placeholders(markdown, rendered_visuals)
@@ -605,12 +552,12 @@ def main() -> None:
         title = require_title(markdown)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    markdown = embed_local_markdown_images(markdown, args.job.resolve().parent)
+    markdown = embed_local_markdown_images(markdown, job_dir)
     draft_markdown = markdown_for_draft_body(markdown, title)
     visuals = job.get("visuals", {}) if isinstance(job.get("visuals"), dict) else {}
-    cover, candidates = select_cover_candidate(markdown, visuals, args.job.resolve().parent)
+    cover, candidates = select_cover_candidate(markdown, visuals, job_dir)
     validate_publish_image_sources(markdown, cover)
-    wechat_cover = build_wechat_cover_manifest(job, cover, args.job.resolve().parent)
+    wechat_cover = build_wechat_cover_manifest(job, cover, job_dir)
     article_slug = args.article_slug or str(job.get("article_slug", "")).strip() or args.job.stem
     account_manifest = {
         "selector": account.get("selector", ""),
@@ -644,9 +591,10 @@ def main() -> None:
         "content_text": strip_markdown(draft_markdown),
         "source_fingerprint": compute_source_fingerprint(
             job,
-            args.job.resolve().parent,
+            job_dir,
             rendered_visuals,
         ),
+        "source_job": str(args.job.resolve()),
         "workbench_html": str(args.workbench_html.resolve()) if args.workbench_html else "",
         "article_signature": job.get("article_signature", {}) if isinstance(job.get("article_signature"), dict) else {},
         "account": account_manifest,

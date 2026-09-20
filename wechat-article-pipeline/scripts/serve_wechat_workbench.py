@@ -609,7 +609,12 @@ class WorkbenchDocument:
     def served_html(self) -> bytes:
         with self._guard():
             source = self.html_path.read_text(encoding="utf-8")
+            urls, receipt = [], ""
+            if self.job_path.is_file():
+                job = json.loads(self.job_path.read_text(encoding="utf-8"))
+                urls, receipt = builder.discover_platform_image_urls(job, self.job_path)
             source = builder.replace_bootstrap(source, {
+                "platformImageUrls": urls, "platformImageSource": receipt,
                 "documentId": self.document_id, "documentPath": self.document_path,
                 "baseRevision": self._state.get("coreRevision", 0),
                 "baseFingerprint": self.content_fingerprint(),
@@ -776,6 +781,7 @@ class WorkbenchDocument:
             sys.executable,
             str(MAKE_MANIFEST),
             str(req.job_snapshot), str(candidate),
+            "--source-directory", str(self.job_path.parent),
             "--workbench-html",
             str(self.html_path),
             "--env-file",

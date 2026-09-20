@@ -1,0 +1,9 @@
+[
+  {"name":"list-continuations","markdown":"- 第一项\n  这是不可丢失的补充说明。\n  - 子项目内容\n- 第二项","text":["第一项","这是不可丢失的补充说明。","子项目内容","第二项"]},
+  {"name":"ordered-list","markdown":"1. 步骤一\n   步骤说明\n   1. 子步骤\n2. 步骤二","text":["步骤一","步骤说明","子步骤","步骤二"]},
+  {"name":"headings","markdown":"# 标题\n\n## 第一节\n\n正文\n\n### 子节","text":["标题","第一节","正文","子节"]},
+  {"name":"quote","markdown":"> 引用第一行\n> 引用第二行","text":["引用第一行","引用第二行"]},
+  {"name":"table","markdown":"| 名称 | 数量 |\n|---|---|\n| 测试项目 | 12 |","text":["名称","数量","测试项目","12"]},
+  {"name":"code","markdown":"```text\nalpha\n\nbeta\n```","text":["alpha","beta"]},
+  {"name":"image-order","markdown":"开头\n\n![第一张](https://example.invalid/first.png)\n\n中间\n\n![第二张](https://example.invalid/second.png)\n\n结尾","text":["开头","中间","结尾"],"images":["first.png","second.png"]}
+]
