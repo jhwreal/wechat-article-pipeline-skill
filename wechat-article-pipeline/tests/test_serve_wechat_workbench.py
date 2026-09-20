@@ -701,6 +701,7 @@ class WorkbenchDocumentTests(unittest.TestCase):
             )
             document = module.WorkbenchDocument(html, root)
             document._state["coreRevision"] = 1
+            document._persist()
             request = document._manifest_refresh_request(1, job, None)
             commands = []
             original_run = module.subprocess.run
@@ -753,6 +754,7 @@ class WorkbenchDocumentTests(unittest.TestCase):
             self.assertNotIn("content_html", document._manifest_meta)
             self.assertNotIn("image_candidates", document._manifest_meta)
             document._state["coreRevision"] = 2
+            document._persist()
             request = document._manifest_refresh_request(
                 2,
                 job,
@@ -827,6 +829,7 @@ class WorkbenchDocumentTests(unittest.TestCase):
             document = module.WorkbenchDocument(html, root)
             document._state["coreRevision"] = 2
             document._state["manifest"] = {"state": "pending", "targetRevision": 2}
+            document._persist()
             request = module.ManifestRefreshRequest(
                 revision=1,
                 job_snapshot=root / "missing.job.json",

@@ -33,6 +33,10 @@
       inFlight = Promise.resolve(transport(request)).then(result => {
         if (!result || result.saved !== true) throw new Error('save failed');
         if (result && result.revision != null) serverRevision = Number(result.revision);
+        const cached = pending ? pending.value : item.value;
+        cached.baseRevision = serverRevision;
+        if (result.contentFingerprint) cached.baseFingerprint = result.contentFingerprint;
+        try { if (storage && storage.setItem) storage.setItem(key, JSON.stringify(cached)); } catch (_) {}
         if (item.id === mutation) emit('saved');
         return result;
       }).catch(error => {
@@ -44,4 +48,10 @@
     return { cacheAndSchedule, saveNow, flush, setServerRevision: r => { serverRevision = Number(r || 0); }, getState: () => ({state, mutation, pending: !!pending, inFlight: !!inFlight, serverRevision}) };
   }
   global.createWorkbenchSaveController = createWorkbenchSaveController;
+  global.reconcileWorkbenchCache = function (cached, current) {
+    if (!cached || !cached.markdown || cached.markdown === current.markdown) return 'current';
+    return cached.documentId === current.documentId
+      && cached.baseRevision === current.coreRevision
+      && cached.baseFingerprint === current.contentFingerprint ? 'restore' : 'conflict';
+  };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

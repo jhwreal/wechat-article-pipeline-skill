@@ -629,6 +629,11 @@
     </div>
   </div>
 
+  <details id="cacheRecovery" hidden style="margin:12px 24px;padding:12px;border:1px solid #d1d5db;border-radius:8px">
+    <summary>发现另一版本的本机草稿，已保留供对照；编辑区使用当前文件</summary>
+    <p>可复制下面的旧稿内容，与当前稿比较后手动合并。</p>
+    <textarea id="cacheRecoveryText" readonly aria-label="保留的旧草稿" style="width:100%;min-height:180px"></textarea>
+  </details>
   <div class="main">
     <section class="panel">
       <div class="panel-head">
@@ -1692,11 +1697,11 @@
         const response = await fetch(WORKBENCH_SAVE_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Workbench-Token': window.__workbenchToken || '' },
-          body: JSON.stringify(Object.assign({}, data, {baseRevision: window.__workbenchRevision || 0, clientMutationId: 'client-' + Date.now()}))
+          body: JSON.stringify(Object.assign({}, data, {documentId: window.__workbenchDocumentId, clientMutationId: 'client-' + Date.now()}))
         });
         if (response.status === 409) {
           const latest = await response.json();
-          window.__workbenchRevision = latest.coreRevision || window.__workbenchRevision;
+          // Keep the draft's original revision for recovery; never rebase on a conflict.
           showPersistenceWarning('文章文件已经被其他页面修改。为避免覆盖新版本，本页已停止编辑；请关闭后重新打开服务地址。');
           return false;
         }
@@ -1710,7 +1715,8 @@
         const result = await response.json();
         if (!result.saved) throw new Error(result.error || 'save failed');
         lastSaveResult = result;
-        window.__workbenchRevision = result.revision || window.__workbenchRevision;
+        window.__workbenchRevision = result.revision ?? window.__workbenchRevision;
+        window.__workbenchFingerprint = result.contentFingerprint;
         if (window.workbenchSaveController && window.workbenchSaveController.setServerRevision) window.workbenchSaveController.setServerRevision(window.__workbenchRevision);
         updateServerStatus(result);
         storageModeLabel.textContent = '自动保存：HTML 文件 + localStorage';
@@ -1737,8 +1743,28 @@
         const response = await fetch('/__wechat_workbench/status');
         if (!response.ok) throw new Error(`status request failed: ${response.status}`);
         const status = await response.json();
+        if (!status.documentId || status.documentId !== BOOTSTRAP.documentId
+            || status.documentPath !== decodeURIComponent(location.pathname)
+            || status.coreRevision !== BOOTSTRAP.baseRevision
+            || status.contentFingerprint !== BOOTSTRAP.baseFingerprint) {
+          showPersistenceWarning('文章或版本已变化，请刷新当前文章的服务地址后继续编辑。');
+          return false;
+        }
         window.__workbenchToken = status.token;
-        window.__workbenchRevision = status.coreRevision || 0;
+        window.__workbenchDocumentId = status.documentId;
+        window.__workbenchRevision = status.coreRevision;
+        window.__workbenchFingerprint = status.contentFingerprint;
+        window.workbenchSaveController.setServerRevision(status.coreRevision);
+        const cached = window.__cachedWorkbenchDraft;
+        const decision = reconcileWorkbenchCache(cached, Object.assign({markdown: DEFAULT_MARKDOWN}, status));
+        if (decision === 'restore') {
+          editor.value = cached.markdown;
+          updatePreview('editor');
+        } else if (decision === 'conflict') {
+          safeSetStorage(STORAGE_KEY + ':recovery', JSON.stringify(cached));
+          document.getElementById('cacheRecoveryText').value = cached.markdown;
+          document.getElementById('cacheRecovery').hidden = false;
+        }
         if (status.recovery_required) {
           updateServerStatus(status);
           showPersistenceWarning('检测到上次保存事务没有完整恢复。为避免覆盖文章文件，本页已停止编辑；请让 Codex 检查 support 目录中的事务日志。');
@@ -1882,7 +1908,7 @@
     window.workbenchSaveController = createWorkbenchSaveController({
       storage: localStorage,
       storageKey: STORAGE_KEY,
-      snapshot: () => ({ markdown: editor.value, platformMode: activePlatform, themeColor: themeColor.value, fontSize: fontSize.value, fontFamily: fontFamily.value, savedAt: new Date().toISOString() }),
+      snapshot: () => ({ documentId: window.__workbenchDocumentId, baseRevision: window.__workbenchRevision, baseFingerprint: window.__workbenchFingerprint, markdown: editor.value, platformMode: activePlatform, themeColor: themeColor.value, fontSize: fontSize.value, fontFamily: fontFamily.value, savedAt: new Date().toISOString() }),
       transport: data => saveStateToServer(data),
       onStateChange: state => {
         const labels = {cached:'已缓存到本机', saving:'正在保存正文…', saved:'正文已保存', error:'保存失败'};
@@ -1940,7 +1966,8 @@
       }
       try {
         const data = JSON.parse(raw);
-        editor.value = data.markdown && data.markdown.trim() ? data.markdown : DEFAULT_MARKDOWN;
+        window.__cachedWorkbenchDraft = data;
+        editor.value = DEFAULT_MARKDOWN;
         themeColor.value = data.themeColor || DEFAULT_WORKBENCH_STATE.themeColor;
         fontSize.value = data.fontSize || DEFAULT_WORKBENCH_STATE.fontSize;
         fontFamily.value = data.fontFamily || DEFAULT_WORKBENCH_STATE.fontFamily;
@@ -2478,6 +2505,7 @@
           'X-Workbench-Token': window.__workbenchToken || ''
         },
         body: JSON.stringify({
+          documentId: window.__workbenchDocumentId,
           mimeType: file.type,
           base64: arrayBufferToBase64(await file.arrayBuffer()),
           originalName: file.name || ''

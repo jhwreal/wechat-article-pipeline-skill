@@ -5,6 +5,39 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync('wechat-article-pipeline/assets/workbench-save-controller.js', 'utf8');
 
+test('cache recovery requires the original document, revision and content fingerprint', () => {
+  const context = {};
+  vm.runInNewContext(source, context);
+  const current = {documentId: 'A', coreRevision: 2, contentFingerprint: 'new', markdown: '最新正文'};
+  const stale = {documentId: 'A', baseRevision: 1, baseFingerprint: 'old', markdown: '旧稿修改'};
+  assert.equal(context.reconcileWorkbenchCache(stale, current), 'conflict');
+  assert.equal(context.reconcileWorkbenchCache({...stale, baseRevision: 2}, current), 'conflict');
+  assert.equal(context.reconcileWorkbenchCache({...stale, baseRevision: 2, baseFingerprint: 'new'}, current), 'restore');
+  assert.equal(context.reconcileWorkbenchCache({...stale, documentId: 'B'}, current), 'conflict');
+  assert.equal(context.reconcileWorkbenchCache({markdown: '无版本旧缓存'}, current), 'conflict');
+});
+
+test('acknowledged cache records its saved revision without overwriting newer pending edits', async () => {
+  const context = {setTimeout, clearTimeout};
+  vm.runInNewContext(source, context);
+  let resolve, value = 'first', cached;
+  const controller = context.createWorkbenchSaveController({
+    storage: {setItem(_key, raw) { cached = JSON.parse(raw); }},
+    snapshot: () => ({markdown: value, documentId: 'A', baseRevision: 0, baseFingerprint: 'original'}),
+    transport: () => new Promise(r => { resolve = r; }),
+  });
+  controller.saveNow();
+  value = 'second'; controller.saveNow();
+  resolve({saved: true, revision: 1, contentFingerprint: 'first-hash'});
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(cached.markdown, 'second');
+  assert.equal(cached.baseRevision, 1);
+  assert.equal(cached.baseFingerprint, 'first-hash');
+  resolve({saved: true, revision: 2, contentFingerprint: 'second-hash'});
+  await controller.flush();
+  assert.equal(cached.baseRevision, 2);
+});
+
 function harness() {
   let now = 0, next = 1, timers = new Map(), calls = [], writes = [];
   const context = { setTimeout: (fn, ms) => { const id = next++; timers.set(id, {at: now + ms, fn}); return id; }, clearTimeout: id => timers.delete(id), console };

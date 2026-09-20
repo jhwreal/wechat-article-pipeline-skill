@@ -5,6 +5,8 @@ import argparse
 import base64
 import binascii
 import functools
+import fcntl
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -19,7 +21,7 @@ from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import build_wechat_article_workbench as builder
 from atomic_files import atomic_replace, atomic_write_bytes, atomic_write_text, fsync_directory
@@ -198,7 +200,7 @@ def replace_default_workbench_state(html_text: str, state: dict[str, str]) -> st
     payload = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
     replacement = f"const DEFAULT_WORKBENCH_STATE = {payload};"
     if DEFAULT_STATE_RE.search(html_text):
-        return DEFAULT_STATE_RE.sub(replacement, html_text, count=1)
+        return DEFAULT_STATE_RE.sub(lambda _match: replacement, html_text, count=1)
     return html_text
 
 
@@ -315,15 +317,19 @@ class WorkbenchDocument:
                 self._manifest_meta = load_manifest_refresh_metadata(self.manifest_path)
             except (OSError, ValueError, json.JSONDecodeError):
                 self._manifest_meta = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._guard_depth = 0
+        self.document_id = hashlib.sha256(str(self.html_path).encode()).hexdigest()
+        self.document_path = "/" + self.html_path.relative_to(self.workspace).as_posix()
         self.token = secrets.token_urlsafe(32)
         self._manifest_thread = None
         self._manifest_pending = None
         self._closed = False
-        self._state = self._load_state()
-        self._prune_job_snapshots()
-        self._refresh_assets_from_job()
-        self._resume_pending_manifest_refresh()
+        with self._guard():
+            self._state = self._load_state()
+            self._prune_job_snapshots()
+            self._refresh_assets_from_job()
+            self._resume_pending_manifest_refresh()
 
     def upload_asset(self, payload: dict[str, Any]) -> dict[str, Any]:
         mime_type = str(payload.get("mimeType") or "").strip().lower()
@@ -336,7 +342,7 @@ class WorkbenchDocument:
             raise ValueError("invalid base64 image data") from exc
         extension = validate_pasted_image(image_bytes, mime_type)
 
-        with self._lock:
+        with self._guard():
             if self._state.get("recovery_required"):
                 raise RecoveryRequired(self.status())
             self.image_dir.mkdir(parents=True, exist_ok=True)
@@ -563,12 +569,52 @@ class WorkbenchDocument:
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             return self._recovery_state(exc)
 
+    @contextmanager
+    def _guard(self):
+        """Serialize document transactions across threads and server processes."""
+        with self._lock:
+            if self._guard_depth:
+                yield
+                return
+            self.support_dir.mkdir(parents=True, exist_ok=True)
+            lock_path = self.sidecar.with_suffix(".lock")
+            with lock_path.open("a+b") as handle:
+                fcntl.flock(handle, fcntl.LOCK_EX)
+                self._guard_depth = 1
+                try:
+                    if hasattr(self, "_state"):
+                        self._state = self._load_state()
+                    yield
+                finally:
+                    self._guard_depth = 0
+                    fcntl.flock(handle, fcntl.LOCK_UN)
+
+    def content_fingerprint(self) -> str:
+        source = self.html_path.read_text(encoding="utf-8")
+        try:
+            markdown = str(builder.read_bootstrap(source).get("markdown", ""))
+        except ValueError:
+            # Older workbenches have JavaScript template literals instead of JSON.
+            markdown = self.markdown_path.read_text(encoding="utf-8") if self.markdown_path.is_file() else source
+        return hashlib.sha256(markdown.encode()).hexdigest()
+
     def status(self) -> dict[str, Any]:
-        out = dict(self._state)
-        out.setdefault("coreRevision", 0)
-        out["available"] = True
-        out["token"] = self.token
-        return out
+        with self._guard():
+            out = dict(self._state)
+            out.setdefault("coreRevision", 0)
+            out.update(available=True, token=self.token, documentId=self.document_id,
+                       documentPath=self.document_path, contentFingerprint=self.content_fingerprint())
+            return out
+
+    def served_html(self) -> bytes:
+        with self._guard():
+            source = self.html_path.read_text(encoding="utf-8")
+            source = builder.replace_bootstrap(source, {
+                "documentId": self.document_id, "documentPath": self.document_path,
+                "baseRevision": self._state.get("coreRevision", 0),
+                "baseFingerprint": self.content_fingerprint(),
+            })
+            return source.encode("utf-8")
 
     def _persist(self) -> None:
         self._write_state(self._state)
@@ -707,13 +753,13 @@ class WorkbenchDocument:
             snapshot,
             self._state.get("source_state"),
         )
-        with self._lock:
+        with self._guard():
             self._queue_manifest_refresh(request)
 
     def _refresh_manifest(self, req: ManifestRefreshRequest) -> tuple[bool, str]:
         if self._closed: return False, 'closed'
         if not req.job_snapshot.exists() or not req.env_file:
-            with self._lock:
+            with self._guard():
                 if req.revision != self._state.get("coreRevision"):
                     return False, "stale-candidate"
                 self._state['manifest']={
@@ -748,7 +794,7 @@ class WorkbenchDocument:
             ]
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
-            with self._lock:
+            with self._guard():
                 if self._closed or req.revision != self._state.get('coreRevision'):
                     candidate.unlink(missing_ok=True)
                     return False, 'stale-candidate'
@@ -768,7 +814,7 @@ class WorkbenchDocument:
             return True, "ok"
         candidate.unlink(missing_ok=True)
         message = (result.stderr or result.stdout or "manifest refresh failed").strip().splitlines()[-1]
-        with self._lock:
+        with self._guard():
             if req.revision != self._state.get("coreRevision"):
                 return False, "stale-candidate"
             self._state['manifest']={'state':'failed','targetRevision':req.revision,'error':message[:240]}; self._persist()
@@ -782,7 +828,7 @@ class WorkbenchDocument:
 
         def worker() -> None:
             while True:
-                with self._lock:
+                with self._guard():
                     current = self._manifest_pending
                     self._manifest_pending = None
                     if current is None:
@@ -796,7 +842,7 @@ class WorkbenchDocument:
                     current.manifest_path.with_name(
                         current.manifest_path.name + f".r{current.revision}.candidate"
                     ).unlink(missing_ok=True)
-                    with self._lock:
+                    with self._guard():
                         if (
                             not self._closed
                             and current.revision == self._state.get("coreRevision")
@@ -832,9 +878,15 @@ class WorkbenchDocument:
             "fontFamily": str(payload.get("fontFamily") or "-apple-system, BlinkMacSystemFont, sans-serif"),
         }
 
-        with self._lock:
+        with self._guard():
             if self._state.get("recovery_required"):
                 raise RecoveryRequired(self.status())
+            if self._closed:
+                raise ValueError("document is closed")
+            if payload.get("documentId", self.document_id) != self.document_id:
+                raise ValueError("save belongs to a different article")
+            if payload.get("baseFingerprint", self.content_fingerprint()) != self.content_fingerprint():
+                raise RevisionConflict(self.status())
             current_revision = int(self._state.get("coreRevision", 0))
             base = payload.get("baseRevision", current_revision)
             if int(base) != current_revision:
@@ -901,6 +953,8 @@ class WorkbenchDocument:
                     "job": str(self.job_path) if job is not None else "",
                     "revision": current_revision,
                     "clientMutationId": payload.get("clientMutationId"),
+                    "documentId": self.document_id,
+                    "contentFingerprint": hashlib.sha256(markdown.encode()).hexdigest(),
                     "manifest": self._state["manifest"],
                     "assets": self._state["assets"],
                     "duration_ms": round((time.perf_counter() - save_started) * 1000, 2),
@@ -1010,13 +1064,15 @@ class WorkbenchDocument:
             "job": str(self.job_path) if job is not None else "",
             "revision": revision,
             "clientMutationId": payload.get("clientMutationId"),
+                    "documentId": self.document_id,
+                    "contentFingerprint": hashlib.sha256(markdown.encode()).hexdigest(),
             "manifest": self._state["manifest"],
             "assets": self._state["assets"],
             "duration_ms": round((time.perf_counter() - save_started) * 1000, 2),
         }
 
     def close(self):
-        with self._lock:
+        with self._guard():
             self._closed = True
             self._manifest_pending = None
             thread = self._manifest_thread
@@ -1066,14 +1122,35 @@ def make_handler(document: WorkbenchDocument):
             self.end_headers()
             self.wfile.write(encoded)
 
-        def do_GET(self) -> None:
+        def serve_document_or_asset(self, *, head: bool = False) -> None:
             if not self.has_valid_host():
                 self.send_json(403, {"error": "invalid host"})
                 return
-            if urlparse(self.path).path == STATUS_ENDPOINT:
+            request_path = unquote(urlparse(self.path).path)
+            if request_path == STATUS_ENDPOINT:
                 self.send_json(200, document.status())
                 return
-            super().do_GET()
+            target = Path(self.translate_path(self.path)).resolve()
+            if target == document.html_path:
+                body = document.served_html()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                if not head:
+                    self.wfile.write(body)
+                return
+            allowed = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg", ".js"}
+            if not is_relative_to(target, document.workspace) or not target.is_file() or target.suffix.lower() not in allowed:
+                self.send_json(404, {"error": "this server only edits its bound article"})
+                return
+            if head:
+                super().do_HEAD()
+            else:
+                super().do_GET()
+
+        def do_GET(self) -> None:
+            self.serve_document_or_asset()
 
         def do_HEAD(self) -> None:
             if not self.has_valid_host():
@@ -1081,7 +1158,7 @@ def make_handler(document: WorkbenchDocument):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            super().do_HEAD()
+            self.serve_document_or_asset(head=True)
 
         def do_POST(self) -> None:
             request_path = urlparse(self.path).path
@@ -1102,6 +1179,10 @@ def make_handler(document: WorkbenchDocument):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 if not isinstance(payload, dict):
                     raise ValueError("request body must be an object")
+                if payload.get("documentId") != document.document_id:
+                    raise ValueError("request belongs to a different article; reopen the current workbench")
+                if request_path == SAVE_ENDPOINT and ("baseRevision" not in payload or "baseFingerprint" not in payload):
+                    raise ValueError("save requires the original article revision and fingerprint")
                 if request_path == ASSET_ENDPOINT:
                     self.send_json(200, document.upload_asset(payload))
                 else:

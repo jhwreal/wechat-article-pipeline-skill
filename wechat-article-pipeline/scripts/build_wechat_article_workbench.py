@@ -266,7 +266,7 @@ def replace_default_workbench_state(template: str, state: dict[str, str]) -> str
 
 
 def replace_first(pattern: str, repl: str, text: str) -> str:
-    return re.sub(pattern, repl, text, count=1, flags=re.S)
+    return re.sub(pattern, lambda _match: repl, text, count=1, flags=re.S)
 
 
 def replace_workbench_title(html_text: str, markdown: str) -> tuple[str, str]:
@@ -309,7 +309,7 @@ def apply_template(
     html_text = template
     html_text, _canonical_title = replace_workbench_title(html_text, markdown)
     html_text = replace_first(r'<div class="brand-sub">.*?</div>', f'<div class="brand-sub">{html.escape(brand_subtitle)}</div>', html_text)
-    html_text = replace_first(r'(<input id="themeColor"[^>]*value=")[^"]+(")', rf"\g<1>{html.escape(theme_color, quote=True)}\2", html_text)
+    html_text = re.sub(r'(<input id="themeColor"[^>]*value=")[^"]+(")', lambda match: match[1] + html.escape(theme_color, quote=True) + match[2], html_text, count=1)
     html_text = replace_first(r"const STORAGE_KEY = .*?;", f"const STORAGE_KEY = {json.dumps(storage_key, ensure_ascii=False)};", html_text)
     state = {
             "platformMode": platform_mode,
