@@ -399,6 +399,9 @@ class PackageWechatArticleBundleTest(unittest.TestCase):
                 "WECHAT_SIGNATURE_AUTHOR=作者\nWECHAT_ORIGINAL_ISSUE=10\n",
                 encoding="utf-8",
             )
+            out.with_suffix(".job.json").write_text(json.dumps({"article_signature": {
+                "issue": 9, "issue_env_key": "WECHAT_ORIGINAL_ISSUE", "account": {"alias": ""}
+            }}))
             old_argv = sys.argv
             sys.argv = [
                 "package_wechat_article_bundle.py",

@@ -25,7 +25,7 @@ import build_wechat_article_workbench as workbench_builder
 from atomic_files import atomic_write_json, atomic_write_text, manifest_fingerprint
 import publish_run_state as run_state
 import wechat_account_config as account_config
-from article_identity import validate_source_freshness
+from article_identity import validate_source_freshness, delivery_source_fingerprint
 
 
 DEFAULT_API_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-api-config.json"
@@ -966,6 +966,8 @@ def validate_original_issue_preflight(manifest: dict[str, Any], env_file: Path |
     expected = raw_issue if policy == "consume_on_success" else str(issue + 1)
     if current == expected:
         return
+    if policy == "reuse_previous" and current is not None and current.isdigit() and int(current) > issue:
+        return
     if policy == "consume_on_success" and current == str(issue + 1):
         raise SystemExit(
             f"Manifest original issue {raw_issue} has already been consumed ({key}={current}). "
@@ -1550,6 +1552,10 @@ def main() -> None:
         "token_cache": str(args.token_cache),
         "validation": validation,
     }
+    if manifest.get("workbench_html"):
+        source_markdown = Path(manifest["workbench_html"]).with_suffix(".md")
+        if source_markdown.is_file():
+            result["delivery_source_fingerprint"] = delivery_source_fingerprint(source_markdown)
     issue_metadata = manifest_original_issue(manifest)
     if issue_metadata is not None:
         result["original_issue_policy"] = {

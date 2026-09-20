@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from article_core import require_title
+from article_identity import delivery_source_fingerprint
 from atomic_files import atomic_write_json
 
 
@@ -22,7 +23,7 @@ def utc_now() -> str:
 def source_fingerprint(markdown_path: Path | None) -> str:
     if markdown_path is None:
         return ""
-    return hashlib.sha256(markdown_path.read_bytes()).hexdigest()
+    return delivery_source_fingerprint(markdown_path)
 
 
 def empty_platform_state() -> dict[str, Any]:
@@ -50,6 +51,7 @@ def new_state(slug: str, title: str, markdown_path: Path | None = None) -> dict[
             "slug": slug,
             "title": title,
             "source_fingerprint": source_fingerprint(markdown_path),
+            "source_path": str(markdown_path.resolve()) if markdown_path else "",
         },
         "overall_status": "pending",
         "platforms": {name: empty_platform_state() for name in PLATFORMS},
@@ -67,14 +69,25 @@ def validate_state(state: dict[str, Any]) -> None:
 
 
 def result_status(platform: str, payload: dict[str, Any]) -> str:
-    if payload.get("draft_verified") is True:
-        return "verified"
-    if platform == "wechat" and payload.get("status") == "success":
-        return "verified"
     if payload.get("submission_maybe_sent") is True:
         return "unknown"
+    confirmed = payload.get("draft_verified") is True
+    if platform == "wechat":
+        verification = payload.get("draft_verification") or {}
+        confirmed = bool(payload.get("draft_media_id")) and verification.get("verified") is True
+    if confirmed:
+        fields = ("images", "h1", "h2") if platform == "xiaohongshu" else ("images", "h1")
+        if platform == "wechat":
+            fields = tuple(field for field in ("images", "h1", "h2") if f"expected_{field}" in payload)
+        if any(count_value(payload, "expected", field) is None
+               or count_value(payload, "expected", field) != count_value(payload, "verified", field)
+               for field in fields):
+            return "failed"
+        return "verified"
     raw = str(payload.get("status") or "failed").lower()
-    return raw if raw in {"pending", "ready", "verified", "failed", "unknown", "skipped"} else "failed"
+    if raw in {"success", "verified"}:
+        return "ready"  # A successful submit is not a read-back verification.
+    return raw if raw in {"pending", "ready", "failed", "unknown", "skipped"} else "failed"
 
 
 def count_value(payload: dict[str, Any], prefix: str, field: str) -> int | None:
@@ -83,7 +96,9 @@ def count_value(payload: dict[str, Any], prefix: str, field: str) -> int | None:
         return None
     if isinstance(value, bool):
         raise ValueError(f"{prefix}_{field} must be an integer")
-    return int(value)
+    if not isinstance(value, int) or value < 0:
+        raise ValueError(f"{prefix}_{field} must be a non-negative integer")
+    return value
 
 
 def recompute_overall_status(state: dict[str, Any]) -> str:
@@ -105,13 +120,24 @@ def record_result(
     validate_state(state)
     if platform not in PLATFORMS:
         raise ValueError(f"unsupported platform: {platform}")
+    article = state.get("article") or {}
+    source_path = article.get("source_path")
+    expected_fingerprint = article.get("source_fingerprint")
+    if source_path and source_fingerprint(Path(source_path)) != expected_fingerprint:
+        raise ValueError("article changed; initialize a new delivery revision before recording results")
+    observed = payload.get("delivery_source_fingerprint") or payload.get("source_fingerprint")
+    if expected_fingerprint and observed != expected_fingerprint:
+        raise ValueError("result receipt does not match this article revision")
     current = dict(state["platforms"][platform])
     submission_maybe_sent = bool(payload.get("submission_maybe_sent"))
     if current.get("submission_maybe_sent") and not submission_maybe_sent:
         submission_maybe_sent = True
+    status = result_status(platform, payload)
+    if submission_maybe_sent and status != "verified":
+        status = "unknown"
     updated = {
         **current,
-        "status": result_status(platform, payload),
+        "status": status,
         "mode": str(payload.get("mode") or current.get("mode") or "draft"),
         "result_file": str(result_path.resolve()),
         "expected": {
@@ -125,9 +151,7 @@ def record_result(
             "h2": count_value(payload, "verified", "h2"),
         },
         "clipboard_strategy": str(payload.get("clipboard_strategy") or ""),
-        "draft_verified": bool(
-            payload.get("draft_verified") or (platform == "wechat" and payload.get("status") == "success")
-        ),
+        "draft_verified": status == "verified",
         "submission_maybe_sent": submission_maybe_sent,
         "public_url": str(payload.get("public_url") or ""),
         "error": str(payload.get("error") or "")[:500],
@@ -182,18 +206,32 @@ def main() -> None:
             existing = read_json(args.state)
             validate_state(existing)
             article = existing.get("article") or {}
-            if article.get("slug") != args.slug or article.get("title") != title:
+            if article.get("slug") != args.slug:
                 raise SystemExit("existing delivery state belongs to a different article")
-            state = existing
+            fingerprint = source_fingerprint(args.markdown)
+            if article.get("source_fingerprint") == fingerprint:
+                state = existing
+                state["article"]["source_path"] = str(args.markdown.resolve())
+            else:
+                if any((item.get("submission_maybe_sent") and item.get("status") != "verified") or item.get("status") == "unknown"
+                       for item in existing["platforms"].values()):
+                    raise SystemExit("previous submission outcome is unknown; resolve it before starting a new revision")
+                state = new_state(args.slug, title, args.markdown)
+                state["history"] = list(existing.get("history") or []) + [
+                    {key: value for key, value in existing.items() if key != "history"}
+                ]
         else:
             state = new_state(args.slug, title, args.markdown)
-            atomic_write_json(args.state, state)
+        atomic_write_json(args.state, state)
     elif args.command == "record":
         state = record_result(read_json(args.state), args.platform, read_json(args.result), args.result)
         atomic_write_json(args.state, state)
     else:
         state = read_json(args.state)
         validate_state(state)
+        source = state.get("article") or {}
+        if not source.get("source_path") or source_fingerprint(Path(source["source_path"])) != source.get("source_fingerprint"):
+            state = {**state, "overall_status": "stale", "error": "article changed or legacy state is unbound; run init before continuing"}
     print(json.dumps(state, ensure_ascii=False, indent=2))
 
 

@@ -55,7 +55,7 @@ class PlatformDeliveryStateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             for platform, payload in (
-                ("wechat", {"status": "success", "mode": "draft"}),
+                ("wechat", {"status": "success", "mode": "draft", "draft_media_id": "draft", "draft_verification": {"verified": True}}),
                 (
                     "toutiao",
                     {
@@ -108,7 +108,7 @@ class PlatformDeliveryStateTest(unittest.TestCase):
         )
 
         self.assertTrue(state["platforms"]["toutiao"]["submission_maybe_sent"])
-        self.assertEqual(state["overall_status"], "partial_failure")
+        self.assertEqual(state["overall_status"], "unknown")
 
 
 if __name__ == "__main__":

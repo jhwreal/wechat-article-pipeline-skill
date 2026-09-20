@@ -106,7 +106,7 @@ Generate only listed images, then package without `--missing-only`.
 
 ## Publishing Path
 
-Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: current counter minus one, no advance. Never publish/group-send by default.
+Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: reuse that article's saved signature, no advance. Never publish/group-send by default.
 
 Inspect every live WeChat API result immediately. On `40164` or an IP-allowlist error, stop the entire delivery chain: do not retry, upload, package, or continue to Toutiao/Xiaohongshu. Report the outbound IP, ask the user to allowlist it, end the turn, and resume only after acknowledgment.
 

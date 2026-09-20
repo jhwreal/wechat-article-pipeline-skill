@@ -100,3 +100,13 @@ def validate_source_freshness(manifest: dict[str, Any]) -> None:
                 raise ValueError("workbench manifest refresh/recovery is incomplete")
             if int(state.get("coreRevision", 0)) != int(source.get("core_revision", 0)):
                 raise ValueError("publish manifest belongs to an older workbench revision")
+
+
+def delivery_source_fingerprint(markdown_path: Path) -> str:
+    markdown_path = markdown_path.expanduser().resolve()
+    job_path = markdown_path.with_suffix(".job.json")
+    visuals = {}
+    if job_path.is_file():
+        visuals = json.loads(job_path.read_text(encoding="utf-8")).get("visuals") or {}
+    return compute_source_fingerprint({"article_markdown": markdown_path.read_text(encoding="utf-8"),
+                                       "visuals": visuals}, markdown_path.parent)

@@ -150,7 +150,7 @@ def parse_args() -> argparse.Namespace:
         "--same-session-revision",
         action="store_true",
         help=(
-            "Reuse the selected account's current original-issue counter minus one for a revision "
+            "Reuse this article's saved original-issue signature for a revision "
             "of the same article in the current agent conversation. The resulting signed manifest "
             "will not consume another issue after draft creation."
         ),
@@ -488,6 +488,8 @@ def resolve_signature_metadata(
     signature_author: str | None,
     original_issue: int | None,
     same_session_revision: bool = False,
+    previous_signature: dict[str, Any] | None = None,
+    article_id: str = "",
 ) -> dict[str, object]:
     author = (signature_author or account.get("signature_author") or "").strip()
     raw_issue = str(original_issue if original_issue is not None else account.get("original_issue", "")).strip()
@@ -500,12 +502,17 @@ def resolve_signature_metadata(
     if same_session_revision:
         if original_issue is not None:
             raise SystemExit("--same-session-revision cannot be combined with --original-issue.")
-        if counter_issue < 2:
-            raise SystemExit(
-                "--same-session-revision requires the selected account's current original issue "
-                "counter to be at least 2."
-            )
-        issue = counter_issue - 1
+        previous = previous_signature or {}
+        if not previous or previous.get("issue_env_key") != signature_issue_key(account):
+            raise SystemExit("--same-session-revision requires this article's saved signature for the same account")
+        if previous.get("article_id") and previous["article_id"] != article_id:
+            raise SystemExit("saved signature belongs to a different article")
+        try:
+            issue = int(previous["issue"])
+        except (ValueError, TypeError, KeyError) as exc:
+            raise SystemExit("saved article issue is invalid") from exc
+        if issue < 1 or counter_issue <= issue:
+            raise SystemExit("same-session revision requires an already consumed article issue")
         counter_policy = "reuse_previous"
     else:
         issue = counter_issue
@@ -521,6 +528,7 @@ def resolve_signature_metadata(
         },
         "issue_env_key": signature_issue_key(account),
         "counter_policy": counter_policy,
+        "article_id": article_id,
     }
 
 
@@ -763,12 +771,18 @@ def main() -> None:
             args.signature_author is not None and args.original_issue is not None
         ),
     )
+    job_out = (args.job_out or args.out.with_suffix(".job.json")).resolve()
+    previous_signature = None
+    if args.same_session_revision and job_out.is_file():
+        previous_signature = json.loads(job_out.read_text(encoding="utf-8")).get("article_signature")
     article_signature = resolve_signature_metadata(
         env_file=env_file,
         account=signature_account,
         signature_author=args.signature_author,
         original_issue=args.original_issue,
         same_session_revision=args.same_session_revision,
+        previous_signature=previous_signature,
+        article_id=hashlib.sha256(str(job_out).encode()).hexdigest(),
     )
 
     try:
