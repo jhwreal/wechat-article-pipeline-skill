@@ -106,6 +106,8 @@ Generate only listed images, then package without `--missing-only`.
 
 ## Publishing Path
 
+Before any platform write, follow [pre-publish-check.md](references/pre-publish-check.md): read the hidden, version-bound editorial check count. If the current article has no qualifying check, ask whether to check first or skip for this delivery; wait for that choice unless already explicit. This editorial reminder is the sole additional exception to the no-repeat-publish-confirmation rule. Record completed checks as described there.
+
 Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: reuse its saved signature; no advance. Never publish/group-send by default.
 
 Inspect every live WeChat API result immediately. On `40164` or an IP-allowlist error, stop the entire delivery chain: do not retry, upload, package, or continue to Toutiao/Xiaohongshu. Report the outbound IP, ask the user to allowlist it, end the turn, and resume only after acknowledgment.

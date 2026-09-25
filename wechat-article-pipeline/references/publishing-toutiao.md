@@ -1,5 +1,7 @@
 # 今日头条 Computer Use 操作 Chrome 发布流程
 
+发布前先执行 [隐藏检查记录](pre-publish-check.md)，在任何平台写入前检查当前稿件计数。未经检查时的选择提示适用于本流程，包括草稿、定时发布和已明确授权发布；同一版同一次流程不重复询问。
+
 仅在用户明确要求同步、保存草稿或发布今日头条时使用本流程。复用用户真实 Chrome 中已有的登录态，**从头到尾只使用 Computer Use 操作和读取 Chrome**。工作台格式选择、复制、地址栏导航、头条页面检查、标题与正文填写、选项设置、提交和结果核验都必须通过 Computer Use 完成。
 
 此流程禁止初始化或调用 Browser/Chrome browser automation；禁止使用 browser-client、`agent.browsers`、Playwright、CDP、DOM evaluation、`tabs.new()`、`tab.goto()` 或任何后台标签页对象。不要把自动化标签页的 URL、截图、焦点或 DOM 当成真实 Chrome 前台证据。微信草稿箱的“只用官方 API”限制只适用于 `mp.weixin.qq.com`，不限制今日头条。
