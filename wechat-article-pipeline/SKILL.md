@@ -5,14 +5,14 @@ description: Use when producing Chinese WeChat/公众号 article packages, check
 
 # WeChat Article Pipeline
 
-Create local article packages or check existing drafts; run external draft creation or publishing only when requested.
+Create/check local articles. Create external drafts or publish only when requested.
 
 ## Core Decisions
 
 - For article "检查" or "检查一下", read [Check Mode](references/article-check.md) before drafting. Report findings and improvements; edit only when requested. Respect narrower checks.
 - When the user asks to annotate a term, follow [annotations.md](references/annotations.md): use “（注1）” in the text and numbered explanations in a final appendix.
 - Read [writing-donts.md](references/writing-donts.md) before drafting or revising; check articles against it before delivery, repackaging, or publishing, preserving its contextual scope and user-text rules.
-- The first Markdown H1 is the canonical title; rename it there and require it.
+- Require the first Markdown H1 as the sole title; rename there.
 - Enable secretary mode only on explicit "打开秘书模式", for this request; read [style-guide.md](references/style-guide.md). Do not mention it unless asked.
 - Infer briefs from rough ideas. Integrate additions and corrections as reader-facing prose per [workflow.md](references/workflow.md), preserving explicit verbatim instructions and quotations.
 - For "不配图", "只排版", or "直接格式化", use the no-image path. If image generation is unavailable, follow the capability fallback in [image-production.md](references/image-production.md); do not silently drop requested images.
@@ -25,7 +25,7 @@ Create local article packages or check existing drafts; run external draft creat
 
 ## Workspace Contract
 
-Keep final artifacts in the current workspace unless the user names another location:
+Keep artifacts in the workspace unless directed otherwise:
 
 - markdown: `<workspace>/files/<slug>.md`
 - check report: `<workspace>/files/<slug>.check.md`
@@ -36,14 +36,14 @@ Keep final artifacts in the current workspace unless the user names another loca
 - optional publish manifest: `<workspace>/files/<slug>.publish-manifest.json`
 - images: `<workspace>/image/<slug>/cover.png`, `body-*.png`, `closing.png`
 
-Keep final assets out of temp directories and `$CODEX_HOME/generated_images`.
+Never leave final assets in temp or `$CODEX_HOME/generated_images`.
 
 ## Default Article Path
 
 1. Inspect `files/` and `image/` before choosing a slug.
 2. Draft in markdown first. Use [workflow.md](references/workflow.md) and [style-guide.md](references/style-guide.md).
 3. Place visual placeholders in the markdown only when images are desired: `cover`, `body-1`, `body-2`, ..., `closing`.
-4. Run the orchestration script once for planning:
+4. Plan once:
 
 ```bash
 python3 <skill>/scripts/postprocess_wechat_article.py \
@@ -57,10 +57,10 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-5. Read [image-production.md](references/image-production.md), run its single-pass queue with currently available worker slots, and enforce strict 3:2 visuals.
+5. Follow [image-production.md](references/image-production.md): single-pass queue, currently available worker slots, strict 3:2 visuals.
 6. Rerun without `--plan-only` to build the package. Add `--publish-manifest` only for requested API draft handoff.
-7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html` and fix any failures before delivery.
-8. Follow [delivery.md](references/delivery.md): an editable workbench gets a verified running URL first, then its HTML file; static-file requests get files directly.
+7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html`; fix failures.
+8. Follow [delivery.md](references/delivery.md): editable delivery needs verified URL then HTML; static delivery needs files.
 
 Mount only the active platform preview from the sole Markdown source. Cache semantic HTML; embed images only while copying.
 
@@ -76,7 +76,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --support-dir <workspace>/files/wechat-article-pipeline/<slug>
 ```
 
-No body images, but draft-box delivery:
+No-body-image draft delivery:
 
 ```bash
 python3 <skill>/scripts/postprocess_wechat_article.py \
@@ -102,7 +102,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --plan-only
 ```
 
-Generate only listed images, then package without `--missing-only`.
+Generate listed images; package without `--missing-only`.
 
 ## Publishing Path
 
@@ -116,18 +116,18 @@ For Toutiao and Xiaohongshu, load their publishing reference before the first br
 
 ## Safety Rules
 
-- Do not overwrite an existing package unless the user asked for that exact slug or file.
-- Do not delete old markdown, images, jobs, manifests, or support files without explicit permission.
+- Overwrite existing packages only when requested for that slug/file.
+- Delete Markdown, images, jobs, manifests, or support files only with explicit permission.
 - Do not install dependencies, modify agent config, switch accounts, or edit `.env` credentials unless the user explicitly approves that action.
-- Do not start nested agent runtimes or custom image API runners for normal image work.
-- Keep `cover.png` as the hero; derived WeChat crop previews never replace it.
-- Enable Toutiao `头条首发` only when the user confirms eligibility.
+- No nested agent runtimes or custom API runners for normal images.
+- Keep `cover.png`; crop previews never replace it.
+- Enable Toutiao `头条首发` only with confirmed eligibility.
 - Do not use Xiaohongshu creator-platform private APIs, Cookie export, localStorage export, token extraction, or request replay for delivery.
-- Publish no external hyperlinks in WeChat, Toutiao, or Xiaohongshu bodies. Keep source names as plain text; evidence links belong in separate check reports or support files.
+- Publish no external hyperlinks in WeChat, Toutiao, or Xiaohongshu bodies. Keep source names plain; evidence links go in reports/support files.
 
 ## Acceptance Checklist
 
-For article packages, confirm:
+Confirm:
 
 - artifacts stay under the workspace, share one slug, contain every requested 3:2 visual, and leave no unresolved `{{visual:*}}`
 - `verify_wechat_article_package.py` reports `status: ok`; delivery matches [delivery.md](references/delivery.md), including a reachable server for editable workbenches

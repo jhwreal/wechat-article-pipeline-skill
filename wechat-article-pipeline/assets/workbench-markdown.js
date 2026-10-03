@@ -18,7 +18,18 @@
     }
 
     function inlineFormat(text) {
-      return text
+      // Protect literal punctuation and code before interpreting emphasis/links.
+      // Input has already been HTML-escaped by the block renderer.
+      const codeSpans = [];
+      const protectedText = text.replace(/\\(&amp;|&lt;|&gt;|&quot;|&#39;|[!-/:-@\[-`{-~])|`([^`]+)`/g,
+        (_match, escaped, code) => {
+          if (escaped !== undefined) {
+            return escaped.startsWith('&') ? escaped : `&#${escaped.charCodeAt(0)};`;
+          }
+          codeSpans.push(`<code>${code}</code>`);
+          return `\u0000INLINE_CODE_${codeSpans.length - 1}\u0000`;
+        });
+      return protectedText
         .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, url) => (
           isSafeMarkdownUrl(url, true) ? `<img alt="${alt}" src="${url}" />` : alt
         ))
@@ -27,11 +38,11 @@
             ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
             : label
         ))
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/==([^=\n]+)==/g, '<span class="inline-accent" data-md-accent="mark">$1</span>')
         .replace(/(^|[\s（(“‘])'([^'\n]{1,80})'(?![\w])/g, '$1<span class="inline-accent" data-md-accent="quote">&#39;$2&#39;</span>')
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/\u0000INLINE_CODE_(\d+)\u0000/g, (_match, index) => codeSpans[Number(index)]);
     }
 
     function getMarkdownBlocks(md) {

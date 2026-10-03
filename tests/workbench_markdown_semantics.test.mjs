@@ -32,3 +32,12 @@ for (const example of cases) {
     assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
   });
 }
+
+test('escaped punctuation stays literal and inline code is not formatted', () => {
+  assert.equal(context.inlineFormat(context.escapeHtml(String.raw`And f\*\*k Sam Altman.`)), 'And f&#42;&#42;k Sam Altman.');
+  assert.equal(context.inlineFormat('And f**k Sam Altman.'), 'And f**k Sam Altman.');
+  assert.equal(context.inlineFormat(context.escapeHtml(String.raw`\[plain\] \<tag\> C:\temp`)), '&#91;plain&#93; &lt;tag&gt; C:\\temp');
+  assert.equal(context.inlineFormat(context.escapeHtml(String.raw`\`literal\``)), '&#96;literal&#96;');
+  assert.equal(context.inlineFormat(context.escapeHtml(String.raw`\*literal\* **bold**`)), '&#42;literal&#42; <strong>bold</strong>');
+  assert.equal(context.inlineFormat(context.escapeHtml('`f\\*\\*k **bold** [x](https://example.com)`')), '<code>f\\*\\*k **bold** [x](https://example.com)</code>');
+});

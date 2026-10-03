@@ -56,7 +56,7 @@ python3 wechat-article-pipeline/scripts/doctor_wechat_article_skill.py \
 
 以仓库中的 `wechat-article-pipeline/` 为唯一源码。更新前比较源码与安装目录，合并安装版独有的有效改动，再运行上述同步与 doctor 检查；不要直接覆盖尚未合并的安装版。同步排除本机 `.env`、账号篇号和缓存，不使用 `--delete` 清理运行目录。
 
-每次维护发布都更新 [CHANGELOG.md](CHANGELOG.md)，在 commit 正文写明问题、修改及验证结果，并为版本创建带说明的 annotated tag。详细说明保存在 `docs/releases/<tag>.md`，发布工作流会同步到 GitHub Release；已发布 tag 保留不移动。本次记录和回退方法见 [v1.9.1 发布说明](docs/releases/v1.9.1.md)。
+每次维护发布都更新 [CHANGELOG.md](CHANGELOG.md)，在 commit 正文写明问题、修改及验证结果，并为版本创建带说明的 annotated tag。详细说明保存在 `docs/releases/<tag>.md`，发布工作流会同步到 GitHub Release；已发布 tag 保留不移动。本次记录和回退方法见 [v1.9.2 发布说明](docs/releases/v1.9.2.md)。
 
 发布后的说明勘误以新提交记录。当安装包源码与当前版本标签一致时，`main` 的测试通过后会自动同步对应的 Release 说明，不替换标签或安装包；源码变化需要发布新版本。
 
@@ -231,7 +231,8 @@ https://developers.weixin.qq.com/platform
 
 ## 七、版本说明
 
-- `V 1.9.1（当前版本）`：修复审核发现的 9 类问题，包括串篇保存、旧缓存覆盖、账号 token 混用、列表内容丢失、旧图片回执与旧发布清单、跨平台状态、篇号复用和特殊标题；拆分工作台模块，补齐检查报告版本信息及可追溯的发布记录。详见 [更新记录](CHANGELOG.md) 和 [本次发布说明](docs/releases/v1.9.1.md)。
+- `V 1.9.2（当前版本）`：修复 Markdown 转义标点的预览与公众号导出，保护行内代码的字面内容。详见 [发布说明](docs/releases/v1.9.2.md)。
+- `V 1.9.1`：修复审核发现的 9 类问题，包括串篇保存、旧缓存覆盖、账号 token 混用、列表内容丢失、旧图片回执与旧发布清单、跨平台状态、篇号复用和特殊标题；拆分工作台模块，补齐检查报告版本信息及可追溯的发布记录。详见 [更新记录](CHANGELOG.md) 和 [本次发布说明](docs/releases/v1.9.1.md)。
 - `V 1.9.0`：新增由“检查”或“检查一下”触发的检查模式，覆盖错别字、事实核查、表达结构与主题、对象感及优化建议；提供带来源和核查边界的独立报告，并支持明确要求后的直接改稿。
 - `V 1.7.2`：优化跨平台图片复制与预览插图，保留 GIF 原图；统一交付与安全同步规则，调整同步三角为 26px。
 - `V 1.7.1`：工作台新增右侧预览与 Markdown 的双向行定位、软换行行高测量和 `▶` 同步标记，避免程序滚动反向抢夺编辑焦点；Skill 文案改为兼容 Codex、Claude Code 等 Agent Skills 运行时，并补充无生图能力时的明确降级路径。
@@ -462,7 +463,9 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 
 ## 7. Release Notes
 
-- `V 1.9.1 (current version)`: Fixed nine audited issue groups covering article identity, stale saves, account-bound tokens, list content, image receipts, publishing manifests, delivery state, issue reuse, and literal titles. Split workbench modules and added report version metadata and traceable release records. See the [changelog](CHANGELOG.md) and [release notes](docs/releases/v1.9.1.md).
+- `V 1.9.2 (current version)`: Fixed escaped Markdown punctuation in previews and WeChat exports; preserved inline code literals. See [release notes](docs/releases/v1.9.2.md).
+
+- `V 1.9.1`: Fixed nine audited issue groups covering article identity, stale saves, account-bound tokens, list content, image receipts, publishing manifests, delivery state, issue reuse, and literal titles. Split workbench modules and added report version metadata and traceable release records. See the [changelog](CHANGELOG.md) and [release notes](docs/releases/v1.9.1.md).
 - `V 1.9.0`: Added Check Mode triggered by “检查” or “检查一下”, covering typos, fact verification, structure and theme, audience fit, and prioritized improvements; reports preserve evidence and verification limits, with direct editing when requested.
 - `V 1.7.2`: Improved cross-platform image copying and preview insertion, preserved original GIF assets, unified delivery and safe synchronization guidance, and resized the synchronization marker to 26px.
 - `V 1.7.1`: Added bidirectional line navigation between the preview and Markdown editor, wrapped-line height measurement, and a `▶` synchronization marker while preventing programmatic scrolling from stealing editing focus; generalized the skill for Codex, Claude Code, and other Agent Skills runtimes, with an explicit no-image fallback when generation is unavailable.

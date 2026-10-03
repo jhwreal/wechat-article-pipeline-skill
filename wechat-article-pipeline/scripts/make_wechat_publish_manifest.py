@@ -282,10 +282,17 @@ def inline_format(text: str) -> str:
         return f"\x00INLINE_CODE_{index}\x00"
 
     def protect_code(match: re.Match[str]) -> str:
-        code_spans.append(f'<code style="{CODE_STYLE}">{match.group(1)}</code>')
+        if match.group(1) is not None:
+            literal = match.group(1)
+            return literal if literal.startswith("&") else f"&#{ord(literal)};"
+        code_spans.append(f'<code style="{CODE_STYLE}">{match.group(2)}</code>')
         return code_token(len(code_spans) - 1)
 
-    escaped = re.sub(r"`([^`]+)`", protect_code, escaped)
+    escaped = re.sub(
+        r"\\(&amp;|&lt;|&gt;|&quot;|&#x27;|[!-/:-@\[-`{-~])|`([^`]+)`",
+        protect_code,
+        escaped,
+    )
     def safe_url(value: str, *, image: bool) -> bool:
         candidate = html.unescape(value).strip()
         scheme_probe = re.sub(r"[\x00-\x20\x7f]+", "", candidate).lower()

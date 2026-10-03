@@ -20,6 +20,17 @@ PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAA
 
 
 class WeChatDraftHtmlTest(unittest.TestCase):
+    def test_escaped_punctuation_and_code_are_literal(self) -> None:
+        import html
+        render = manifest_builder.inline_format
+        self.assertEqual(html.unescape(render(r"And f\*\*k Sam Altman.")), "And f**k Sam Altman.")
+        self.assertEqual(render("And f**k Sam Altman."), "And f**k Sam Altman.")
+        self.assertEqual(html.unescape(render(r"\[plain\] \<tag\> C:\temp")), "[plain] <tag> C:\\temp")
+        self.assertNotIn("<em>", render(r"\*literal\*"))
+        self.assertNotIn("<strong", render("`**bold**`"))
+        self.assertIn(r"f\*\*k", render(r"`f\*\*k`"))
+        self.assertEqual(html.unescape(render(r"\`literal\`")), "`literal`")
+
     def test_source_state_json_requires_an_object(self) -> None:
         state = manifest_builder.parse_source_state_json(
             '{"core_revision":2,"manifest_revision":2,"asset_state":"ready"}'
