@@ -1,6 +1,6 @@
 # WeChat Official API Publishing
 
-发布前先执行 [隐藏检查记录](pre-publish-check.md)，在任何平台写入前检查当前稿件计数。未经检查时的选择提示适用于本流程，包括草稿、定时发布和已明确授权发布；同一版同一次流程不重复询问。
+发布前按 [自动检查与隐藏记录](pre-publish-check.md) 处理：用户未明确跳过且当前稿无有效检查时，自动检查并在对话中报告结果；无待决定的内容问题就继续本次授权流程，不询问是否开始检查。草稿、立即/定时发布均适用，同篇同版跨平台复用结果。
 
 Use this reference only when the user explicitly asks to push a generated article package to the WeChat Official Account draft box. Sending preview is separate and must also be explicitly requested.
 

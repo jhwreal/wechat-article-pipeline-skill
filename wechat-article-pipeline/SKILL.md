@@ -106,7 +106,7 @@ Generate listed images; package without `--missing-only`.
 
 ## Publishing Path
 
-Before any platform write, follow [pre-publish-check.md](references/pre-publish-check.md): read the hidden, version-bound editorial check count. If the current article has no qualifying check, ask whether to check first or skip for this delivery; wait for that choice unless already explicit. This editorial reminder is the sole additional exception to the no-repeat-publish-confirmation rule. Record completed checks as described there.
+Before any platform write, follow [pre-publish-check.md](references/pre-publish-check.md). Unless explicitly skipped for this delivery, automatically check the latest article when no qualifying check exists. Report findings in the conversation; continue authorized delivery when no content decision remains. Never wait merely for permission to start checking. Record only completed checks.
 
 Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: reuse its saved signature; no advance. Never publish/group-send by default.
 
