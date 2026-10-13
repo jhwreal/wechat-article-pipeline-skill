@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -235,6 +236,7 @@ def main() -> None:
         raise SystemExit("--missing-only is only supported with --plan-only. Generate missing images, then rerun without --missing-only to package.")
 
     source_article = args.article.resolve()
+    source_sha256 = hashlib.sha256(source_article.read_bytes()).hexdigest()
     out = args.out.resolve()
     article_slug = validate_article_slug(args.article_slug or infer_article_slug(source_article))
     jobs_out = (args.jobs_out or out.with_suffix(".image-jobs.json")).resolve()
@@ -267,6 +269,8 @@ def main() -> None:
             str(focused_article),
             str(out),
             "--no-images",
+            "--source-markdown", str(source_article),
+            "--source-markdown-sha256", source_sha256,
         ]
         if args.cover_image:
             package_cmd.extend(["--cover-image", str(args.cover_image.resolve())])
@@ -317,6 +321,8 @@ def main() -> None:
         str(PACKAGE),
         str(focused_article),
         str(out),
+        "--source-markdown", str(source_article),
+        "--source-markdown-sha256", source_sha256,
         "--plan-json",
         str(jobs_out),
         "--images-dir",

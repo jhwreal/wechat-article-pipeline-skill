@@ -77,6 +77,8 @@ When no `--account` is provided, exactly one configured account (default or name
 
 If `.env` is missing or lacks credentials for the selected account, ask the user for the account name, AppID, and AppSecret, then generate the file locally with restrictive permissions. Do not echo AppSecret in final answers or logs.
 
+Named accounts never inherit credentials from the default account's legacy JSON config, even when a valid cached token exists. Supply a complete selected profile or explicit one-off credentials. New receipts record the resolved AppID and require the same identity when resuming; an explicit access token remains a one-off override and is not proof of account ownership. Legacy default-account config and receipts without an AppID remain supported.
+
 Access token cache is local-only and outside the repo:
 
 ```text
@@ -89,7 +91,9 @@ Never commit `.env` or token cache files.
 
 ## Manifest
 
-Local packaging skips the publish manifest by default. Pass `--publish-manifest` to write `<html-stem>.publish-manifest.json` for an explicitly requested API handoff. It contains title, author, digest, rendered HTML, text, embedded cover/body images, image candidates, a source fingerprint, optional preview account, and safety flags. Verification recomputes the fingerprint from the current job and image bytes so a leftover manifest cannot silently describe older content. External image URLs are rejected because WeChat filters them and the uploader only accepts embedded images. The manifest must not contain original declaration, reward account, or collection fields.
+Local packaging skips the publish manifest by default. Pass `--publish-manifest` to write `<html-stem>.publish-manifest.json` for an explicitly requested API handoff. It contains title, author, digest, rendered HTML, text, embedded cover/body images, image candidates, source fingerprints, optional preview account, and safety flags. New packages capture the original Markdown path and SHA-256 before focus marking and image substitution. Before dry-run or draft creation, verification checks that source snapshot, the current job and image bytes, and the workbench revision. Receipts retain the verified submitted snapshot instead of relabeling an old payload with a later disk revision. External image URLs are rejected because WeChat filters them and the uploader only accepts embedded images. The manifest must not contain original declaration, reward account, or collection fields.
+
+When an older package has no source snapshot, only a Markdown companion that can be reconciled with its job is accepted. If prior automatic formatting cannot be verified, rebuild from the latest confirmed Markdown. Standalone legacy manifests without live source bindings remain usable but do not attest a current local Markdown revision.
 
 Do not publish external hyperlinks in WeChat article bodies. Source names may remain as plain text, but remove every external anchor from the final Markdown/workbench content before manifest creation. Before `draft/add`, verify that `content_html` contains no external `<a href>` values. This is separate from image handling: uploaded WeChat body-image URLs in `img src` are required and are not article hyperlinks.
 

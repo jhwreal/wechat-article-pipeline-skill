@@ -328,6 +328,7 @@ def apply_template(
         "markdown": markdown,
         "metadata": article_metadata if isinstance(article_metadata, dict) else {},
         "signature": job.get("article_signature") or {},
+        "sourceMarkdown": job.get("source_markdown") or {},
         "storageKey": storage_key,
         "workbenchState": state,
         "platformImageUrls": normalize_platform_image_urls(platform_image_urls or []),

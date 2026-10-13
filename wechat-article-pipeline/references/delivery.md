@@ -23,6 +23,8 @@ Read the emitted `WORKBENCH_URL` and `HTML_PATH`; do not invent a port or reuse 
 
 Edits are cached immediately; automatic saving writes them after 3 idle seconds, and Save writes immediately. A directly opened HTML file locks editing. Preserve visible saving, saved, error, and recovery-required states.
 
+If Markdown or job content changes outside the workbench, the persistence service refuses stale saves, including after a restart. Preserve the page's unsaved draft and reconcile it with the current source, then rebuild the package before reopening. Reopening the same stale HTML is not a way to accept or overwrite external edits.
+
 If the service cannot run, deliver the verified files and explain that editable saving is unavailable. If the user requested editing, mark that part incomplete instead of presenting static HTML as a completed editable workbench.
 
 ## Final response

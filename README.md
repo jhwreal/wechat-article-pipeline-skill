@@ -56,7 +56,7 @@ python3 wechat-article-pipeline/scripts/doctor_wechat_article_skill.py \
 
 以仓库中的 `wechat-article-pipeline/` 为唯一源码。更新前比较源码与安装目录，合并安装版独有的有效改动，再运行上述同步与 doctor 检查；不要直接覆盖尚未合并的安装版。同步排除本机 `.env`、账号篇号和缓存，不使用 `--delete` 清理运行目录。
 
-每次维护发布都更新 [CHANGELOG.md](CHANGELOG.md)，在 commit 正文写明问题、修改及验证结果，并为版本创建带说明的 annotated tag。详细说明保存在 `docs/releases/<tag>.md`，发布工作流会同步到 GitHub Release；已发布 tag 保留不移动。本次记录和回退方法见 [v1.9.3 发布说明](docs/releases/v1.9.3.md)。
+每次维护发布都更新 [CHANGELOG.md](CHANGELOG.md)，在 commit 正文写明问题、修改及验证结果，并为版本创建带说明的 annotated tag。详细说明保存在 `docs/releases/<tag>.md`，发布工作流会同步到 GitHub Release；已发布 tag 保留不移动。本次记录和回退方法见 [v1.9.4 发布说明](docs/releases/v1.9.4.md)。
 
 发布后的说明勘误以新提交记录。当安装包源码与当前版本标签一致时，`main` 的测试通过后会自动同步对应的 Release 说明，不替换标签或安装包；源码变化需要发布新版本。
 
@@ -231,7 +231,8 @@ https://developers.weixin.qq.com/platform
 
 ## 七、版本说明
 
-- `V 1.9.3（当前版本）`：上传前缺少有效检查时自动检查，直接反馈结果，无待决定问题就继续；保留明确跳过与改稿授权边界。详见 [发布说明](docs/releases/v1.9.3.md)。
+- `V 1.9.4（当前版本）`：修复外部改稿被旧工作台覆盖、旧正文回执误指向新版、命名账号缺凭据时误用默认账号三类问题，补齐回归测试；纳入表格换行和头条定时流程的已有维护。详见 [发布说明](docs/releases/v1.9.4.md)。
+- `V 1.9.3`：上传前缺少有效检查时自动检查，直接反馈结果，无待决定问题就继续；保留明确跳过与改稿授权边界。详见 [发布说明](docs/releases/v1.9.3.md)。
 - `V 1.9.2`：修复 Markdown 转义标点的预览与公众号导出，保护行内代码的字面内容。详见 [发布说明](docs/releases/v1.9.2.md)。
 - `V 1.9.1`：修复审核发现的 9 类问题，包括串篇保存、旧缓存覆盖、账号 token 混用、列表内容丢失、旧图片回执与旧发布清单、跨平台状态、篇号复用和特殊标题；拆分工作台模块，补齐检查报告版本信息及可追溯的发布记录。详见 [更新记录](CHANGELOG.md) 和 [本次发布说明](docs/releases/v1.9.1.md)。
 - `V 1.9.0`：新增由“检查”或“检查一下”触发的检查模式，覆盖错别字、事实核查、表达结构与主题、对象感及优化建议；提供带来源和核查边界的独立报告，并支持明确要求后的直接改稿。
@@ -466,7 +467,8 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 
 ## 7. Release Notes
 
-- `V 1.9.3 (current version)`: Automatically review unchecked drafts before delivery, report findings, and continue when no content decision remains. Explicit skips and editing permissions are preserved. See [release notes](docs/releases/v1.9.3.md).
+- `V 1.9.4 (current version)`: Protect external source edits from stale workbench saves, bind publishing receipts to the submitted revision, and prevent named accounts from inheriting legacy credentials. Includes regression coverage and the existing table-wrapping and Toutiao scheduling maintenance. See [release notes](docs/releases/v1.9.4.md).
+- `V 1.9.3`: Automatically review unchecked drafts before delivery, report findings, and continue when no content decision remains. Explicit skips and editing permissions are preserved. See [release notes](docs/releases/v1.9.3.md).
 - `V 1.9.2`: Fixed escaped Markdown punctuation in previews and WeChat exports; preserved inline code literals. See [release notes](docs/releases/v1.9.2.md).
 
 - `V 1.9.1`: Fixed nine audited issue groups covering article identity, stale saves, account-bound tokens, list content, image receipts, publishing manifests, delivery state, issue reuse, and literal titles. Split workbench modules and added report version metadata and traceable release records. See the [changelog](CHANGELOG.md) and [release notes](docs/releases/v1.9.1.md).

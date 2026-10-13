@@ -312,6 +312,7 @@ class WorkbenchDocument:
         self._closed = False
         with self._guard():
             self._state = self._load_state()
+            self._refresh_source_baseline()
             self._prune_job_snapshots()
             self._refresh_assets_from_job()
             self._resume_pending_manifest_refresh()
@@ -546,6 +547,7 @@ class WorkbenchDocument:
                 "state": "pending" if self._manifest_enabled else "not_configured",
                 "targetRevision": revision,
             }
+            state["sourceFiles"] = self._source_file_snapshot()
             self._write_state(state)
             self.journal.unlink()
             fsync_directory(self.support_dir)
@@ -568,6 +570,7 @@ class WorkbenchDocument:
                 try:
                     if hasattr(self, "_state"):
                         self._state = self._load_state()
+                        self._refresh_source_baseline()
                     yield
                 finally:
                     self._guard_depth = 0
@@ -581,12 +584,104 @@ class WorkbenchDocument:
             markdown = self.markdown_path.read_text(encoding="utf-8") if self.markdown_path.is_file() else source
         return hashlib.sha256(markdown.encode()).hexdigest()
 
+    def _source_file_snapshot(self) -> dict[str, str | None]:
+        """Track each representation independently; source and rendered text differ."""
+        html_source = self.html_path.read_text(encoding="utf-8")
+        rendered_source = html_source
+        package_source = html_source
+        if builder.BOOTSTRAP_RE.search(html_source):
+            try:
+                bootstrap = builder.read_bootstrap(html_source)
+                rendered_source = str(bootstrap.get("markdown", ""))
+                package_source = json.dumps(
+                    {key: value for key, value in bootstrap.items() if key not in {
+                        "platformImageUrls", "platformImageSource", "documentId", "documentPath",
+                        "baseRevision", "baseFingerprint",
+                    }},
+                    ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                )
+            except ValueError:
+                pass
+        return {
+            "htmlMarkdown": hashlib.sha256(rendered_source.encode("utf-8")).hexdigest(),
+            "htmlPackage": hashlib.sha256(package_source.encode("utf-8")).hexdigest(),
+            "markdown": file_sha256(self.markdown_path) if self.markdown_path.is_file() else None,
+            "job": file_sha256(self.job_path) if self.job_path.is_file() else None,
+        }
+
+    def _packaged_source_hash(self) -> str | None:
+        if self.job_path.is_file():
+            try:
+                job = json.loads(self.job_path.read_text(encoding="utf-8"))
+                source = job.get("source_markdown") if isinstance(job, dict) else None
+                if isinstance(source, dict) and isinstance(source.get("path"), str):
+                    source_path = Path(source["path"])
+                    if not source_path.is_absolute():
+                        source_path = self.job_path.parent / source_path
+                    expected = source.get("sha256")
+                    if (
+                        source_path.resolve() == self.markdown_path
+                        and isinstance(expected, str)
+                        and SHA256_RE.fullmatch(expected)
+                    ):
+                        return expected
+            except (OSError, ValueError, TypeError):
+                pass
+        return None
+
+    def _refresh_source_baseline(self) -> None:
+        if self._state.get("recovery_required"):
+            return
+        current = self._source_file_snapshot()
+        baseline = self._state.get("sourceFiles")
+        if isinstance(baseline, dict) and baseline.get("htmlPackage") == current["htmlPackage"]:
+            return
+        # A rebuilt HTML article/presentation establishes a new package; receipt
+        # metadata is excluded above and must never authorize a companion edit.
+        # Legacy packages can contain original/focused/placeholder representations,
+        # so do not compare those Markdown strings with one another.
+        expected_source = self._packaged_source_hash()
+        actual_source = current["markdown"]
+        source_verified = expected_source is not None and expected_source == actual_source
+        if (
+            isinstance(baseline, dict)
+            and baseline.get("htmlMarkdown") == current["htmlMarkdown"]
+            and baseline.get("markdown") != current["markdown"]
+            and not source_verified
+        ):
+            # A presentation-only rebuild cannot explain a changed source file
+            # unless the package explicitly records that exact source snapshot.
+            return
+        if expected_source is not None and not source_verified:
+            current["markdown"] = expected_source
+        self._state["sourceFiles"] = current
+        self._persist()
+
+    def _source_conflict_files(self) -> list[str]:
+        baseline = self._state.get("sourceFiles")
+        if not isinstance(baseline, dict):
+            return []
+        current = self._source_file_snapshot()
+        return [
+            path.relative_to(self.workspace).as_posix()
+            for key, path in (("markdown", self.markdown_path), ("job", self.job_path))
+            if baseline.get(key) != current[key]
+        ]
+
+    def _assert_source_files_current(self) -> None:
+        if self._source_conflict_files():
+            status = self.status()
+            status.update(saved=False, error="article source files changed externally; rebuild the workbench from the latest Markdown")
+            raise RevisionConflict(status)
+
     def status(self) -> dict[str, Any]:
         with self._guard():
             out = dict(self._state)
             out.setdefault("coreRevision", 0)
             out.update(available=True, token=self.token, documentId=self.document_id,
                        documentPath=self.document_path, contentFingerprint=self.content_fingerprint())
+            source_conflicts = self._source_conflict_files()
+            out.update(sourceConflict=bool(source_conflicts), sourceConflictFiles=source_conflicts)
             return out
 
     def served_html(self) -> bytes:
@@ -872,6 +967,7 @@ class WorkbenchDocument:
                 raise RecoveryRequired(self.status())
             if self._closed:
                 raise ValueError("document is closed")
+            self._assert_source_files_current()
             if payload.get("documentId", self.document_id) != self.document_id:
                 raise ValueError("save belongs to a different article")
             if payload.get("baseFingerprint", self.content_fingerprint()) != self.content_fingerprint():
@@ -907,6 +1003,11 @@ class WorkbenchDocument:
                     raise ValueError("rendered job must be a JSON object")
                 source_markdown = restore_visual_placeholders(markdown, job, self.html_path)
                 job["article_markdown"] = source_markdown
+                job["source_markdown"] = {
+                    "path": str(self.markdown_path),
+                    "sha256": hashlib.sha256(source_markdown.encode("utf-8")).hexdigest(),
+                }
+                updated_html = builder.replace_bootstrap(updated_html, {"sourceMarkdown": job["source_markdown"]})
                 job["page_title"] = canonical_title
                 job["brand_title"] = f"{canonical_title}工作台" if canonical_title else "未命名文章工作台"
                 job["theme_color"] = state["themeColor"]
@@ -971,6 +1072,9 @@ class WorkbenchDocument:
                             "hash": hashlib.sha256(value.encode("utf-8")).hexdigest(),
                         }
                     )
+                # Also check after staging: an editor outside the cooperative
+                # file lock may have changed a companion while files were built.
+                self._assert_source_files_current()
                 atomic_write_text(
                     self.journal,
                     json.dumps(
@@ -1005,6 +1109,7 @@ class WorkbenchDocument:
                         "coreRevision": revision,
                         "manifest": manifest_state,
                         "assets": assets,
+                        "sourceFiles": self._source_file_snapshot(),
                     }
                 )
                 if source_state is not None:

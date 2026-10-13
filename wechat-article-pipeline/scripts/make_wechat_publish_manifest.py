@@ -12,7 +12,7 @@ from typing import Any
 import build_wechat_article_workbench as builder
 import wechat_account_config as account_config
 from article_core import extract_title, require_title
-from article_identity import compute_source_fingerprint
+from article_identity import compute_source_fingerprint, source_markdown_receipt
 from atomic_files import atomic_write_json
 
 
@@ -525,6 +525,12 @@ def main() -> None:
     args = parse_args()
     job = read_json(args.job.resolve())
     job_dir = (args.source_directory or args.job.resolve().parent).resolve()
+    fallback_markdown = (args.workbench_html.resolve().with_suffix(".md") if args.workbench_html
+                         else args.job.resolve().with_name(args.job.name.removesuffix(".job.json") + ".md"))
+    try:
+        source_receipt = source_markdown_receipt(job, job_dir, fallback_markdown)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
     config = read_config(args.config.expanduser())
     env = account_config.read_env_file(args.env_file)
     account = account_config.find_account_profile(env, args.account, include_credentials=True)
@@ -634,6 +640,16 @@ def main() -> None:
     source_state = parse_source_state_json(args.source_state_json)
     if source_state is not None:
         manifest["source_state"] = source_state
+    # The delivery fingerprint belongs to the validated input snapshot, never
+    # to a newer file read after rendering or uploading has started.
+    try:
+        if source_markdown_receipt(job, job_dir, fallback_markdown) != source_receipt:
+            raise ValueError("Source Markdown changed while creating the publish manifest; rebuild it.")
+        if compute_source_fingerprint(job, job_dir) != manifest["source_fingerprint"]:
+            raise ValueError("Source images changed while creating the publish manifest; rebuild it.")
+    except (OSError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+    manifest.update(source_receipt)
     atomic_write_json(args.out, manifest)
     print(f"Wrote {args.out.resolve()}")
 

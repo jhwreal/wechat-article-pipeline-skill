@@ -16,6 +16,7 @@ import build_wechat_article_workbench as builder
 import release_info
 import wechat_account_config as account_config
 from article_core import require_title
+from article_identity import markdown_source_snapshot
 from atomic_files import atomic_write_text
 from image_jobs_contract import normalize_image_jobs, derive_image_plan, render_image_plan_markdown
 
@@ -51,6 +52,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("article", type=Path, help="Path to the source markdown article.")
     parser.add_argument("out", type=Path, help="Path to the output HTML workbench file.")
+    parser.add_argument("--source-markdown", type=Path, help="Original Markdown before pipeline focus marking.")
+    parser.add_argument("--source-markdown-sha256", help="Original Markdown hash captured before pipeline transformations.")
     parser.add_argument(
         "--images-dir",
         type=Path,
@@ -748,7 +751,15 @@ def main() -> None:
             "Pass --cover-image <path> or omit --publish-manifest for local formatting only."
         )
 
-    source_markdown = args.article.read_text(encoding="utf-8")
+    source_bytes = args.article.read_bytes()
+    source_markdown = source_bytes.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    if bool(args.source_markdown) != bool(args.source_markdown_sha256):
+        raise SystemExit("--source-markdown and --source-markdown-sha256 must be supplied together.")
+    source_snapshot = markdown_source_snapshot(args.article, source_bytes)
+    if args.source_markdown:
+        source_snapshot = markdown_source_snapshot(args.source_markdown)
+        if source_snapshot["sha256"] != args.source_markdown_sha256:
+            raise SystemExit("Source Markdown changed during packaging; rerun the article pipeline.")
     markdown, article_metadata = builder.split_front_matter(source_markdown)
     plan = read_plan(args.plan_json.resolve() if args.plan_json else None)
     if plan is not None:
@@ -814,6 +825,7 @@ def main() -> None:
         cover_image=args.cover_image,
     )
     job["storage_key"] = args.storage_key or make_content_storage_key(page_title or slug_source, markdown, job["visuals"])
+    job["source_markdown"] = source_snapshot
 
     atomic_write_text(job_out, json.dumps(job, ensure_ascii=False, indent=2) + "\n")
 

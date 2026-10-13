@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import hashlib
 import json
 import mimetypes
 import re
@@ -25,7 +26,7 @@ import build_wechat_article_workbench as workbench_builder
 from atomic_files import locked_file, atomic_write_json, atomic_write_text, manifest_fingerprint
 import publish_run_state as run_state
 import wechat_account_config as account_config
-from article_identity import validate_source_freshness, delivery_source_fingerprint
+from article_identity import validate_source_freshness
 
 
 DEFAULT_API_CONFIG = Path.home() / ".codex" / "wechat-article-pipeline" / "wechat-api-config.json"
@@ -271,6 +272,18 @@ def request_json(req: urllib.request.Request) -> dict[str, Any]:
     return result
 
 
+def resolve_account_credentials(
+    args: argparse.Namespace,
+    config: dict[str, Any],
+    account: dict[str, str],
+) -> tuple[str, str]:
+    # Legacy credentials belong to the default account, never to a named profile.
+    legacy = {} if account.get("alias") else config
+    appid = str(args.appid or account.get("appid") or legacy.get("appid") or "").strip()
+    appsecret = str(args.appsecret or account.get("appsecret") or legacy.get("appsecret") or "").strip()
+    return appid, appsecret
+
+
 def get_access_token(
     args: argparse.Namespace,
     config: dict[str, Any],
@@ -279,19 +292,18 @@ def get_access_token(
     if args.access_token:
         return args.access_token.strip()
 
-    appid = (args.appid or account.get("appid") or config.get("appid") or "").strip()
-    token_cache = read_config(args.token_cache)
-    cached = token_cache or (config.get("access_token_cache") or {})
-    if appid and cached.get("appid") == appid and not args.force_refresh_token and cached.get("access_token") and float(cached.get("expires_at", 0)) > time.time() + 300:
-        return str(cached["access_token"])
-
-    appsecret = (args.appsecret or account.get("appsecret") or config.get("appsecret") or "").strip()
+    appid, appsecret = resolve_account_credentials(args, config, account)
     if not appid or not appsecret:
         raise SystemExit(
             "Missing WeChat AppID/AppSecret. For the default account, set WECHAT_APPID/WECHAT_APPSECRET. "
             "For a named account, set WECHAT_ACCOUNT_<ALIAS>_NAME, WECHAT_ACCOUNT_<ALIAS>_APPID, "
             "and WECHAT_ACCOUNT_<ALIAS>_APPSECRET in .env. You can also pass --appid and --appsecret for one-off runs."
         )
+
+    token_cache = read_config(args.token_cache)
+    cached = token_cache or (config.get("access_token_cache") or {})
+    if cached.get("appid") == appid and not args.force_refresh_token and cached.get("access_token") and float(cached.get("expires_at", 0)) > time.time() + 300:
+        return str(cached["access_token"])
 
     payload: dict[str, Any] = {"grant_type": "client_credential", "appid": appid, "secret": appsecret}
     if args.force_refresh_token:
@@ -1317,6 +1329,13 @@ def validate_resume_receipt(
             raise SystemExit(
                 f"Cannot resume: account {field} changed from {stored_value!r} to {current_value!r}."
             )
+    if "appid" in stored_account:
+        stored_appid = str(stored_account["appid"])
+        current_appid = str(account.get("appid", ""))
+        if stored_appid != current_appid:
+            raise SystemExit(
+                f"Cannot resume: account appid changed from {stored_appid!r} to {current_appid!r}."
+            )
 
     operation_state = run.get("operation_state")
     draft_entry = operation_state.get("draft_add") if isinstance(operation_state, dict) else None
@@ -1425,7 +1444,7 @@ def create_publish_run(
     validate_new_run_side_effect_parameters(args, manifest, account, env_file)
     run = run_state.new_publish_run(
         base_result,
-        manifest_sha256=manifest_fingerprint(args.manifest),
+        manifest_sha256=base_result.get("manifest_sha256") or manifest_fingerprint(args.manifest),
         requested_operations=requested_publish_operations(args),
     )
     bind_side_effect_parameters(run, args, manifest, account, env_file)
@@ -1519,30 +1538,35 @@ def main() -> None:
         raise SystemExit(
             f"Refusing to overwrite existing publish receipt: {out}. Use --resume or choose a different --out path."
         )
-    manifest = read_json(args.manifest)
+    manifest_bytes = args.manifest.read_bytes()
+    manifest = json.loads(manifest_bytes)
     apply_original_issue_policy(args, manifest)
     config = read_config(args.config)
     env_file = find_env_file(args.manifest, args.env_file)
     env = account_config.read_env_file(env_file)
     account = account_config.find_account_profile(env, args.account, include_credentials=not dry_run)
+    appid, appsecret = resolve_account_credentials(args, config, account)
+    account = {**account, "appid": appid, "appsecret": appsecret}
     token_cache = args.token_cache.expanduser()
     if token_cache == DEFAULT_TOKEN_CACHE:
         token_cache = account_config.account_token_cache_path(
             DEFAULT_TOKEN_CACHE,
-            {**account, "appid": args.appid or account.get("appid") or config.get("appid") or ""},
+            account,
         )
     args.token_cache = token_cache
 
     content_html = str(manifest.get("content_html", ""))
     validation = validate_manifest(manifest, content_html)
+    source_receipt: dict[str, Any] = {}
     if not args.resume:
         try:
-            validate_source_freshness(manifest)
+            source_receipt = validate_source_freshness(manifest)
         except (OSError, ValueError) as exc:
             raise SystemExit(str(exc)) from exc
 
     result: dict[str, Any] = {
         "manifest": str(args.manifest),
+        "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
         "source_fingerprint": str(manifest.get("source_fingerprint") or ""),
         "dry_run": dry_run,
         "env_file": str(env_file.resolve()) if env_file and env_file.exists() else "",
@@ -1550,14 +1574,13 @@ def main() -> None:
             "selector": account.get("selector", ""),
             "alias": account.get("alias", ""),
             "name": account.get("name", ""),
+            # This is the resolved credential identity, not verification of an explicit token.
+            "appid": account.get("appid", ""),
         },
         "token_cache": str(args.token_cache),
         "validation": validation,
     }
-    if manifest.get("workbench_html"):
-        source_markdown = Path(manifest["workbench_html"]).with_suffix(".md")
-        if source_markdown.is_file():
-            result["delivery_source_fingerprint"] = delivery_source_fingerprint(source_markdown)
+    result.update(source_receipt)
     issue_metadata = manifest_original_issue(manifest)
     if issue_metadata is not None:
         result["original_issue_policy"] = {

@@ -429,6 +429,20 @@
       white-space: nowrap;
       font-size: 14px;
     }
+    /* Small comparison tables wrap in place; wide tables retain horizontal scrolling. */
+    .preview table:not(:has(tr > :nth-child(5))) {
+      display: table;
+      table-layout: fixed;
+      max-width: 100%;
+      overflow-x: visible;
+    }
+    .preview table:not(:has(tr > :nth-child(5))) th,
+    .preview table:not(:has(tr > :nth-child(5))) td {
+      padding: 10px 8px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: normal;
+    }
     .preview img {
       max-width: 100%;
       display: block;
@@ -1049,6 +1063,13 @@
       setStyle('thead', 'background:#f8fafc;');
       setStyle('th', 'padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;');
       setStyle('td', 'padding:10px 12px; border-bottom:1px solid #eaecf0; text-align:left; white-space:nowrap; font-size:14px;');
+      root.querySelectorAll('table').forEach(table => {
+        if (table.querySelector('tr > :nth-child(5)')) return;
+        table.setAttribute('style', 'width:100%; max-width:100%; table-layout:fixed; border-collapse:collapse; margin:18px 0; display:table; border:1px solid #eaecf0;');
+        table.querySelectorAll('th, td').forEach(cell => {
+          cell.setAttribute('style', 'padding:10px 8px; border-bottom:1px solid #eaecf0; text-align:left; white-space:normal; overflow-wrap:anywhere; word-break:normal; font-size:14px;');
+        });
+      });
       setStyle('img', 'max-width:100%; display:block; margin:0 auto; border-radius:8px;');
       root.querySelectorAll('p').forEach(p => {
         if (p.children.length === 1 && p.children[0].tagName === 'IMG') {
@@ -1532,7 +1553,9 @@
         if (response.status === 409) {
           const latest = await response.json();
           // Keep the draft's original revision for recovery; never rebase on a conflict.
-          showPersistenceWarning('文章文件已经被其他页面修改。为避免覆盖新版本，本页已停止编辑；请关闭后重新打开服务地址。');
+          showPersistenceWarning(latest.sourceConflict
+            ? '源稿已在工作台之外修改，本页已停止保存。请保留本页草稿，让 Codex 对照最新 Markdown 重新打包后再打开工作台。'
+            : '文章文件已经被其他页面修改。为避免覆盖新版本，本页已停止编辑；请关闭后重新打开服务地址。');
           return false;
         }
         if (response.status === 423) {
@@ -1578,6 +1601,10 @@
             || status.coreRevision !== BOOTSTRAP.baseRevision
             || status.contentFingerprint !== BOOTSTRAP.baseFingerprint) {
           showPersistenceWarning('文章或版本已变化，请刷新当前文章的服务地址后继续编辑。');
+          return false;
+        }
+        if (status.sourceConflict) {
+          showPersistenceWarning('源稿已在工作台之外修改，本页已停止保存。请保留本页草稿，让 Codex 对照最新 Markdown 重新打包后再打开工作台。');
           return false;
         }
         window.__workbenchToken = status.token;
