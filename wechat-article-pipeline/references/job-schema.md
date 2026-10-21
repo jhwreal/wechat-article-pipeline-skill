@@ -76,7 +76,7 @@ Generation policy:
 Default orchestration path:
 
 ```bash
-python3 <skill>/scripts/postprocess_wechat_article.py \
+python3 <skill>/scripts/postprocess_wechat_article.py --no-focus-marking \
   <workspace>/files/<slug>.md \
   <workspace>/files/<slug>.html \
   --workspace <workspace> \
@@ -87,9 +87,9 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
 
 Then execute `generation_queue[]` as single-pass image work, save each bitmap directly under `<workspace>/image/<slug>/` using the canonical slot `output`, and rerun the same command without `--plan-only` to package.
 
-For missing-image repair, use `postprocess_wechat_article.py --missing-only --plan-only`. For no-image formatting, use `postprocess_wechat_article.py --no-images`.
+For missing-image repair, use `postprocess_wechat_article.py --no-focus-marking --missing-only --plan-only`. For no-image formatting, use `postprocess_wechat_article.py --no-focus-marking --no-images`.
 
-For no-body-image draft delivery, use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>`. The job may contain `visuals.cover` even when `article_markdown` has no image placeholder; that cover is for WeChat `thumb_media_id` only and is not inserted into the body.
+For no-body-image draft delivery, use `postprocess_wechat_article.py --no-focus-marking --no-images --publish-manifest --cover-image <cover>`. The job may contain `visuals.cover` even when `article_markdown` has no image placeholder; that cover is for WeChat `thumb_media_id` only and is not inserted into the body.
 
 `make_wechat_article_image_jobs.py` also supports direct lightweight planning flags: `--mode no-image|fast|full`, `--max-body-images N`, and `--missing-only --images-dir <dir>`. Prefer `postprocess_wechat_article.py` for the normal workflow, but use these flags when diagnosing or regenerating the image plan directly.
 

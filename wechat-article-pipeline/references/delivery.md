@@ -9,6 +9,12 @@ Use this guide when handing off an article or workbench. Match the requested out
 - **Existing article edits:** update only the requested layer and preserve the slug, assets, and delivery mode. Reuse an existing server only after checking it serves the current article and current content.
 - **External draft/publish request:** report the actual platform result, selected account, and receipt path. Include a public URL only if one was obtained. Do not label a local file, clipboard copy, or unsent draft as published.
 
+## Editorial focus check
+
+Before handing off a new or revised article, complete [Focus Review](style-guide.md#focus-review) on the final Markdown and, for HTML output, the rendered WeChat preview. Confirm that meaningful judgments receive selective emphasis and the page is not crowded with quote boxes. The package verifier cannot make this editorial judgment. Image-only, title-only, or other narrowly scoped repairs do not authorize a full prose revision.
+
+When no sentence merits a pull quote, deliver the requested artifact and explicitly mention the issue with concrete structure and candidate-sentence suggestions in the response or a linked check report with a brief in-chat explanation. Do not silently omit the check, force a quote, or make this optimization alone block an authorized delivery. Full checks follow [article-check.md](article-check.md); narrow requests retain their scope.
+
 ## Editable workbench service
 
 After `verify_wechat_article_package.py <html>` succeeds, run:

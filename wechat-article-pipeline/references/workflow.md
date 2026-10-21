@@ -53,22 +53,18 @@ Apply this hard gate to article prose written when adding, correcting, comparing
 
 ## Focus Marking
 
-The orchestration script runs `mark_wechat_article_focus.py` unless disabled. It should preserve prose and add only reading aids:
+Select and write focus marks into the source Markdown while drafting, following [Focus Marks and Focus Review](style-guide.md#focus-marks). Before delivery, review their meaning, density, and placement; if no sentence merits a pull quote, report the gap with structural and sentence suggestions.
 
-- `**...**` for a core sentence in a focus zone
-- `> ...` only when an existing sentence is genuinely quotable
-- no duplicated quote sentence
-- no automatic pink keyword marking by default
-- no focus marks in headings, image placeholders, code fences, inline code, commands, or dense list-only sections
+Pass `--no-focus-marking` to `postprocess_wechat_article.py` in the normal skill workflow, including planning, final packaging, and incremental repairs, to preserve these editorial choices. The CLI still runs the legacy `mark_wechat_article_focus.py` heuristic when that flag is omitted; this compatibility behavior is not the skill's editorial default. If deliberately using it for candidate discovery, inspect its output, accept or reject each suggestion in the source Markdown, then package with `--no-focus-marking`. Never treat keyword scores or generated quote counts as editorial approval.
 
 ## Execution Choices
 
-- Full package with images: use the default `postprocess_wechat_article.py --plan-only`, generate listed images, then rerun without `--plan-only`.
+- Full package with images: use the default `postprocess_wechat_article.py --no-focus-marking --plan-only`, generate listed images, then rerun without `--plan-only`.
 - Image production: use `image-production.md`; generate one image per slot from `generation_queue[].generation_prompt`, save directly to the final output, and let the user request regeneration if needed.
 - Local handoff and saving: follow [delivery.md](delivery.md) for editable workbench URLs, static-file delivery, and service failures.
-- No generated images: use `postprocess_wechat_article.py --no-images`.
-- No body images + API draft delivery: still provide one cover image and use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>`.
-- Missing images only: use `postprocess_wechat_article.py --missing-only --plan-only`, generate only listed files, then rerun the normal package command.
+- No generated images: use `postprocess_wechat_article.py --no-focus-marking --no-images`.
+- No body images + API draft delivery: still provide one cover image and use `postprocess_wechat_article.py --no-focus-marking --no-images --publish-manifest --cover-image <cover>`.
+- Missing images only: use `postprocess_wechat_article.py --no-focus-marking --missing-only --plan-only`, generate only listed files, then rerun the normal package command.
 - Verification: run `verify_wechat_article_package.py <html>` before delivery.
 - API draft delivery: run publish dry-run first; add `--create-draft` only after the user explicitly asks for草稿箱. Do not use browser automation.
 

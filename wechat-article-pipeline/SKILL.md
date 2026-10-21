@@ -12,6 +12,7 @@ Create/check local articles. Create external drafts or publish only when request
 - For article "检查" or "检查一下", read [Check Mode](references/article-check.md) before drafting. Report findings and improvements; edit only when requested. Respect narrower checks.
 - When the user asks to annotate a term, follow [annotations.md](references/annotations.md): use “（注1）” in the text and numbered explanations in a final appendix.
 - Read [writing-donts.md](references/writing-donts.md) before drafting or revising; check articles against it before delivery, repackaging, or publishing, preserving its contextual scope and user-text rules.
+- Select sparse pull quotes while drafting; follow [Focus Review](references/style-guide.md#focus-review) for full checks and delivery, including missing-quote suggestions.
 - Require the first Markdown H1 as the sole title; rename there.
 - Enable secretary mode only on explicit "打开秘书模式", for this request; read [style-guide.md](references/style-guide.md). Do not mention it unless asked.
 - Infer briefs from rough ideas. Integrate additions and corrections as reader-facing prose per [workflow.md](references/workflow.md), preserving explicit verbatim instructions and quotations.
@@ -29,7 +30,7 @@ Keep artifacts in the workspace unless directed otherwise:
 
 - markdown: `<workspace>/files/<slug>.md`
 - check report: `<workspace>/files/<slug>.check.md`
-- focused markdown: `<workspace>/files/<slug>.focused.md`
+- optional heuristic output: `<workspace>/files/<slug>.focused.md`
 - image jobs: `<workspace>/files/<slug>.image-jobs.json`
 - HTML workbench: `<workspace>/files/<slug>.html`
 - job: `<workspace>/files/<slug>.job.json`
@@ -41,7 +42,7 @@ Never leave final assets in temp or `$CODEX_HOME/generated_images`.
 ## Default Article Path
 
 1. Inspect `files/` and `image/` before choosing a slug.
-2. Draft in markdown first. Use [workflow.md](references/workflow.md) and [style-guide.md](references/style-guide.md).
+2. Draft and select focus marks in Markdown using [workflow.md](references/workflow.md) and [style-guide.md](references/style-guide.md).
 3. Place visual placeholders in the markdown only when images are desired: `cover`, `body-1`, `body-2`, ..., `closing`.
 4. Plan once:
 
@@ -52,14 +53,14 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --workspace <workspace> \
   --article-slug <slug> \
   --jobs-out <workspace>/files/<slug>.image-jobs.json \
-  --focused-article-out <workspace>/files/<slug>.focused.md \
+  --no-focus-marking \
   --support-dir <workspace>/files/wechat-article-pipeline/<slug> \
   --plan-only
 ```
 
 5. Follow [image-production.md](references/image-production.md): single-pass queue, currently available worker slots, strict 3:2 visuals.
 6. Rerun without `--plan-only` to build the package. Add `--publish-manifest` only for requested API draft handoff.
-7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html`; fix failures.
+7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html`; fix failures and complete Focus Review.
 8. Follow [delivery.md](references/delivery.md): editable delivery needs verified URL then HTML; static delivery needs files.
 
 Mount only the active platform preview from the sole Markdown source. Cache semantic HTML; embed images only while copying.
@@ -73,6 +74,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   <workspace>/files/<slug>.md \
   <workspace>/files/<slug>.html \
   --no-images \
+  --no-focus-marking \
   --support-dir <workspace>/files/wechat-article-pipeline/<slug>
 ```
 
@@ -83,6 +85,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   <workspace>/files/<slug>.md \
   <workspace>/files/<slug>.html \
   --no-images \
+  --no-focus-marking \
   --publish-manifest \
   --cover-image <workspace>/image/<slug>/cover.png
 ```
@@ -98,6 +101,7 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
   --workspace <workspace> \
   --article-slug <slug> \
   --jobs-out <workspace>/files/<slug>.image-jobs.json \
+  --no-focus-marking \
   --missing-only \
   --plan-only
 ```
@@ -106,7 +110,7 @@ Generate listed images; package without `--missing-only`.
 
 ## Publishing Path
 
-Before any platform write, follow [pre-publish-check.md](references/pre-publish-check.md). Unless explicitly skipped for this delivery, automatically check the latest article when no qualifying check exists. Report findings in the conversation; continue authorized delivery when no content decision remains. Never wait merely for permission to start checking. Record only completed checks.
+Before platform writes, follow [pre-publish-check.md](references/pre-publish-check.md): automatically check unchecked articles unless explicitly skipped. Report findings; continue authorized delivery without pending content decisions. Do not ask permission to check. Record only completed checks.
 
 Read [publishing.md](references/publishing.md) before WeChat API calls. Dry-run first. First draft consumes its issue. Later same-conversation, same-slug drafts use `--same-session-revision`: reuse its saved signature; no advance. Never publish/group-send by default.
 

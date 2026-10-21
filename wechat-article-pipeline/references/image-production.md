@@ -1,6 +1,6 @@
 # Image Production
 
-Use this file after `postprocess_wechat_article.py --plan-only` creates `<slug>.image-jobs.json` and before final packaging.
+Use this file after `postprocess_wechat_article.py --no-focus-marking --plan-only` creates `<slug>.image-jobs.json` and before final packaging.
 
 Capability check first: use the image tool available in the current agent, respecting the project’s tool choice. If generation is unavailable, finish independent text/planning work and explain the missing capability. Use supplied images or a no-image package when the user has authorized that option; otherwise offer those options and mark requested images incomplete. Never fabricate images, substitute placeholder graphics, or silently skip slots.
 

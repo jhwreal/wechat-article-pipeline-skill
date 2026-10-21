@@ -105,7 +105,7 @@ The manifest separates the article hero image from WeChat platform cover crops:
 - `wechat_cover.crop_values.pic_crop_235_1` and `wechat_cover.crop_values.pic_crop_1_1` are the crop coordinates sent to the draft API.
 - `wechat_cover.crop_previews` points to generated preview assets such as `cover.wechat-235.png` and `cover.wechat-1x1.png`.
 
-For no-body-image draft delivery, WeChat still requires a cover `thumb_media_id`. Use `postprocess_wechat_article.py --no-images --publish-manifest --cover-image <cover>` so the cover is uploaded for the draft payload but not inserted into `content_html`. In this mode `content_html` may contain zero body images; that is valid as long as `cover.src` is a data image.
+For no-body-image draft delivery, WeChat still requires a cover `thumb_media_id`. Use `postprocess_wechat_article.py --no-focus-marking --no-images --publish-manifest --cover-image <cover>` so the cover is uploaded for the draft payload but not inserted into `content_html`. In this mode `content_html` may contain zero body images; that is valid as long as `cover.src` is a data image.
 
 If needed, regenerate it directly:
 
@@ -117,7 +117,7 @@ python3 scripts/make_wechat_publish_manifest.py output.job.json output.publish-m
 For a same-session revision, rebuild through the main entry point so the visible signature and manifest policy stay aligned:
 
 ```bash
-python3 scripts/postprocess_wechat_article.py article.md article.html \
+python3 scripts/postprocess_wechat_article.py article.md article.html --no-focus-marking \
   --workspace /path/to/workspace \
   --article-slug article-slug \
   --publish-manifest \

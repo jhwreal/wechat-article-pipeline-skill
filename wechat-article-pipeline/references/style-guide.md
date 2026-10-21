@@ -42,12 +42,23 @@ When the user requests a term annotation, follow [annotations.md](annotations.md
 ## Focus Marks
 
 - Use `##` headings for real structural turns before adding emphasis.
-- Use `**...**` for one useful core sentence in a focus zone.
-- Use `> ...` only for an original sentence strong enough to become a pull quote.
-- Do not repeat a sentence just to create a quote.
+- While drafting, actively choose the few judgments readers should remember or share. Mark the strongest existing sentences with `> ...` in the source Markdown; the WeChat style renders these as a light-gray box with a colored left border. Selection is an editorial judgment about meaning, evidence, and rhythm, not a keyword score.
+- A pull quote should express a specific, supported insight in the author's voice and remain understandable when read on its own. Preserve qualifications that affect its truth; do not exaggerate, invent evidence, or add slogans to make it more shareable. Do not rewrite prose into formulaic phrases such as “真正……不是……而是……” to trigger a scorer.
+- Keep pull quotes scarce. For an ordinary 1000–2000-character article, 1–3 is a useful starting range, not a quota or a universal cap. Short posts may need fewer; longer pieces may justify more. Avoid consecutive boxes, one box per section, and boxes occupying most of the text. Distinguish necessary source quotations or reading-note excerpts from emphasis boxes when judging density.
+- Promote a sentence in place, near its supporting explanation or at a meaningful turn; do not duplicate it elsewhere just to create a quote. Use `**...**` for secondary emphasis, without making every paragraph bold or wrapping the entire pull quote in bold by default.
 - Keep `==...==` available for manual pink accent use, but do not add automatic pink keywords by default.
+- Keep focus marks out of headings, image placeholders, code fences, inline code, commands, and dense list-only sections.
 - For technical articles, use markdown inline code for exact project names, repos, files, directories, paths, commands, environment variables, APIs, scripts, config keys, and literal UI/control names.
 - Do not wrap broad ideas or ordinary business terms in backticks.
+
+### Focus Review
+
+Perform this editorial check before article delivery and during a full article check; respect narrower requests such as typo-only checks or image-only repairs.
+
+- Read the actual final Markdown and, when producing HTML, inspect the rendered WeChat preview: do the selected sentences carry the core judgment, retain necessary context, and create useful visual pauses? Check both missing emphasis and excessive, repetitive, or misplaced boxes. Passing the package verifier or the keyword scorer does not complete this review.
+- If a strong sentence already exists but is unmarked, identify its location and suggest `> ...`; apply it when drafting or editing is authorized. For check-only requests, leave the article unchanged and report the suggestion.
+- If no sentence merits a pull quote, explicitly report “缺少值得突出、便于读者记住或转述的核心判断” as a recommended improvement. Explain where the argument or ending needs work; offer a concrete structural adjustment and 1–3 candidate sentences with proposed placement, grounded in the article's existing facts and stance. Label these as suggestions, identify any missing support, and do not silently insert them into a checked article. For inherently procedural or reference-only material, explain that fit and offer a useful takeaway without manufacturing a sweeping claim.
+- Zero boxes must be an explained editorial choice, not an unnoticed omission. Missing pull quotes alone are not a factual error or a publishing blocker: deliver the article with the issue and suggestions visible to the user. The goal is clearer reading and more memorable, shareable ideas, not a promise of reach or a required box count.
 
 ## Visual Modes
 
