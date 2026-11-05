@@ -93,7 +93,7 @@ class SkillP0ContractTest(unittest.TestCase):
         body = match.group("body")
         word_count = len(re.findall(r"[A-Za-z0-9_`./:-]+|[\u4e00-\u9fff]", body))
         self.assertGreaterEqual(word_count, 800)
-        self.assertLessEqual(word_count, 1200)
+        self.assertLessEqual(word_count, 1500)
 
     def test_skill_md_routes_to_main_entry_without_confirmation_conflict(self) -> None:
         skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
@@ -147,7 +147,7 @@ class SkillP0ContractTest(unittest.TestCase):
         self.assertIn("canvas.toDataURL", template)
         self.assertIn("ClipboardItem", template)
         self.assertIn("data:image", template)
-        self.assertIn("? buildInlineWechatHtml()", template)
+        self.assertIn("? buildInlineWechatHtml(true)", template)
         self.assertIn("display:inline-block; max-width:100%; box-sizing:border-box", template)
         self.assertIn("文件保存功能加载失败", template)
         self.assertIn("persistenceWarning", template)

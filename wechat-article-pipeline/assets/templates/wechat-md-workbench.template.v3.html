@@ -850,6 +850,12 @@
       });
     }
 
+    function removeWechatClipboardTitle(root) {
+      // The first Markdown H1 is the article title; later headings belong to the body.
+      const title = root.querySelector('h1');
+      if (title) title.remove();
+    }
+
     function removePlatformArticleChrome(root) {
       const expectedTitle = getArticleTitle().replace(/\s+/g, ' ').trim();
       const articleTitle = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6, p'))
@@ -869,7 +875,10 @@
     }
 
     function normalizePlatformArticleRoot(root, target, options = {}) {
-      if (target === 'wechat') return root;
+      if (target === 'wechat') {
+        if (options.forClipboard) removeWechatClipboardTitle(root);
+        return root;
+      }
       removePlatformArticleChrome(root);
       removePlatformExternalLinks(root);
 
@@ -994,7 +1003,7 @@
       imageBlock.insertAdjacentElement('afterend', signature);
     }
 
-    function buildInlineWechatHtml() {
+    function buildInlineWechatHtml(forClipboard = false) {
       const color = themeColor.value;
       const accent = '#d14d72';
       const font = fontFamily.value;
@@ -1004,6 +1013,7 @@
       const root = document.createElement('div');
       root.innerHTML = getSemanticMarkdownHtml();
       injectSignature(root);
+      if (forClipboard) removeWechatClipboardTitle(root);
       removePlatformExternalLinks(root);
 
       const setStyle = (selector, style) => {
@@ -2069,7 +2079,7 @@
       box.style.maxWidth = getComputedStyle(preview).width || '430px';
       box.style.background = '#fff';
       box.innerHTML = target === 'wechat'
-        ? buildInlineWechatHtml()
+        ? buildInlineWechatHtml(true)
         : createSemanticArticleRoot(target, { forClipboard: true }).innerHTML;
       return box;
     }

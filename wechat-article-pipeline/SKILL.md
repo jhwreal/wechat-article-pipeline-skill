@@ -63,6 +63,8 @@ python3 <skill>/scripts/postprocess_wechat_article.py \
 7. Run `verify_wechat_article_package.py <workspace>/files/<slug>.html`; fix failures and complete Focus Review.
 8. Follow [delivery.md](references/delivery.md): editable delivery needs verified URL then HTML; static delivery needs files.
 
+WeChat clipboard output excludes the first Markdown H1 (article title), starting at the cover when present; keep the signature and body headings. Preview and source retain the title.
+
 Mount only the active platform preview from the sole Markdown source. Cache semantic HTML; embed images only while copying.
 
 ## Fast Paths

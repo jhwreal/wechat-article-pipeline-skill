@@ -60,6 +60,13 @@ Perform this editorial check before article delivery and during a full article c
 - If no sentence merits a pull quote, explicitly report “缺少值得突出、便于读者记住或转述的核心判断” as a recommended improvement. Explain where the argument or ending needs work; offer a concrete structural adjustment and 1–3 candidate sentences with proposed placement, grounded in the article's existing facts and stance. Label these as suggestions, identify any missing support, and do not silently insert them into a checked article. For inherently procedural or reference-only material, explain that fit and offer a useful takeaway without manufacturing a sweeping claim.
 - Zero boxes must be an explained editorial choice, not an unnoticed omission. Missing pull quotes alone are not a factual error or a publishing blocker: deliver the article with the issue and suggestions visible to the user. The goal is clearer reading and more memorable, shareable ideas, not a promise of reach or a required box count.
 
+## Original Article Issue Placement
+
+- 原创篇号默认放在文章开头；没有特别重要的内容或排版理由，不放在正文中间。
+- 开头有题图时，篇号紧跟题图；没有题图时，篇号放在文章标题下、第一段正文前，不放在标题上方。
+- 正文中的第一张操作截图或配图不等于题图，不能仅因它是第一张图片就把篇号放在它后面。
+- 打包后检查实际预览中的位置；模板默认行为与本规则冲突时，应修正本篇输出，不能只检查 Markdown。
+
 ## Visual Modes
 
 Image generation, avoid, selection, and image-influence rules live only in [image-rules.json](image-rules.json). Do not duplicate them here; edit that JSON when image behavior needs tuning.

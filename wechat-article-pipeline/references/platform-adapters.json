@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "wechat": {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "displayName": "微信",
     "optionLabel": "微信格式",
     "panelTitle": "微信风格预览",

@@ -15,6 +15,8 @@ Before handing off a new or revised article, complete [Focus Review](style-guide
 
 When no sentence merits a pull quote, deliver the requested artifact and explicitly mention the issue with concrete structure and candidate-sentence suggestions in the response or a linked check report with a brief in-chat explanation. Do not silently omit the check, force a quote, or make this optimization alone block an authorized delivery. Full checks follow [article-check.md](article-check.md); narrow requests retain their scope.
 
+交付前同时按 [原创篇号位置](style-guide.md#original-article-issue-placement) 检查实际预览，确认篇号位于文章开头，未误跟随正文截图。
+
 ## Editable workbench service
 
 After `verify_wechat_article_package.py <html>` succeeds, run:

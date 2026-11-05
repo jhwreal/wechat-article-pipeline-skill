@@ -14,7 +14,7 @@ function extractFunction(name) {
   const marker = `function ${name}(`;
   const start = template.indexOf(marker);
   assert.notEqual(start, -1, `${name} must exist in the workbench template`);
-  const bodyStart = template.indexOf('{', start);
+  const bodyStart = template.indexOf(') {', start) + 2;
   let depth = 0;
   for (let index = bodyStart; index < template.length; index += 1) {
     if (template[index] === '{') depth += 1;
@@ -66,7 +66,7 @@ test('platform preview selector precedes typography and drives one semantic sour
 test('Toutiao and Xiaohongshu copy from semantic HTML instead of flattened WeChat HTML', () => {
   const createClipboardBox = extractFunction('createClipboardBox');
   assert.match(createClipboardBox, /target === 'wechat'/);
-  assert.match(createClipboardBox, /buildInlineWechatHtml\(\)/);
+  assert.match(createClipboardBox, /buildInlineWechatHtml\(true\)/);
   assert.match(createClipboardBox, /createSemanticArticleRoot\(target, \{ forClipboard: true \}\)/);
   assert.doesNotMatch(template, /data-xhs-image-marker|\[\[XHS_IMAGE_/);
   assert.match(template, /applyHostedImagesForClipboard/);
@@ -77,6 +77,46 @@ test('Toutiao and Xiaohongshu copy from semantic HTML instead of flattened WeCha
   assert.match(template, /ensureClipboardAssetsLoaded/);
   assert.match(template, /releaseClipboardAssets/);
   assert.match(extractFunction('buildInlineWechatHtml'), /removePlatformExternalLinks\(root\)/);
+});
+
+test('WeChat clipboard starts at cover and retains signature, GIF and body headings', () => {
+  const normalize = new Function([
+    extractFunction('removeWechatClipboardTitle'),
+    extractFunction('normalizePlatformArticleRoot'),
+    'return normalizePlatformArticleRoot;',
+  ].join('\n'))();
+  const makeRoot = entries => {
+    const root = {
+      children: entries.map(([tagName, content]) => ({ tagName, content })),
+      querySelector(selector) {
+        return this.children.find(node => node.tagName.toLowerCase() === selector) || null;
+      },
+    };
+    root.children.forEach(node => { node.remove = () => root.children.splice(root.children.indexOf(node), 1); });
+    return root;
+  };
+  const body = [['IMG', 'cover.png'], ['P', '原创第359篇'], ['H2', '正文标题'],
+    ['IMG', 'action.gif'], ['H1', '后续正文一级标题']];
+  const root = makeRoot([['H1', '<strong>文章总标题</strong>'], ...body]);
+  normalize(root, 'wechat');
+  assert.equal(root.children.length, 6, 'preview must retain the title');
+  normalize(root, 'wechat', { forClipboard: true });
+  assert.deepEqual(root.children.map(({ tagName, content }) => [tagName, content]), body);
+
+  const noCover = makeRoot([['H1', '文章总标题'], ['P', '开篇文字'], ['H2', '正文标题']]);
+  normalize(noCover, 'wechat', { forClipboard: true });
+  assert.deepEqual(noCover.children.map(node => node.content), ['开篇文字', '正文标题']);
+  const noTitle = makeRoot([['P', '正文'], ['H2', '小标题']]);
+  normalize(noTitle, 'wechat', { forClipboard: true });
+  assert.equal(noTitle.children.length, 2);
+
+  const inline = extractFunction('buildInlineWechatHtml');
+  assert.match(inline, /forClipboard = false/);
+  assert.match(inline, /if \(forClipboard\) removeWechatClipboardTitle\(root\)/);
+  assert.ok(inline.indexOf('removeWechatClipboardTitle(root)') < inline.indexOf("setStyle('h1'"),
+    'remove the title before heading conversion');
+  assert.match(template, /content_html: buildInlineWechatHtml\(\)/,
+    'API export must keep its existing default');
 });
 
 test('Toutiao refreshes WeChat-hosted image receipts without a manual page reload', () => {

@@ -89,6 +89,10 @@ The `.codex` directory name is historical; the same local cache path is shared n
 
 Never commit `.env` or token cache files.
 
+## 手工复制微信正文
+
+点击“复制为微信格式”仅复制题图及其后正文，不复制 Markdown 第一个 H1 总标题；没有题图时，保留标题之后的完整内容。题图、原创篇号、正文小标题和动图按原顺序保留。工作台预览和 Markdown 仍保留总标题，API 发布清单的标题字段不受影响。
+
 ## Manifest
 
 Local packaging skips the publish manifest by default. Pass `--publish-manifest` to write `<html-stem>.publish-manifest.json` for an explicitly requested API handoff. It contains title, author, digest, rendered HTML, text, embedded cover/body images, image candidates, source fingerprints, optional preview account, and safety flags. New packages capture the original Markdown path and SHA-256 before focus marking and image substitution. Before dry-run or draft creation, verification checks that source snapshot, the current job and image bytes, and the workbench revision. Receipts retain the verified submitted snapshot instead of relabeling an old payload with a later disk revision. External image URLs are rejected because WeChat filters them and the uploader only accepts embedded images. The manifest must not contain original declaration, reward account, or collection fields.
