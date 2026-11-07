@@ -618,6 +618,7 @@ def build_job(
 
 
 def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, support_dir: Path | None) -> None:
+    source_job_fingerprint = builder.job_fingerprint(job)
     template = template_path.read_text(encoding="utf-8")
     job_dir = job_path.parent.resolve()
 
@@ -659,6 +660,7 @@ def render_html(job: dict, job_path: Path, out_path: Path, template_path: Path, 
         platform_image_source=platform_image_source,
         build_info=release_info.workbench_build_info(template_path),
         platform_adapters=release_info.platform_adapters(),
+        source_job_fingerprint=source_job_fingerprint,
     )
     validate_workbench_html(html, expected_visual_count)
 

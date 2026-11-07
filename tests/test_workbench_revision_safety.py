@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import threading
@@ -160,6 +161,7 @@ class WorkbenchRevisionSafetyTest(unittest.TestCase):
         job = json.loads(job_path.read_text())
         job['source_markdown'] = {'path': str(markdown_path), 'sha256': hashlib.sha256(markdown_path.read_bytes()).hexdigest()}
         job_path.write_text(json.dumps(job))
+        html.write_text(builder.apply_template(job, builder.DEFAULT_TEMPLATE.read_text(), job['article_markdown']))
         doc = self.document(html)
         self.assertFalse(doc.status()['sourceConflict'])
         self.assertTrue(doc.save({'markdown': '# 标题\n\n更新原文'})['saved'])
@@ -208,6 +210,64 @@ class WorkbenchRevisionSafetyTest(unittest.TestCase):
 
         self.assertFalse(doc.status()['sourceConflict'])
         self.assertTrue(doc.save({'markdown': '# 标题\n\n继续编辑', 'themeColor': '#123456'})['saved'])
+
+    def test_metadata_only_rebuild_unblocks_saving_without_changing_rendered_content(self):
+        html = self.article()
+        doc = self.document(html)
+        original = builder.read_bootstrap(html.read_text())['markdown']
+        job_path = html.with_suffix('.job.json')
+        for style in ('first image design', 'revised image design'):
+            job = json.loads(job_path.read_text())
+            job['image_plan'] = {'composition': style}
+            job_path.write_text(json.dumps(job))
+            self.assertTrue(doc.status()['sourceConflict'])
+            with self.assertRaises(server.RevisionConflict):
+                doc.save({'markdown': original})
+            html.write_text(builder.apply_template(job, builder.DEFAULT_TEMPLATE.read_text(), original))
+            self.assertEqual(builder.read_bootstrap(html.read_text())['markdown'], original)
+            self.assertFalse(doc.status()['sourceConflict'])
+            self.assertTrue(doc.save({'markdown': original})['saved'])
+            self.assertTrue(doc.save({'markdown': original})['unchanged'])
+            self.assertEqual(json.loads(job_path.read_text())['image_plan']['composition'], style)
+        reopened = self.document(html)
+        self.assertFalse(reopened.status()['sourceConflict'])
+        self.assertTrue(reopened.save({'markdown': original + '\n继续编辑'})['saved'])
+
+    def test_job_changed_after_packaging_is_blocked_before_first_open_and_after_rebuild(self):
+        for first_open in (True, False):
+            with self.subTest(first_open=first_open):
+                html = self.article(slug=f'job-snapshot-{first_open}')
+                doc = None if first_open else self.document(html)
+                job_path = html.with_suffix('.job.json')
+                job = json.loads(job_path.read_text())
+                job['image_plan'] = {'composition': 'packaged design'}
+                html.write_text(builder.apply_template(job, builder.DEFAULT_TEMPLATE.read_text(), job['article_markdown']))
+                job['image_plan']['composition'] = 'unpackaged later edit'
+                job_path.write_text(json.dumps(job))
+                doc = doc or self.document(html)
+                before = job_path.read_bytes()
+                self.assertTrue(doc.status()['sourceConflict'])
+                with self.assertRaises(server.RevisionConflict):
+                    doc.save({'markdown': '# 标题\n\n旧页面'})
+                self.assertEqual(job_path.read_bytes(), before)
+
+    def test_cli_rebuild_binds_disk_job_before_deriving_clipboard_assets(self):
+        html = self.article(markdown='# 标题\n\n![图]({{visual:cover}})')
+        job_path = html.with_suffix('.job.json')
+        job = json.loads(job_path.read_text())
+        job['visuals'] = {'cover': {'path': str(self.root / 'cover.png')}}
+        (self.root / 'cover.png').write_bytes(b'image')
+        job_path.write_text(json.dumps(job))
+        for composition in ('original', 'replacement'):
+            job['image_plan'] = {'composition': composition}
+            job_path.write_text(json.dumps(job))
+            subprocess.run([sys.executable, str(SCRIPTS / 'build_wechat_article_workbench.py'),
+                            str(job_path), str(html)], check=True, capture_output=True)
+            bootstrap = builder.read_bootstrap(html.read_text())
+            self.assertTrue(bootstrap['clipboardAssetsScript'])
+            self.assertNotIn('clipboard_assets_script', json.loads(job_path.read_text()))
+            self.assertEqual(bootstrap['sourceJobFingerprint'], builder.job_fingerprint(job))
+            self.assertFalse(self.document(html).status()['sourceConflict'])
 
     def test_same_text_rebuild_can_add_a_source_snapshot_to_a_legacy_package(self):
         html = self.article()

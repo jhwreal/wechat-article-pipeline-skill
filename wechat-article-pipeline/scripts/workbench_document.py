@@ -662,11 +662,26 @@ class WorkbenchDocument:
         if not isinstance(baseline, dict):
             return []
         current = self._source_file_snapshot()
-        return [
+        conflicts = [
             path.relative_to(self.workspace).as_posix()
             for key, path in (("markdown", self.markdown_path), ("job", self.job_path))
             if baseline.get(key) != current[key]
         ]
+        # A job changed after packaging must remain blocked, even on first open
+        # or when an unrelated HTML change establishes a new baseline.
+        html_source = self.html_path.read_text(encoding="utf-8")
+        bootstrap = builder.read_bootstrap(html_source) if builder.BOOTSTRAP_RE.search(html_source) else {}
+        expected_job = bootstrap.get("sourceJobFingerprint")
+        if expected_job is not None and (self.job_path.exists() or baseline.get("job") is not None):
+            try:
+                job = json.loads(self.job_path.read_text(encoding="utf-8"))
+                matches = isinstance(job, dict) and builder.job_fingerprint(job) == expected_job
+            except (OSError, ValueError):
+                matches = False
+            job_name = self.job_path.relative_to(self.workspace).as_posix()
+            if not matches and job_name not in conflicts:
+                conflicts.append(job_name)
+        return conflicts
 
     def _assert_source_files_current(self) -> None:
         if self._source_conflict_files():
@@ -1011,6 +1026,9 @@ class WorkbenchDocument:
                 job["page_title"] = canonical_title
                 job["brand_title"] = f"{canonical_title}工作台" if canonical_title else "未命名文章工作台"
                 job["theme_color"] = state["themeColor"]
+                updated_html = builder.replace_bootstrap(
+                    updated_html, {"sourceJobFingerprint": builder.job_fingerprint(job)}
+                )
                 assets = inspect_visuals(
                     source_markdown,
                     job.get("visuals", {}),

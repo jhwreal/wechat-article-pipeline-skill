@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import base64
 import html
+import hashlib
 import json
 import mimetypes
 import os
@@ -58,6 +59,12 @@ def html_safe_json(value: Any) -> str:
     return (json.dumps(value, ensure_ascii=False, separators=(",", ":"))
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
             .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+def job_fingerprint(job: dict[str, Any]) -> str:
+    """Identify the packaged job, including metadata absent from the preview."""
+    canonical = json.dumps(job, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 
 def read_bootstrap(html_text: str) -> dict[str, Any]:
     matches = BOOTSTRAP_RE.findall(html_text)
@@ -294,6 +301,7 @@ def apply_template(
     platform_image_source: str = "",
     build_info: dict[str, Any] | None = None,
     platform_adapters: dict[str, dict[str, Any]] | None = None,
+    source_job_fingerprint: str | None = None,
 ) -> str:
     markdown, markdown_metadata = split_front_matter(markdown)
     article_metadata = job.get("article_metadata") or markdown_metadata
@@ -329,6 +337,7 @@ def apply_template(
         "metadata": article_metadata if isinstance(article_metadata, dict) else {},
         "signature": job.get("article_signature") or {},
         "sourceMarkdown": job.get("source_markdown") or {},
+        "sourceJobFingerprint": source_job_fingerprint or job_fingerprint(job),
         "storageKey": storage_key,
         "workbenchState": state,
         "platformImageUrls": normalize_platform_image_urls(platform_image_urls or []),
@@ -450,6 +459,7 @@ def replace_visual_placeholders(markdown: str, rendered_visuals: dict[str, str])
 def main() -> None:
     args = parse_args()
     job = read_json(args.job)
+    source_job_fingerprint = job_fingerprint(job)
     template = args.template.read_text(encoding="utf-8")
     job_dir = args.job.parent.resolve()
 
@@ -488,6 +498,7 @@ def main() -> None:
         platform_image_source=platform_image_source,
         build_info=release_info.workbench_build_info(args.template),
         platform_adapters=release_info.platform_adapters(),
+        source_job_fingerprint=source_job_fingerprint,
     )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

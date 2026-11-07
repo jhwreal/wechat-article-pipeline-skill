@@ -33,6 +33,8 @@ Edits are cached immediately; automatic saving writes them after 3 idle seconds,
 
 If Markdown or job content changes outside the workbench, the persistence service refuses stale saves, including after a restart. Preserve the page's unsaved draft and reconcile it with the current source, then rebuild the package before reopening. Reopening the same stale HTML is not a way to accept or overwrite external edits.
 
+The rebuilt package records the source job fingerprint, including image-plan metadata that does not change visible text or image paths. Use the normal builder after image-only configuration edits; do not reset the service state or remove conflict protection. A source conflict is distinct from a disconnected service, and restarting alone does not reconcile it.
+
 If the service cannot run, deliver the verified files and explain that editable saving is unavailable. If the user requested editing, mark that part incomplete instead of presenting static HTML as a completed editable workbench.
 
 ## Final response

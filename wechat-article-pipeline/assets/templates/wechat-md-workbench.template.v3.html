@@ -635,7 +635,7 @@
     <div class="persistence-warning-card">
       <h2 id="persistenceWarningTitle">文件保存功能加载失败</h2>
       <p id="persistenceWarningMessage">当前页面没有连接本地保存服务，不能把修改写回文章文件。</p>
-      <p><strong>请关闭本页，改用 Codex 提供的 <code>http://127.0.0.1:端口/...</code> 工作台地址访问。</strong></p>
+      <p id="persistenceWarningHint"><strong>请使用 Codex 提供的本地工作台地址访问。</strong></p>
       <p>你仍可关闭提示后查看预览、复制富文本或复制编辑区中的现有内容；为避免误以为已经保存，编辑和保存功能已停用。</p>
       <div class="persistence-warning-actions">
         <button id="dismissPersistenceWarning" class="btn">仅查看与复制</button>
@@ -1529,15 +1529,20 @@
       setPreviewEditingEnabled(enabled);
     }
 
-    function showPersistenceWarning(message) {
+    function showPersistenceWarning(message, reason = 'connection') {
       persistenceReady = false;
       setEditingEnabled(false);
+      const conflict = reason === 'conflict';
+      document.getElementById('persistenceWarningTitle').textContent = conflict ? '文章版本冲突，保存已暂停' : '文件保存功能加载失败';
+      document.getElementById('persistenceWarningHint').textContent = conflict
+        ? '保存服务仍在运行。请先保留本页草稿，再让 Codex 核对源文件并重新打包；单纯重启服务不能解决版本冲突。'
+        : '请使用 Codex 提供的本地工作台地址访问；若服务已停止，请让 Codex 启动服务。';
       persistenceWarningMessage.textContent = message;
       persistenceWarning.hidden = false;
-      saveStatus.textContent = '文件保存不可用';
+      saveStatus.textContent = conflict ? '版本冲突，保存已暂停' : '文件保存不可用';
       articleStatus.textContent = '正文只读';
       manifestStatus.textContent = '发布清单不会更新';
-      storageModeLabel.textContent = '只读：未连接保存服务';
+      storageModeLabel.textContent = conflict ? '只读：版本冲突' : '只读：未连接保存服务';
     }
 
     function markPersistenceReady(status) {
@@ -1565,7 +1570,7 @@
           // Keep the draft's original revision for recovery; never rebase on a conflict.
           showPersistenceWarning(latest.sourceConflict
             ? '源稿已在工作台之外修改，本页已停止保存。请保留本页草稿，让 Codex 对照最新 Markdown 重新打包后再打开工作台。'
-            : '文章文件已经被其他页面修改。为避免覆盖新版本，本页已停止编辑；请关闭后重新打开服务地址。');
+            : '文章文件已经被其他页面修改。为避免覆盖新版本，请先保留本页草稿，再重新打开服务地址。', 'conflict');
           return false;
         }
         if (response.status === 423) {
@@ -1610,11 +1615,11 @@
             || status.documentPath !== decodeURIComponent(location.pathname)
             || status.coreRevision !== BOOTSTRAP.baseRevision
             || status.contentFingerprint !== BOOTSTRAP.baseFingerprint) {
-          showPersistenceWarning('文章或版本已变化，请刷新当前文章的服务地址后继续编辑。');
+          showPersistenceWarning('文章或版本已变化，请先保留本页草稿，再刷新当前文章的服务地址。', 'conflict');
           return false;
         }
         if (status.sourceConflict) {
-          showPersistenceWarning('源稿已在工作台之外修改，本页已停止保存。请保留本页草稿，让 Codex 对照最新 Markdown 重新打包后再打开工作台。');
+          showPersistenceWarning('源稿已在工作台之外修改，本页已停止保存。请保留本页草稿，让 Codex 对照最新 Markdown 重新打包后再打开工作台。', 'conflict');
           return false;
         }
         window.__workbenchToken = status.token;
