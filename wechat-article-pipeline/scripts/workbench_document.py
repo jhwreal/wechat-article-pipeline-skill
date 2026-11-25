@@ -20,6 +20,7 @@ from typing import Any
 from urllib.parse import quote
 
 import build_wechat_article_workbench as builder
+import wechat_account_config as account_config
 from atomic_files import locked_file, atomic_replace, atomic_write_bytes, atomic_write_text, fsync_directory
 
 
@@ -788,7 +789,10 @@ class WorkbenchDocument:
         source_state: dict[str, Any] | None,
     ) -> ManifestRefreshRequest:
         meta = self._manifest_meta
-        env_file = Path(str(meta.get("env_file") or DEFAULT_ENV_FILE)).expanduser()
+        if meta.get("env_file"):
+            env_file = Path(meta["env_file"]).expanduser()
+        else:
+            env_file = account_config.workspace_publisher_env(self.html_path) or DEFAULT_ENV_FILE
         if not env_file.is_absolute():
             env_file = (self.html_path.parent / env_file).resolve()
         account_meta = meta.get("account") if isinstance(meta.get("account"), dict) else None

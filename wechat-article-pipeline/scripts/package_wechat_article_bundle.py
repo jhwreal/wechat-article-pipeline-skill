@@ -775,7 +775,11 @@ def main() -> None:
             markdown,
             {match.group(1) for match in builder.PLACEHOLDER_RE.finditer(markdown)},
         )
-    env_file = (args.publisher_env_file or DEFAULT_ENV_FILE).expanduser()
+    env_file = (
+        args.publisher_env_file
+        or account_config.workspace_publisher_env(args.source_markdown or args.article)
+        or DEFAULT_ENV_FILE
+    ).expanduser().absolute()
     publisher_env = account_config.read_env_file(env_file)
     signature_account = account_config.find_account_profile(
         publisher_env,
@@ -847,7 +851,7 @@ def main() -> None:
             workbench_html=args.out.resolve(),
             article_slug=slug_source,
             config_path=args.publisher_config,
-            env_file=args.publisher_env_file,
+            env_file=env_file,
             account=args.publisher_account,
             author=args.author,
             preview_account=args.preview_account,

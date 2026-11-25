@@ -529,6 +529,50 @@ class SkillP1ContractTest(unittest.TestCase):
         self.assertIn("submission_maybe_sent=true", reference)
         self.assertIn("verified` 平台不得重复创建草稿", reference)
 
+    def test_dual_driver_routing_preserves_computer_use_and_supports_browser_subagent(self) -> None:
+        skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+        toutiao = (SKILL_DIR / "references" / "publishing-toutiao.md").read_text(encoding="utf-8")
+        toutiao_browser = (SKILL_DIR / "references" / "publishing-toutiao-browser.md").read_text(
+            encoding="utf-8"
+        )
+        xhs = (SKILL_DIR / "references" / "publishing-xiaohongshu.md").read_text(encoding="utf-8")
+        xhs_browser = (SKILL_DIR / "references" / "publishing-xiaohongshu-browser.md").read_text(
+            encoding="utf-8"
+        )
+        three_platform = (SKILL_DIR / "references" / "publishing-three-platform.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("publishing-toutiao-browser.md", skill_md)
+        self.assertIn("publishing-xiaohongshu-browser.md", skill_md)
+        self.assertIn("without mixing drivers", skill_md)
+
+        self.assertIn("运行时驱动选择（双引擎路由）", toutiao)
+        self.assertIn("publishing-toutiao-browser.md", toutiao)
+        self.assertIn("ui_driver: browser-subagent", toutiao)
+
+        self.assertIn("运行时驱动选择（双引擎路由）", xhs)
+        self.assertIn("publishing-xiaohongshu-browser.md", xhs)
+        self.assertIn("ui_driver: browser-subagent", xhs)
+
+        self.assertIn("publishing-toutiao-browser.md", three_platform)
+        self.assertIn("publishing-xiaohongshu-browser.md", three_platform)
+        self.assertIn("两者严禁混用", three_platform)
+
+        self.assertIn("严禁混用 Computer Use 与浏览器自动化", toutiao_browser)
+        self.assertIn("`ui_driver`: 固定为 `browser-subagent`", toutiao_browser)
+        self.assertIn("`0x0`", toutiao_browser)
+        self.assertIn("submission_maybe_sent", toutiao_browser)
+        self.assertIn("定时发布入口白名单", toutiao_browser)
+        self.assertIn("投放广告赚收益", toutiao_browser)
+
+        self.assertIn("严禁混用 Computer Use 与浏览器自动化", xhs_browser)
+        self.assertIn("`ui_driver`: 固定为 `browser-subagent`", xhs_browser)
+        self.assertIn("Markdown `##` → 小红书 `h1`", xhs_browser)
+        self.assertIn("verified_images == 0", xhs_browser)
+        self.assertIn("不得点击 `一键排版`", xhs_browser)
+        self.assertIn("submission_maybe_sent", xhs_browser)
+
     def test_packaging_does_not_increment_original_issue_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

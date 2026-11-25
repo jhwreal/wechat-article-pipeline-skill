@@ -168,3 +168,18 @@ test('manual Toutiao copy embeds every image and refuses incomplete preparation'
   assert.equal(removed, 2);
   assert.equal(released, 2);
 });
+
+test('a successful zero-image copy reports 无正文图片 on both browser handoffs', async () => {
+  for (const target of ['xiaohongshu', 'toutiao']) {
+    const saveStatus = {};
+    const copy = new Function('activePlatform', 'platformAdapter', 'saveStatus', 'refreshPlatformImagesFromWorkbench',
+      'updatePlatformReadiness', 'copyWarning', 'copyRichHtmlForPlatform',
+      'let lastPlatformCopyResult; return async ' + extractFunction('copyPlatformContent'))(
+      target, name => adapterRegistry[name], saveStatus, async () => {},
+      () => ({ warnings: [], blockers: [] }), {},
+      async () => ({ structure: { images: 0, h1: 1, h2: 1 }, strategy: 'native-selection' }),
+    );
+    assert.equal((await copy(target)).structure.images, 0);
+    assert.match(saveStatus.textContent, /^已复制.*无正文图片/);
+  }
+});

@@ -17,6 +17,21 @@ ACCOUNT_FIELD_RE = re.compile(
 )
 
 
+def workspace_publisher_env(artifact: Path, *, workspace: Path | None = None) -> Path | None:
+    """Resolve the machine-local binding for an article or manifest in files/."""
+    if workspace is None:
+        directory = artifact.expanduser().resolve().parent
+        workspace = directory.parent if directory.name == "files" else directory
+    binding = workspace / ".local" / "wechat-publisher-env.path"
+    if not binding.exists():
+        return None
+    value = binding.read_text(encoding="utf-8").strip()
+    path = Path(value).expanduser()
+    if not path.is_absolute() or not path.is_file():
+        raise ValueError(f"{binding} must name an existing absolute publisher env file")
+    return path.resolve()
+
+
 def env_lock_path(path: Path) -> Path:
     path = path.expanduser()
     return path.with_name(path.name + ".lock")

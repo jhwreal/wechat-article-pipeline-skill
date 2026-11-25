@@ -19,9 +19,9 @@ Create/check local articles. Create external drafts or publish only when request
 - For "不配图", "只排版", or "直接格式化", use the no-image path. If image generation is unavailable, follow the capability fallback in [image-production.md](references/image-production.md); do not silently drop requested images.
 - For 补图, continuation, or missing assets, use the missing-image path; preserve finished images.
 - If the user asks to导入草稿箱, create a WeChat draft through official APIs only. Never use browser automation or private `mp.weixin.qq.com` endpoints for delivery.
-- Toutiao: use Computer Use to operate the user's real Chrome end to end and follow [publishing-toutiao.md](references/publishing-toutiao.md). Do not use Browser/Chrome browser automation, Playwright, CDP, DOM evaluation, or background tab objects for any Toutiao UI step.
+- Toutiao: with native foreground Chrome Computer Use, follow [publishing-toutiao.md](references/publishing-toutiao.md) exclusively. Otherwise use the Antigravity [Browser Subagent handoff](references/publishing-toutiao-browser.md) when available, without mixing drivers. Hand off the workbench for manual copy if neither is available.
 - Toutiao publish authorization: a user-authored instruction to “发头条”, “发布头条”, or schedule a Toutiao post is already the confirmation to submit that same content to Toutiao at the stated time. Do not ask for a second publish confirmation in the same workflow; pause only when a material choice is missing or changed, or for CAPTCHA, authentication, or a platform hard blocker.
-- Xiaohongshu: use Chrome + Computer Use and [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md).
+- Xiaohongshu: use [Chrome inspection and Computer Use clipboard](references/publishing-xiaohongshu.md) when available. Antigravity without native Computer Use follows [its browser handoff](references/publishing-xiaohongshu-browser.md). If inspection or rich paste is unavailable, report the missing verification and hand off the workbench.
 - Three-platform sync: read [publishing-three-platform.md](references/publishing-three-platform.md), initialize its state, then create WeChat → Toutiao → Xiaohongshu drafts.
 
 ## Workspace Contract
@@ -139,7 +139,7 @@ Confirm:
 - `verify_wechat_article_package.py` reports `status: ok`; delivery matches [delivery.md](references/delivery.md), including a reachable server for editable workbenches
 - Markdown uses relative image paths; all previews derive from it and preserve semantic headings and image positions
 - Toutiao manual copy must not require a WeChat draft: use complete HTTPS receipts when available, otherwise embed all original images (including GIF), never loopback image URLs. Verify target-editor uploads before claiming delivery; Xiaohongshu embeds images during copy
-- Toutiao uses only Computer Use against the real foreground Chrome, with one workbench copy and one system paste; Xiaohongshu keeps its own documented handoff. On a hard gate, preserve the diagnostic draft and stop
+- Record the actual UI driver. Keep Toutiao foreground automation exclusive to Computer Use on that route. Xiaohongshu uses its documented Chrome inspection and a single rich paste. Reopen the saved draft to verify it. Stop on failed checks.
 - delivery reports result paths, status, verified structure/images, and any public URL; platform bodies contain no external links
 - added or revised prose stands alone for readers without chat residue, respecting requested verbatim text and quotations
 
@@ -148,6 +148,6 @@ Confirm:
 - Drafting: [workflow.md](references/workflow.md), [style-guide.md](references/style-guide.md).
 - Images: [image-production.md](references/image-production.md), [image-rules.json](references/image-rules.json).
 - Contracts: [job-schema.md](references/job-schema.md).
-- Delivery: [publishing.md](references/publishing.md), [publishing-three-platform.md](references/publishing-three-platform.md), [publishing-toutiao.md](references/publishing-toutiao.md), [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md).
+- Delivery: [publishing.md](references/publishing.md), [publishing-three-platform.md](references/publishing-three-platform.md), [publishing-toutiao.md](references/publishing-toutiao.md), [publishing-toutiao-browser.md](references/publishing-toutiao-browser.md), [publishing-xiaohongshu.md](references/publishing-xiaohongshu.md), [publishing-xiaohongshu-browser.md](references/publishing-xiaohongshu-browser.md).
 - Debug workbench rendering only: [wechat-md-workbench.template.v3.html](assets/templates/wechat-md-workbench.template.v3.html).
 - Read [.env.example](.env.example) only for requested API setup.

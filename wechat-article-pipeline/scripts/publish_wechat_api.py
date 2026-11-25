@@ -160,9 +160,14 @@ def read_config(path: Path) -> dict[str, Any]:
     return read_json(path)
 
 
-def find_env_file(manifest: Path, explicit: Path | None) -> Path | None:
+def find_env_file(manifest: Path, explicit: Path | None, recorded_env: str | None = None) -> Path | None:
     if explicit:
         return explicit.expanduser()
+    bound = account_config.workspace_publisher_env(manifest)
+    if bound:
+        if recorded_env and Path(recorded_env).is_absolute() and Path(recorded_env).resolve() != bound:
+            raise SystemExit("Publisher env differs from this workspace binding. Select the intended --env-file explicitly.")
+        return bound
     candidates = [
         Path.cwd() / ".env",
         manifest.resolve().parent / ".env",
@@ -1542,7 +1547,7 @@ def main() -> None:
     manifest = json.loads(manifest_bytes)
     apply_original_issue_policy(args, manifest)
     config = read_config(args.config)
-    env_file = find_env_file(args.manifest, args.env_file)
+    env_file = find_env_file(args.manifest, args.env_file, manifest.get("env_file"))
     env = account_config.read_env_file(env_file)
     account = account_config.find_account_profile(env, args.account, include_credentials=not dry_run)
     appid, appsecret = resolve_account_credentials(args, config, account)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -33,6 +34,48 @@ class EndToEndSmokeTest(unittest.TestCase):
             text=True,
             timeout=90,
         )
+
+    def test_shared_env_across_source_and_installed_entry_points(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files = root / "files"
+            files.mkdir()
+            (root / ".local").mkdir()
+            authority = root / "publisher.env"
+            config = "WECHAT_AUTHOR=接口作者\nWECHAT_SIGNATURE_AUTHOR=署名\nWECHAT_ORIGINAL_ISSUE=42\n"
+            authority.write_text(config, encoding="utf-8")
+            binding = root / ".local" / "wechat-publisher-env.path"
+            binding.write_text(str(authority), encoding="utf-8")
+            (root / ".env").write_text("WECHAT_ORIGINAL_ISSUE=2\n", encoding="utf-8")
+            installed = root / "installed"
+            shutil.copytree(SCRIPTS.parent, installed, ignore=shutil.ignore_patterns(".env", "__pycache__"))
+            article = files / "shared.md"
+            article.write_text("# 共享配置\n\n正文。", encoding="utf-8")
+            cover = files / "cover.png"
+            cover.write_bytes(PNG_1X1)
+            out = files / "shared.html"
+            job = out.with_suffix(".job.json")
+            manifest = out.with_suffix(".publish-manifest.json")
+            receipt = files / "dry-run.json"
+            for scripts in (SCRIPTS, installed / "scripts"):
+                self.run_cli(str(scripts / POSTPROCESS.name), str(article), str(out), "--no-images",
+                             "--no-focus-marking", "--cover-image", str(cover), "--publish-manifest")
+                signature = json.loads(job.read_text())["article_signature"]
+                self.assertEqual((signature["issue"], signature["author"]), (42, "署名"))
+                self.assertEqual(Path(signature["env_file"]), authority.resolve())
+                self.run_cli(str(scripts / "make_wechat_publish_manifest.py"), str(job), str(manifest))
+                generated = json.loads(manifest.read_text())
+                self.assertEqual(generated["author"], "接口作者")
+                self.assertEqual(Path(generated["env_file"]), authority.resolve())
+                self.run_cli(str(scripts / PUBLISH.name), str(manifest), "--out", str(receipt))
+                dry_run = json.loads(receipt.read_text())
+                self.assertTrue(dry_run["dry_run"])
+                self.assertEqual(Path(dry_run["env_file"]), authority.resolve())
+            self.assertEqual(authority.read_text(), config)
+            binding.write_text(str(root / "missing.env"))
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.run_cli(str(PUBLISH), str(manifest), "--out", str(receipt))
+            self.run_cli(str(PUBLISH), str(manifest), "--out", str(receipt), "--env-file", str(authority))
 
     def test_full_image_package_manifest_and_api_dry_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

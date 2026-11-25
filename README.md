@@ -56,7 +56,7 @@ python3 wechat-article-pipeline/scripts/doctor_wechat_article_skill.py \
 
 以仓库中的 `wechat-article-pipeline/` 为唯一源码。更新前比较源码与安装目录，合并安装版独有的有效改动，再运行上述同步与 doctor 检查；不要直接覆盖尚未合并的安装版。同步排除本机 `.env`、账号篇号和缓存，不使用 `--delete` 清理运行目录。
 
-每次维护发布都更新 [CHANGELOG.md](CHANGELOG.md)，在 commit 正文写明问题、修改及验证结果，并为版本创建带说明的 annotated tag。详细说明保存在 `docs/releases/<tag>.md`，发布工作流会同步到 GitHub Release；已发布 tag 保留不移动。本次记录和回退方法见 [v1.9.7 发布说明](docs/releases/v1.9.7.md)。
+每次维护发布都更新 [CHANGELOG.md](CHANGELOG.md)，在 commit 正文写明问题、修改及验证结果，并为版本创建带说明的 annotated tag。详细说明保存在 `docs/releases/<tag>.md`，发布工作流会同步到 GitHub Release；已发布 tag 保留不移动。本次记录和回退方法见 [v1.9.8 发布说明](docs/releases/v1.9.8.md)。
 
 发布后的说明勘误以新提交记录。当安装包源码与当前版本标签一致时，`main` 的测试通过后会自动同步对应的 Release 说明，不替换标签或安装包；源码变化需要发布新版本。
 
@@ -73,6 +73,25 @@ rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclu
 ```
 
 也可以放进某个项目的 `.claude/skills/` 目录，只在该项目内生效。重启 Claude Code 后，直接描述公众号写作任务即可触发。
+
+### Antigravity
+
+如果在包含本仓库的工作区中使用 Antigravity，推荐在工作区根目录创建 `.agents/skills.json` 直接指向本仓库源码目录（零副本、不漂移）：
+
+```json
+{
+  "entries": [
+    {
+      "path": "wechat-article-pipeline-skill",
+      "include_only": ["wechat-article-pipeline"]
+    }
+  ]
+}
+```
+
+全局使用可将技能放入 `~/.gemini/config/skills/wechat-article-pipeline/`。多 Agent 共用同一项目时，在工作区的 `.local/wechat-publisher-env.path` 中只写一行已有权威 `.env` 的绝对路径（支持 `~/`），把该本机文件排除在版本控制之外。打包、生成清单和微信 API 默认共用它；显式传入的配置路径优先。
+
+头条和小红书分别按平台选择驱动。Antigravity App 单标签后端在同一标签交接，支持标签切换的 Chrome 后端可跨标签交接。按目标编辑器实际读回的内容验收；小红书草稿须重新打开核对。
 
 ### 其他 Agent
 
@@ -231,7 +250,8 @@ https://developers.weixin.qq.com/platform
 
 ## 七、版本说明
 
-- `V 1.9.7（当前版本）`：修复仅改配图配置后重新打包仍误报保存冲突的问题，区分版本冲突与服务断开，保留外部改稿保护。详见 [发布说明](docs/releases/v1.9.7.md)。
+- `V 1.9.8（当前版本）`：Codex 与 Antigravity 共用公众号篇号配置，小红书增加图片、草稿重开和发布设置核验。详见 [发布说明](docs/releases/v1.9.8.md)。
+- `V 1.9.7`：修复仅改配图配置后重新打包仍误报保存冲突的问题，区分版本冲突与服务断开，保留外部改稿保护。详见 [发布说明](docs/releases/v1.9.7.md)。
 - `V 1.9.6`：微信复制从题图开始，排除文章总标题，保留原创篇号和正文小标题；预览与源稿仍保留标题。详见 [发布说明](docs/releases/v1.9.6.md)。
 - `V 1.9.5`：写稿时主动挑选少量核心金句，交付和完整检查时复核质量与密度；缺少合适金句时提供结构和候选句建议，常规打包保留选定标记。详见 [发布说明](docs/releases/v1.9.5.md)。
 - `V 1.9.4`：修复外部改稿被旧工作台覆盖、旧正文回执误指向新版、命名账号缺凭据时误用默认账号三类问题，补齐回归测试；纳入表格换行和头条定时流程的已有维护。详见 [发布说明](docs/releases/v1.9.4.md)。
@@ -316,6 +336,25 @@ rsync -a --exclude=".env" --exclude=".env.lock" --exclude="__pycache__/" --exclu
 ```
 
 You can also place it under a project's `.claude/skills/` directory to scope it to that project. Restart Claude Code, then simply describe the article task to trigger the skill.
+
+### Antigravity
+
+Inside a workspace containing this repository, create `.agents/skills.json` at the workspace root to load the source skill directly without keeping a second copy:
+
+```json
+{
+  "entries": [
+    {
+      "path": "wechat-article-pipeline-skill",
+      "include_only": ["wechat-article-pipeline"]
+    }
+  ]
+}
+```
+
+For global discovery, install the skill in `~/.gemini/config/skills/wechat-article-pipeline/`. To share publisher settings between agents, put the absolute path of the existing authoritative env file (or a path starting with `~/`) on one line in the workspace's `.local/wechat-publisher-env.path`. Exclude this machine-local file from version control. Packaging, manifest generation and API delivery use this binding unless an explicit env path is supplied.
+
+Each platform has its own driver procedure. The Antigravity App's single-tab backend navigates within its own tab. Chrome backends that support switching tabs may retain the editor in a second tab. Verify the actual editor contents and reopen Xiaohongshu drafts before marking them verified.
 
 ### Other Agents
 
@@ -470,7 +509,8 @@ Preview sending requires a separate explicit request plus `--send-preview` and p
 
 ## 7. Release Notes
 
-- `V 1.9.7 (current version)`: Fix false save conflicts after image-metadata-only rebuilds, distinguish version conflicts from disconnected services, and preserve external-edit protection. See [release notes](docs/releases/v1.9.7.md).
+- `V 1.9.8 (current version)` shares publisher settings across agent installations and verifies Xiaohongshu images, reopened drafts and submission settings. See [release notes](docs/releases/v1.9.8.md).
+- `V 1.9.7`: Fix false save conflicts after image-metadata-only rebuilds, distinguish version conflicts from disconnected services, and preserve external-edit protection. See [release notes](docs/releases/v1.9.7.md).
 - `V 1.9.6`: WeChat copy starts at the cover and excludes the article title while preserving the signature and body headings. Preview and source keep the title. See [release notes](docs/releases/v1.9.6.md).
 - `V 1.9.5`: Select sparse pull quotes while drafting, review their quality and density before delivery, and suggest structural improvements and candidate sentences when none is suitable. Normal packaging preserves editorial choices. See [release notes](docs/releases/v1.9.5.md).
 - `V 1.9.4`: Protect external source edits from stale workbench saves, bind publishing receipts to the submitted revision, and prevent named accounts from inheriting legacy credentials. Includes regression coverage and the existing table-wrapping and Toutiao scheduling maintenance. See [release notes](docs/releases/v1.9.4.md).

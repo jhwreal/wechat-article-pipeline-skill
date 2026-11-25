@@ -76,6 +76,9 @@ def result_status(platform: str, payload: dict[str, Any]) -> str:
         verification = payload.get("draft_verification") or {}
         confirmed = bool(payload.get("draft_media_id")) and verification.get("verified") is True
     if confirmed:
+        if (platform == "xiaohongshu" and payload.get("ui_driver") == "browser-subagent"
+                and payload.get("mode", "draft") == "draft" and payload.get("draft_reopened") is not True):
+            return "failed"
         fields = ("images", "h1", "h2") if platform == "xiaohongshu" else ("images", "h1")
         if platform == "wechat":
             fields = tuple(field for field in ("images", "h1", "h2") if f"expected_{field}" in payload)

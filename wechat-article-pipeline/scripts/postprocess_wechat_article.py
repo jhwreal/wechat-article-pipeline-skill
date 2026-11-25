@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from atomic_files import atomic_write_text
+from wechat_account_config import workspace_publisher_env
 from image_jobs_contract import normalize_image_jobs, filter_missing_image_jobs as contract_filter
 
 
@@ -55,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-focus-marking", action="store_true", help="Skip key-sentence/quote marking.")
     parser.add_argument("--target-body-chars", type=int, default=200)
     parser.add_argument("--min-body-chars", type=int, default=120)
-    parser.add_argument("--workspace", type=Path, default=WORKSPACE, help="Workspace root. Defaults to current directory.")
+    parser.add_argument("--workspace", type=Path, help="Workspace root. Defaults to current directory.")
     parser.add_argument("--debug-image-plan", action="store_true", help="Print the generated image-plan table.")
     parser.add_argument(
         "--no-images",
@@ -240,7 +241,9 @@ def main() -> None:
     out = args.out.resolve()
     article_slug = validate_article_slug(args.article_slug or infer_article_slug(source_article))
     jobs_out = (args.jobs_out or out.with_suffix(".image-jobs.json")).resolve()
-    workspace = args.workspace.resolve()
+    workspace = (args.workspace or WORKSPACE).resolve()
+    if args.workspace and not args.publisher_env_file and not args.plan_only:
+        args.publisher_env_file = workspace_publisher_env(source_article, workspace=workspace)
     images_dir = (args.images_dir or (workspace / "image" / article_slug)).resolve()
     focused_article = (
         source_article

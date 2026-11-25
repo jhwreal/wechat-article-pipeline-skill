@@ -2,13 +2,19 @@
 
 发布前按 [自动检查与隐藏记录](pre-publish-check.md) 处理：用户未明确跳过且当前稿无有效检查时，自动检查并在对话中报告结果；无待决定的内容问题就继续本次授权流程，不询问是否开始检查。草稿、立即/定时发布均适用，同篇同版跨平台复用结果。
 
+## 运行时驱动选择（双引擎路由）
+
+- **优先且默认（具备真实前台应用 Computer Use 能力的运行时，如 Codex）**：必须严格按本文件执行，**严禁**切换到浏览器自动化，严禁与 Playwright/CDP/浏览器插件混用。
+- **无 Computer Use 但具备内置 Browser Subagent 的运行时（如 Antigravity）**：切换到 [publishing-toutiao-browser.md](publishing-toutiao-browser.md) 执行，共用同一套内容权威、广告/封面/首发规则、定时入口白名单与单次提交熔断，并在结果文件记录 `ui_driver: browser-subagent`。
+- **两者均不可用**：交付已验证的本地工作台地址，由用户手工复制粘贴。
+
 仅在用户明确要求同步、保存草稿或发布今日头条时使用本流程。复用用户真实 Chrome 中已有的登录态，**从头到尾只使用 Computer Use 操作和读取 Chrome**。工作台格式选择、复制、地址栏导航、头条页面检查、标题与正文填写、选项设置、提交和结果核验都必须通过 Computer Use 完成。
 
 此流程禁止初始化或调用 Browser/Chrome browser automation；禁止使用 browser-client、`agent.browsers`、Playwright、CDP、DOM evaluation、`tabs.new()`、`tab.goto()` 或任何后台标签页对象。不要把自动化标签页的 URL、截图、焦点或 DOM 当成真实 Chrome 前台证据。微信草稿箱的“只用官方 API”限制只适用于 `mp.weixin.qq.com`，不限制今日头条。
 
 ## 工具身份硬门槛
 
-- 头条页面的每一次观察和操作都必须来自 Computer Use 调用链：`mcp__node_repl__js` 中加载 `@oai/sky`，并通过 `sky.get_app_state`、`sky.click`、`sky.set_value`、`sky.type_text`、`sky.press_key`、`sky.scroll` 等 `sky.*` 方法控制真实前台 Chrome。
+- 头条页面的每一次观察和操作都必须来自运行时提供的原生应用 Computer Use 调用链。支持原生应用控制器时，通过其前台 Chrome 应用接口读取和操作；使用 Sky 的运行时在 `mcp__node_repl__js` 中加载 `@oai/sky`，并通过 `sky.get_app_state`、`sky.click`、`sky.set_value`、`sky.type_text`、`sky.press_key`、`sky.scroll` 等 `sky.*` 方法控制真实前台 Chrome。
 - 工具输出写着 `App: Google Chrome` 只表示 Computer Use 当前控制的 macOS 应用是 Chrome，**不代表使用了 Chrome 插件**。是否合规以工具调用名和调用链为准。
 - 若调用记录出现 Chrome/browser 专用工具、Browser/Playwright、CDP、DOM 或后台 tab 对象，立即停止；这些结果不得作为头条页面证据，也不得与 Computer Use 结果混用。
 - 本地文件读取、结果 JSON 写入和包校验可以使用文件/终端工具，但它们不得观察、推断或操作头条网页状态。
@@ -97,7 +103,7 @@ Computer Use 操作的对象必须始终是 macOS 中真实、可见、最前方
 
 若最终点击后没有跳转、页面超时、连接中断或结果不明确，先到作品管理页按精确标题检查；绝对禁止再次点击最终按钮。查不到明确结果时停止并报告“提交结果未知”，不要重投。
 
-结果记录必须保存这组可审计字段：`ui_driver: computer-use/@oai/sky`、入口前看到的全部发布按钮、`schedule_entry_clicked: 定时发布`、用户要求的绝对时间、Computer Use 实际读回的绝对时间、最终按钮文字、`submission_maybe_sent`、`pgc_id` 和管理页状态。这样可以从结果文件区分 Computer Use 与 Chrome 插件，也能证明走的是定时而不是立即发布路径。
+结果记录必须保存这组可审计字段：实际的 `ui_driver`（Sky 记录 `computer-use/@oai/sky`，其他原生应用控制器记录其实际工具名）、入口前看到的全部发布按钮、`schedule_entry_clicked: 定时发布`、用户要求的绝对时间、Computer Use 实际读回的绝对时间、最终按钮文字、`submission_maybe_sent`、`pgc_id` 和管理页状态。这样可以从结果文件区分 Computer Use 与 Chrome 插件，也能证明走的是定时而不是立即发布路径。
 
 ## 单次提交熔断与一次性恢复
 

@@ -31,6 +31,8 @@ Known coverage:
 
 ## Local config
 
+For a shared workspace, bind the existing publisher env file in `<workspace>/.local/wechat-publisher-env.path` (one absolute path or `~/…`, no credentials). Keep the binding out of Git. Store article assets in `<workspace>/files/`. When explicitly overriding the binding, use the same path for packaging, manifest creation and publishing. A missing binding target must be fixed before continuing.
+
 Publisher defaults and Official API credentials live in a local `.env` copied from the skill-local `.env.example`. The installable skill includes that template; `.env` is ignored by Git and must never be committed.
 
 ```text

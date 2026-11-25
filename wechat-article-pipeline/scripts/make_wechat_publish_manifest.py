@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-directory", type=Path, help="Original job directory when rendering an internal snapshot.")
     parser.add_argument("--article-slug", help="Optional article slug override.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="Local publisher config path.")
-    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="Local .env with publisher defaults.")
+    parser.add_argument("--env-file", type=Path, help="Local .env with publisher defaults.")
     parser.add_argument(
         "--account",
         help=(
@@ -532,6 +532,9 @@ def main() -> None:
     except (OSError, ValueError) as exc:
         raise SystemExit(str(exc)) from exc
     config = read_config(args.config.expanduser())
+    args.env_file = (
+        args.env_file or account_config.workspace_publisher_env(args.workbench_html or args.job) or DEFAULT_ENV_FILE
+    ).expanduser().resolve()
     env = account_config.read_env_file(args.env_file)
     account = account_config.find_account_profile(env, args.account, include_credentials=True)
     if account.get("preview_account"):
